@@ -1,37 +1,18 @@
-## Welcome to GitHub Pages
+## Welcome to FEMSHOP
 
-You can use the [editor on GitHub](https://github.com/paralab/femshop/edit/master/README.md) to maintain and preview the content for your website in Markdown files.
+ femSHop is a community-oriented  framework  that  is *lightweight, portable, robust, extensible*, and *scalable* and that adapts to the complexity and heterogeneity of modern computing architectures. Our focus in this proposal is to establish a high-productivity framework for advanced high-order discretizations that effectively use small to large-scale computing systems. 
 
-Whenever you commit to this repository, GitHub Pages will run [Jekyll](https://jekyllrb.com/) to rebuild the pages in your site, from the content in your Markdown files.
+### Team
 
-### Markdown
-
-Markdown is a lightweight and easy-to-use syntax for styling your writing. It includes conventions for
-
-```markdown
-Syntax highlighted code block
-
-# Header 1
-## Header 2
-### Header 3
-
-- Bulleted
-- List
-
-1. Numbered
-2. List
-
-**Bold** and _Italic_ and `Code` text
-
-[Link](url) and ![Image](src)
-```
-
-For more details see [GitHub Flavored Markdown](https://guides.github.com/features/mastering-markdown/).
-
-### Jekyll Themes
-
-Your Pages site will use the layout and styles from the Jekyll theme you have selected in your [repository settings](https://github.com/paralab/femshop/settings). The name of this theme is saved in the Jekyll `_config.yml` configuration file.
-
-### Support or Contact
-
-Having trouble with Pages? Check out our [documentation](https://help.github.com/categories/github-pages-basics/) or [contact support](https://github.com/contact) and we’ll help you sort it out.
+- University of Utah 
+   - [Hari Sundar](http://www.cs.utah.edu/~hari/)
+   - [Matthew Flatt](http://www.cs.utah.edu/~mflatt)
+- University of Texas at Austin
+   - [Tan Bui-Thanh](http://users.ices.utexas.edu/~tanbui/)
+   - [Clint Dawson](https://www.ae.utexas.edu/faculty/faculty-directory/dawson)
+- [Cuong Nguyen](http://www.mit.edu/~cuongng/Site/Home.html), MIT
+- [Per-Olaf Perrson](http://persson.berkeley.edu/), UC Berkeley
+- [Jay Gopalakrishnan](http://web.pdx.edu/~gjay/), Portland State University
+- [Krzysztof Fidkowski](https://aero.engin.umich.edu/people/krzysztof-fidkowski/), Univeristy of Michigan
+- [Frank Giraldo](https://frankgiraldo.wixsite.com/mysite), Naval Postgraduate School
+- [David Kopriva](https://www.math.fsu.edu/~kopriva/), San Diego State University
