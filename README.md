@@ -6,15 +6,13 @@
 
 ### Team
 
-- University of Utah 
-   - [Hari Sundar](http://www.cs.utah.edu/~hari/)
-   - [Matthew Flatt](http://www.cs.utah.edu/~mflatt)
-- University of Texas at Austin
-   - [Tan Bui-Thanh](http://users.ices.utexas.edu/~tanbui/)
-   - [Clint Dawson](https://www.ae.utexas.edu/faculty/faculty-directory/dawson)
+- [Tan Bui-Thanh](http://users.ices.utexas.edu/~tanbui/), University of Texas at Austin
+- [Clint Dawson](https://www.ae.utexas.edu/faculty/faculty-directory/dawson), University of Texas at Austin
+- [Krzysztof Fidkowski](https://aero.engin.umich.edu/people/krzysztof-fidkowski/), Univeristy of Michigan
+- [Matthew Flatt](http://www.cs.utah.edu/~mflatt), University of Utah
+- [Frank Giraldo](https://frankgiraldo.wixsite.com/mysite), Naval Postgraduate School
+- [Jay Gopalakrishnan](http://web.pdx.edu/~gjay/), Portland State University
+- [David Kopriva](https://www.math.fsu.edu/~kopriva/), San Diego State University
 - [Cuong Nguyen](http://www.mit.edu/~cuongng/Site/Home.html), MIT
 - [Per-Olaf Perrson](http://persson.berkeley.edu/), UC Berkeley
-- [Jay Gopalakrishnan](http://web.pdx.edu/~gjay/), Portland State University
-- [Krzysztof Fidkowski](https://aero.engin.umich.edu/people/krzysztof-fidkowski/), Univeristy of Michigan
-- [Frank Giraldo](https://frankgiraldo.wixsite.com/mysite), Naval Postgraduate School
-- [David Kopriva](https://www.math.fsu.edu/~kopriva/), San Diego State University
+- [Hari Sundar](http://www.cs.utah.edu/~hari/), University of Utah
