@@ -1,3 +1,5 @@
+![femShop](logo1.png)
+
 ## Welcome to FEMSHOP
 
  femSHop is a community-oriented  framework  that  is *lightweight, portable, robust, extensible*, and *scalable* and that adapts to the complexity and heterogeneity of modern computing architectures. Our focus in this proposal is to establish a high-productivity framework for advanced high-order discretizations that effectively use small to large-scale computing systems. 
