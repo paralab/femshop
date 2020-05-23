@@ -1,12 +1,17 @@
 #=
 Module for code generation
 =#
-
 module CodeGenerator
 
-include("femshop_constants.jl");
+#include("femshop_constants.jl");
 
 export init_codegenerator, finalize_codegenerator, Genfiles
+
+import ..Femshop: JULIA, CPP, MATLAB, SQUARE, IRREGULAR, TREE, UNSTRUCTURED, CG, DG, HDG,
+        NODAL, MODAL, LEGENDRE, UNIFORM, GAUSS, LOBATTO, NONLINEAR_NEWTON,
+        NONLINEAR_SOMETHING, EULER_EXPLICIT, EULER_IMPLICIT, RK4, LSRK4,
+        ABM4, OURS, PETSC, VTK, RAW_OUTPUT, CUSTOM_OUTPUT
+import ..Femshop: log_entry, printerr
 
 # Holds a set of file streams for generated code
 mutable struct Genfiles
@@ -14,43 +19,60 @@ mutable struct Genfiles
     # add more files as needed
 end
 
+language = 0;
+genDir = "";
+genFileName = "";
+genFileExtension = "";
+commentChar = "";
+blockCommentChar = [""; ""];
+headerText = "";
+genfiles = nothing;
+
 function init_codegenerator(lang, dir, name, header)
+    if lang == JULIA
+        global genFileExtension = ".jl";
+        global commentChar = "#";
+        global blockCommentChar = ["#="; "=#"];
+        log_entry("Set code generation language to Julia.");
+    elseif lang == CPP
+        global genFileExtension = ".cpp";
+        global commentChar = "//";
+        global blockCommentChar = ["/*"; "*/"];
+        log_entry("Set code generation language to C++.");
+    elseif lang == MATLAB
+        global genFileExtension = ".m";
+        global commentChar = "%";
+        global blockCommentChar = ["%{"; "%}"];
+        log_entry("Set code generation language to Matlab.");
+    else
+        printerr("Invalid language, use JULIA, CPP or MATLAB");
+        return nothing;
+    end
+    
     global language = lang;
     global genDir = dir;
     global genFileName = name;
-    global genFileExtension = "";
-    global commentChar = "";
-    global blockCommentChar = [];
     global headerText = header;
-
-    if language == JULIA
-        genFileExtension = ".jl";
-        commentChar = "#";
-        blockCommentChar = ["#="; "=#"];
-    elseif language == CPP
-        genFileExtension = ".cpp";
-        commentChar = "//";
-        blockCommentChar = ["/*"; "*/"];
-    elseif language == MATLAB
-        genFileExtension = ".m";
-        commentChar = "%";
-        blockCommentChar = ["%{"; "%}"];
-    else
-        println("Invalid language, use JULIA, CPP or MATLAB");
-        return 0;
-    end
+    
     m = open(genDir*"/"*name*genFileExtension, "w");
-
+    # if m == nothing
+    #     printerr("Couldn't open files for generation");
+    #     return nothing;
+    # end
+    
     global genfiles = Genfiles(m);
-
+    
     # write headers
     generate_head(m,headerText);
-
+    
+    log_entry("Created code files for: "*name);
+    
     return genfiles;
 end
 
 function finalize_codegenerator()
     close(genfiles.main);
+    log_entry("Closed generated code files.");
 end
 
 macro comment(file,line)

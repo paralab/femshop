@@ -2,53 +2,48 @@
 The main module for Femshop.
 We can reorganize things and make submodules as desired.
 =#
-
 module Femshop
 
-if !@isdefined(femshop_modules_loaded)
-    femshop_modules_loaded = 1;
-    # External modules
-    using SparseArrays
-    using LinearAlgebra
-
-    # Femshop submodules
-    include("CodeGenerator.jl");
-    using .CodeGenerator
-
-    # Directly included files
-    include("femshop_constants.jl");
-    include("femshop_config.jl");
-end
+include("femshop_includes.jl");
 
 # Public macros and functions
-export @language, @domain, @solver, @functionSpace, @trialFunction,
-        @testFunction, @nodes, @order, @finalize
-export init_femshop, set_language, finalize
+export @language, @domain, @mesh, @solver, @functionSpace, @trialFunction,
+        @testFunction, @nodes, @order, @useLog, @finalize
+export init_femshop, set_language, add_mesh, finalize
 
-# Init global variables
-# Optional name is the project name used for output
-function init_femshop(name="")
-    global config = Femshop_config();
-    global project_name = name;
-    global outputDir = pwd();
-    global genfiles = nothing;
-end
+# External modules
+using SparseArrays
+using LinearAlgebra
+# Femshop submodules
+using .CodeGenerator
 
-init_femshop("");
+# Module's global variables
+config = Femshop_config();
+project_name = "";
+output_dir = pwd();
+mesh_data = nothing;
+gen_files = nothing;
 
 include("macros.jl"); # included here after globals are defined
 
-function set_language(lang, dirpath, filename, head="")
-    global outputDir = dirpath;
-    global genfiles = CodeGenerator.init_codegenerator(lang, dirpath, filename, head);
+function set_language(lang, dirpath, name, head="")
+    global output_dir = dirpath;
+    global project_name = name;
+    global gen_files = CodeGenerator.init_codegenerator(lang, dirpath, name, head);
+end
+
+function add_mesh(mesh)
+    global mesh_data = mesh;
+    log_entry("Added mesh with "*string(mesh.nx)*" nodes and "*string(mesh.nel)*" elements.");
 end
 
 function finalize()
     # Finalize generation
-    if genfiles != nothing
+    if gen_files != nothing
         finalize_codegenerator();
     end
     # anything else
+    close_log();
     println("Femshop has completed.");
 end
 

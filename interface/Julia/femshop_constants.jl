@@ -1,56 +1,57 @@
 #=
 Define some constants
+Use string values to make printing/interpretation easier
 =#
 export JULIA, CPP, MATLAB, SQUARE, IRREGULAR, TREE, UNSTRUCTURED, CG, DG, HDG,
         NODAL, MODAL, LEGENDRE, UNIFORM, GAUSS, LOBATTO, NONLINEAR_NEWTON,
-        NONLINEAR_SOMETHING_ELSE, EULER_EXPLICIT, EULER_IMPLICIT, RK4, LSRK4,
+        NONLINEAR_SOMETHING, EULER_EXPLICIT, EULER_IMPLICIT, RK4, LSRK4,
         ABM4, OURS, PETSC, VTK, RAW_OUTPUT, CUSTOM_OUTPUT
 
 # Languages for generated code
-const JULIA = 1;
-const CPP = 2;
-const MATLAB = 3;
+const JULIA = "Julia";
+const CPP = "C++";
+const MATLAB = "Matlab";
 
 # Domain types
-const SQUARE = 11;
-const IRREGULAR = 12;
+const SQUARE = "square";
+const IRREGULAR = "irregular";
 
 # Domain decomposition
-const TREE = 21;
-const UNSTRUCTURED = 22;
+const TREE = "tree";
+const UNSTRUCTURED = "unstructured";
 
 # Solver type
-const CG = 31;
-const DG = 32;
-const HDG = 33;
+const CG = "CG";
+const DG = "DG";
+const HDG = "HDG";
 
-const NODAL = 34;
-const MODAL = 35;
+const NODAL = "nodal";
+const MODAL = "modal";
 
 # Function space
-const LEGENDRE = 41;
+const LEGENDRE = "Legendre";
 
 # Element node positions
-const UNIFORM = 51;
-const GAUSS = 52;
-const LOBATTO = 53;
+const UNIFORM = "uniform";
+const GAUSS = "Gauss";
+const LOBATTO = "Lobatto";
 
 # Nonlinear solver methods
-const NONLINEAR_NEWTON = 61;
-const NONLINEAR_SOMETHING_ELSE = 62;
+const NONLINEAR_NEWTON = "Newton";
+const NONLINEAR_SOMETHING = "something";
 
 # Time steppers
-const EULER_EXPLICIT = 71;
-const EULER_IMPLICIT = 72;
-const RK4 = 73;
-const LSRK4 = 74;
-const ABM4 = 75;
+const EULER_EXPLICIT = "Euler-explicit";
+const EULER_IMPLICIT = "Euler-implicit";
+const RK4 = "RK4";
+const LSRK4 = "LSRK4";
+const ABM4 = "ABM4";
 
 # Linear system solvers/structures
-const OURS = 81;
-const PETSC = 82;
+const OURS = "ours";
+const PETSC = "PETSC";
 
 # Output format
-const VTK = 91;
-const RAW_OUTPUT = 92;
-const CUSTOM_OUTPUT = 93;
+const VTK = "vtk";
+const RAW_OUTPUT = "raw";
+const CUSTOM_OUTPUT = "custom";

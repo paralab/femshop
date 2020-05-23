@@ -4,17 +4,22 @@ if !@isdefined(Femshop)
     include("Femshop.jl");
     using .Femshop
 end
+# Try making an optional log
+@useLog("logfile")
 
-@domain(1, IRREGULAR, UNSTRUCTURED);
+# Set up the configuration (order doesn't matter)
+@domain(2, IRREGULAR, UNSTRUCTURED) # dimension, geometry, decomposition
+@mesh("circle_2d.msh")              # .msh file or generate our own
+@solver(DG)                         # DG, CG, etc.
+@functionSpace(LEGENDRE, 4)         # function, order (or use testFunction and trialFunction)
+@nodes(LOBATTO)                     # elemental node arrangement
 
-@solver(DG)
-
-@functionSpace(LEGENDRE)
-@order(4)
-
+# check
 c = Femshop.config
-c.geometry == IRREGULAR
+log_dump_config(c);
+@assert(c.geometry == IRREGULAR)
+@assert(Femshop.mesh_data.nx > 0)
 
-@language(CPP, "tryit", "Some header text");
-
+# Try making some files
+@language(CPP, "tryitcpp", "Just an empty file for testing");
 @finalize
