@@ -4,18 +4,12 @@ We can reorganize things and make submodules as desired.
 =#
 module Femshop
 
-include("femshop_includes.jl");
-
 # Public macros and functions
 export @language, @domain, @mesh, @solver, @functionSpace, @trialFunction,
         @testFunction, @nodes, @order, @useLog, @finalize
 export init_femshop, set_language, add_mesh, finalize
 
-# External modules
-using SparseArrays
-using LinearAlgebra
-# Femshop submodules
-using .CodeGenerator
+include("femshop_includes.jl");
 
 # Module's global variables
 config = Femshop_config();
