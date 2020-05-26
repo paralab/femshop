@@ -6,13 +6,14 @@ module Femshop
 
 # Public macros and functions
 export @language, @domain, @mesh, @solver, @functionSpace, @trialFunction,
-        @testFunction, @nodes, @order, @useLog, @finalize
+        @testFunction, @nodes, @order, @boundary, @useLog, @finalize
 export init_femshop, set_language, add_mesh, finalize
 
 include("femshop_includes.jl");
 
 # Module's global variables
 config = Femshop_config();
+prob = Femshop_prob();
 project_name = "";
 output_dir = pwd();
 mesh_data = nothing;

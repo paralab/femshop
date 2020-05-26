@@ -8,11 +8,14 @@ end
 @useLog("logfile")
 
 # Set up the configuration (order doesn't matter)
-@domain(2, IRREGULAR, UNSTRUCTURED) # dimension, geometry, decomposition
+#@domain(2, IRREGULAR, UNSTRUCTURED) # dimension, geometry, decomposition
+@domain(3, IRREGULAR, UNSTRUCTURED) # dimension, geometry, decomposition
 @mesh("circle_2d.msh")              # .msh file or generate our own
 @solver(DG)                         # DG, CG, etc.
 @functionSpace(LEGENDRE, 4)         # function, order (or use testFunction and trialFunction)
 @nodes(LOBATTO)                     # elemental node arrangement
+#songzhe: maybe start from a simple square case, we also need to tell boundary ids.
+@boundary(1, DIRICHLET, "sin(pi*t)")   # Specify like this to apply b.c. with bid
 
 #============== not yet implemented ======================
 # Specify the problem

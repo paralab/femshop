@@ -5,7 +5,7 @@ Use string values to make printing/interpretation easier
 export JULIA, CPP, MATLAB, SQUARE, IRREGULAR, TREE, UNSTRUCTURED, CG, DG, HDG,
         NODAL, MODAL, LEGENDRE, UNIFORM, GAUSS, LOBATTO, NONLINEAR_NEWTON,
         NONLINEAR_SOMETHING, EULER_EXPLICIT, EULER_IMPLICIT, RK4, LSRK4,
-        ABM4, OURS, PETSC, VTK, RAW_OUTPUT, CUSTOM_OUTPUT
+        ABM4, OURS, PETSC, VTK, RAW_OUTPUT, CUSTOM_OUTPUT, DIRICHLET
 
 # Languages for generated code
 const JULIA = "Julia";
@@ -55,3 +55,6 @@ const PETSC = "PETSC";
 const VTK = "vtk";
 const RAW_OUTPUT = "raw";
 const CUSTOM_OUTPUT = "custom";
+
+#BC
+const DIRICHLET = "Dirichlet";

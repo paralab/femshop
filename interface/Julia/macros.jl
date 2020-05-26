@@ -61,7 +61,7 @@ macro mesh(file)
         # else
         #     printerr("Error: couldn't open mesh file: "*$file);
         # end
-        
+
     end)
 end
 
@@ -141,6 +141,12 @@ macro order(Nmin, Nmax)
     end)
 end
 
+macro boundary(bid, bc_type, bc_exp)
+    return esc(quote
+        Femshop.prob.bid = $bid;
+        Femshop.prob.bc_type = $bc_type;
+    end)
+end
 
 macro finalize()
     return esc(:(Femshop.finalize()));

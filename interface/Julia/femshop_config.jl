@@ -39,7 +39,8 @@ mutable struct Femshop_config
 
     # Variable and boundary things should be in the problem
     # specification rather than here.
-
+    # songzhe: I added a femshop_prob struct if this is what you mean
+    
     # Constructor builds a default config.
     Femshop_config() = new(
         1,

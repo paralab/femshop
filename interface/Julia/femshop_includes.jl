@@ -30,6 +30,7 @@ end
 # Other files
 include("femshop_constants.jl");
 include("femshop_config.jl");
+include("femshop_prob.jl");
 include("logging.jl");
 include("mesh_read.jl");
 #include("refel.jl");
