@@ -26,5 +26,4 @@ function refel_nodes!(refel, nodetype)
     else
         # Not ready 
     end
-    
 end
