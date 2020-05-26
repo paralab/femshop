@@ -12,11 +12,18 @@ mutable struct Femshop_config
     mesh_type::String
 
     # FEM details
-    solver_type::String
+    solver_type::String #cg, dg, hdg
+    # songzhe: I think basis_type and trial_function/test_function should be consistnent
+    # if basis_type is nodal, then trial/test may not be legendre
+    # actually I think with trial/test, we don't need basis_type
     basis_type::String
-    trial_function::String
-    test_function::String
-    elemental_nodes::String
+    # songzhe: add some options
+    trial_function::String #nodal, modal
+    test_function::String #same as above
+    # songzhe: I assume this is higher order node distribution in one element
+    elemental_nodes::String # uniform, GLL
+    # songzhe: add gp distribution, which can be the same as above or different
+    quadrature::String # GL, GLL
     p_adaptive::Bool
     basis_order_min::Int
     basis_order_max::Int
@@ -42,6 +49,7 @@ mutable struct Femshop_config
         NODAL,
         LEGENDRE,
         LEGENDRE,
+        LOBATTO,
         LOBATTO,
         false,
         4,
