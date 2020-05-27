@@ -69,12 +69,8 @@ macro outputMesh(file, format)
 end
 
 macro solver(type)
-    return esc(:(@solver($type, NODAL)));
-end
-macro solver(type, nodalORmodal)
     return esc(quote
         Femshop.config.solver_type = $type;
-        Femshop.config.basis_type = $nodalORmodal;
     end)
 end
 

@@ -16,7 +16,8 @@ mutable struct Femshop_config
     # songzhe: I think basis_type and trial_function/test_function should be consistnent
     # if basis_type is nodal, then trial/test may not be legendre
     # actually I think with trial/test, we don't need basis_type
-    basis_type::String
+    # eric: Ok, I agree. Let's think about it again when things get more advanced.
+    # basis_type::String *REMOVED*
     # songzhe: add some options
     trial_function::String #nodal, modal
     test_function::String #same as above
@@ -47,14 +48,14 @@ mutable struct Femshop_config
         SQUARE,
         TREE,
         DG,
-        NODAL,
+        # NODAL, *REMOVED*
         LEGENDRE,
         LEGENDRE,
         LOBATTO,
         LOBATTO,
         false,
         4,
-        5,
+        4,
         true,
         false,
         RK4,
