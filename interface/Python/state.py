@@ -1,5 +1,6 @@
 from enum import Enum, unique
-
+from state_constants import *
+from domain import *
 class State:
 	def __init__(self, configDict):
 		self.configDict = {}
@@ -30,23 +31,17 @@ class State:
 
 		return self.configDict[key]
 
-class Domain:
-	#configure boundaries, boundary conditions, geometry, mesh
-	def __init__(self, boundaries, geometry, ):
-		self.boundaries = boundaries
-		self.geometry = geometry
-		#...and so on...
-
-@unique
-class SolutionMethods(Enum):
-	CG = 1
-	DG = 2
-	HDG = 3
+	def generateCode(self, type=GenerationType.CPP):
+		print("Generating Code")
 
 #enum value is the default if unset by user.
 #can be simple value, enum, or full class.
 class RequiredParameters(Enum):
 	Dimensions = 2
-	SolutionMethod = SolutionMethods.CG
-	Domain = Domain([],0)
+	Solver = Solvers.CG
+	Domain = Domain([(0,1),(0,1)], {}, Geometry.Square, Decomposition.Unstructured)
+	TimeStepper = TimeSteppers.RK4
+	OutputFormat = OutputFormats.VTK
+	FunctionSpace = FunctionSpaces.LEGENDRE
+	NonlinearSolver = NonlinearSolvers.NEWTON_RAPHSON
 	#... and many more ...  
