@@ -6,8 +6,8 @@ module Femshop
 
 # Public macros and functions
 export @language, @domain, @mesh, @solver, @functionSpace, @trialFunction,
-        @testFunction, @nodes, @order, @boundary, @useLog, @finalize
-export init_femshop, set_language, add_mesh, finalize
+        @testFunction, @nodes, @order, @boundary, @outputMesh, @useLog, @finalize
+export init_femshop, set_language, add_mesh, output_mesh, finalize
 
 include("femshop_includes.jl");
 
@@ -30,6 +30,10 @@ end
 function add_mesh(mesh)
     global mesh_data = mesh;
     log_entry("Added mesh with "*string(mesh.nx)*" nodes and "*string(mesh.nel)*" elements.");
+end
+
+function output_mesh(file, format)
+    write_mesh(file, format, mesh_data);
 end
 
 function finalize()

@@ -34,6 +34,7 @@ include("femshop_prob.jl");
 include("logging.jl");
 include("mesh_read.jl");
 #include("refel.jl");
+#include("mesh_write.jl")
 
 # Femshop submodules
 include("CodeGenerator.jl");

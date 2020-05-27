@@ -54,14 +54,17 @@ macro mesh(file)
         log_entry("Reading mesh file: "*$file);
         add_mesh(read_mesh(mfile));
         close(mfile);
-        # if mfile != nothing
-        #     log_entry("Reading mesh file: "*$file);
-        #     add_mesh(read_mesh(mfile));
-        #     close(mfile);
-        # else
-        #     printerr("Error: couldn't open mesh file: "*$file);
-        # end
+    end)
+end
 
+macro outputMesh(file) return esc(:(@outputMesh($file, MSH_V2))); end
+macro outputMesh(file, format)
+    return esc(quote
+        # open the file to write to
+        mfile = open($file, "w");
+        log_entry("Writing mesh file: "*$file);
+        output_mesh(mfile, $format);
+        close(mfile);
     end)
 end
 
