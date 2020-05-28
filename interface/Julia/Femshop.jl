@@ -6,8 +6,10 @@ module Femshop
 
 # Public macros and functions
 export @language, @domain, @mesh, @solver, @functionSpace, @trialFunction,
-        @testFunction, @nodes, @order, @boundary, @outputMesh, @useLog, @finalize
-export init_femshop, set_language, add_mesh, output_mesh, finalize
+        @testFunction, @nodes, @order, @boundary, @variable, @initial,
+        @timeInterval,
+        @outputMesh, @useLog, @finalize
+export init_femshop, set_language, add_mesh, output_mesh, add_initial_condition, finalize
 
 include("femshop_includes.jl");
 
@@ -34,6 +36,11 @@ end
 
 function output_mesh(file, format)
     write_mesh(file, format, mesh_data);
+    log_entry("Wrote mesh data to file: "*file*".msh");
+end
+
+function add_initial_condition(varindex)
+    #prob.initial[varindex] = genfunctions[end];
 end
 
 function finalize()

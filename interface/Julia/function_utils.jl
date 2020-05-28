@@ -27,6 +27,7 @@ end
 function add_genfunction(genfun)
     global genfunc_count += 1;
     global genfunctions = [genfunctions ; genfun];
+    log_entry("Generated function: "*genfun.name);
 end
 
 # Makes a GenFunction and adds it to the

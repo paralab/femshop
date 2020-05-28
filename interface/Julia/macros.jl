@@ -47,27 +47,6 @@ macro domain(dims, geometry, mesh)
     end)
 end
 
-macro mesh(file)
-    return esc(quote
-        # open the file and read the mesh data
-        mfile = open($file, "r");
-        log_entry("Reading mesh file: "*$file);
-        add_mesh(read_mesh(mfile));
-        close(mfile);
-    end)
-end
-
-macro outputMesh(file) return esc(:(@outputMesh($file, MSH_V2))); end
-macro outputMesh(file, format)
-    return esc(quote
-        # open the file to write to
-        mfile = open($file, "w");
-        log_entry("Writing mesh file: "*$file);
-        output_mesh(mfile, $format);
-        close(mfile);
-    end)
-end
-
 macro solver(type)
     return esc(quote
         Femshop.config.solver_type = $type;
@@ -140,10 +119,70 @@ macro order(Nmin, Nmax)
     end)
 end
 
+# ============= end config , begin prob ==============
+
+macro mesh(file)
+    return esc(quote
+        # open the file and read the mesh data
+        mfile = open($file, "r");
+        log_entry("Reading mesh file: "*$file);
+        add_mesh(read_mesh(mfile));
+        close(mfile);
+    end)
+end
+
+macro outputMesh(file) return esc(:(@outputMesh($file, MSH_V2))); end
+macro outputMesh(file, format)
+    return esc(quote
+        # open the file to write to
+        mfile = open($file, "w");
+        log_entry("Writing mesh file: "*$file);
+        output_mesh(mfile, $format);
+        close(mfile);
+    end)
+end
+
+macro variable(var) return esc(:(@variable($var, SCALAR))); end
+macro variable(var, type)
+    varsym = string(var);
+    return esc(quote
+        varind = Femshop.var_count + 1;
+        $var = Symbol($varsym);
+        $var = Femshop.Variable($var, varind, $type, []);
+        add_variable($var);
+    end)
+end
+
 macro boundary(bid, bc_type, bc_exp)
     return esc(quote
         Femshop.prob.bid = $bid;
         Femshop.prob.bc_type = $bc_type;
+    end)
+end
+
+macro timeInterval(t)
+    return esc(quote
+        Femshop.prob.time_dependent = true;
+        Femshop.prob.end_time = $t;
+    end)
+end
+
+macro initial(ic)
+    return esc(quote
+        if Femshop.config.dimension == 1
+            args = "x";
+        elseif Femshop.config.dimension == 2
+            args = "x,y";
+        elseif Femshop.config.dimension == 3
+            args = "x,y,z";
+        end
+        @initial(args, $ic);
+    end)
+end
+macro initial(args, ic)
+    return esc(quote
+        @makeFunction($args, $ic);
+        add_initial_condition(1);
     end)
 end
 

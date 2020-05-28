@@ -10,25 +10,23 @@ end
 # Set up the configuration (order doesn't matter)
 #@domain(2, IRREGULAR, UNSTRUCTURED) # dimension, geometry, decomposition
 @domain(3, IRREGULAR, UNSTRUCTURED) # dimension, geometry, decomposition
-@mesh("circle_2d.msh")              # .msh file or generate our own
 @solver(DG)                         # DG, CG, etc.
 @functionSpace(LEGENDRE, 4)         # function, order (or use testFunction and trialFunction)
 @nodes(LOBATTO)                     # elemental node arrangement
-#songzhe: maybe start from a simple square case, we also need to tell boundary ids.
-@boundary(1, DIRICHLET, "sin(pi*t)")   # Specify like this to apply b.c. with bid
 
-#============== not yet implemented ======================
-# Specify the problem
+# Problem specification
+@mesh("circle_2d.msh")              # .msh file or generate our own
+
 T = 3;
-a = 1;
 @timeInterval(0, T)                 # (start, end) using this sets problem to time dependent
 @initial("sin(pi*x)")               # initial condition needed if time dependent
 
-@boundary(DIRICHLET, "sin(pi*t)")   # Specify like this to apply b.c. everywhere
-@boundary(DIRICHLET, 1.3, bdry)     # Specify like this to apply b.c. where bdry(x) = true
+@variable(u)
+@variable(q)
 
-u = trial_function();               # Define the trial and test functions
-v = test_function();
+#songzhe: maybe start from a simple square case, we also need to tell boundary ids.
+@boundary(1, DIRICHLET, "sin(pi*t)")   # Specify like this to apply b.c. with bid
+#============== not yet implemented ======================
 
 # Make an expression with trial and test functions using
 # Dt, Dx, grad, etc. and surface() representing the surface integral
@@ -41,11 +39,8 @@ solve(u);                           # solves everything
 =======================================================#
 
 # check
-c = Femshop.config
-log_dump_config(c);
-@assert(c.geometry == IRREGULAR)
-@assert(Femshop.mesh_data.nx > 0)
+log_dump_config(Femshop.config);
 
 # Try making some files
-@language(CPP, "tryitcpp", "Just an empty file for testing");
+#@language(CPP, "tryitcpp", "Just an empty file for testing");
 @finalize

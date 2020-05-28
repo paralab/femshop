@@ -27,15 +27,18 @@ catch e
 end
 =#
 
-# Other files
+# include these first
 include("femshop_constants.jl");
 include("femshop_config.jl");
 include("femshop_prob.jl");
+
+# include these next
 include("logging.jl");
 include("mesh_read.jl");
 #include("refel.jl");
-#include("mesh_write.jl")
+include("mesh_write.jl")
 include("function_utils.jl");
+include("variables.jl");
 
 # Femshop submodules
 include("CodeGenerator.jl");

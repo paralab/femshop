@@ -6,14 +6,26 @@ if !@isdefined(IRREGULAR)
 end
 
 mutable struct Femshop_prob
+    mesh_dofs::Int          # DOFs corresponding to the mesh, not variables
+    
     # Domain
     bc_type::String
     bid::Int
-    #songzhe: not sure how to add expressions for bc yet
+    
+    # Time dependent info
+    time_dependent::Bool
+    end_time::Float64
+    initial                 # an array of GenFunctions, one for each variable
+    
+    
 
-    # Constructor builds a default config.
+    # Constructor builds a default prob.
     Femshop_prob() = new(
+        0,
         DIRICHLET,
-        1
+        1,
+        false,
+        0,
+        []
     );
 end
