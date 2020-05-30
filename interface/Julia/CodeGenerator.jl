@@ -3,14 +3,13 @@ Module for code generation
 =#
 module CodeGenerator
 
-#include("femshop_constants.jl");
-
 export init_codegenerator, finalize_codegenerator, Genfiles
 
 import ..Femshop: JULIA, CPP, MATLAB, SQUARE, IRREGULAR, TREE, UNSTRUCTURED, CG, DG, HDG,
         NODAL, MODAL, LEGENDRE, UNIFORM, GAUSS, LOBATTO, NONLINEAR_NEWTON,
         NONLINEAR_SOMETHING, EULER_EXPLICIT, EULER_IMPLICIT, RK4, LSRK4,
-        ABM4, OURS, PETSC, VTK, RAW_OUTPUT, CUSTOM_OUTPUT
+        ABM4, OURS, PETSC, VTK, RAW_OUTPUT, CUSTOM_OUTPUT, DIRICHLET, MSH_V2, MSH_V4,
+        SCALAR, VECTOR, TENSOR
 import ..Femshop: log_entry, printerr
 
 # Holds a set of file streams for generated code

@@ -148,7 +148,7 @@ macro variable(var, type)
     return esc(quote
         varind = Femshop.var_count + 1;
         $var = Symbol($varsym);
-        $var = Femshop.Variable($var, varind, $type, []);
+        $var = Femshop.Variable($var, varind, $type, [], [], false);
         add_variable($var);
     end)
 end
@@ -183,6 +183,13 @@ macro initial(args, ic)
     return esc(quote
         @makeFunction($args, $ic);
         add_initial_condition(1);
+    end)
+end
+
+macro testFunction(var)
+    varsym = "testFunction_"*string(var);
+    return esc(quote
+        $var = Symbol($varsym);
     end)
 end
 

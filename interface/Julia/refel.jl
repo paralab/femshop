@@ -62,30 +62,28 @@ function build_refel(dimension, order, nfaces, nodetype)
     
     # Build Vandermonde matrix and inverse
     if refel.dim == 1
-        refel.V = zeros(refel.Np, refel.order+1);
-        for i=1:refel.order+1
+        refel.V = zeros(refel.Np, refel.N+1);
+        for i=1:refel.N+1
             if config.trial_function == LEGENDRE
                 refel.V[:,i] = jacobi_polynomial(refel.r, 0, 0, i-1);
             end
         end
-        refel.invV = inv(V);
+        refel.invV = inv(refel.V);
     else
         # not ready
     end
     
     # Build Mass matrix
-    refel.mass = inv(V*V');
+    refel.mass = inv(refel.V*refel.V');
     
     # Build differentiation matrices
     if dimension == 1
-        refel.Dr = zeros(refel.Np, refel.order+1);
-        refel.Dr[:,1] = zeros(refel.Np);
-        for i=2:refel.order+1
-            if config.trial_function == LEGENDRE
-                n = refel.order-1;
-                refel.Dr[:,i] = sqrt(n*(n+1)) .* jacobi_polynomial(refel.r, 1, 1, i-2);
-            end
+        Vr = zeros(refel.Np, refel.Np);
+        for i=1:refel.Np-1
+            Vr[:,i+1] = sqrt(i*(i+1)) .* jacobi_polynomial(refel.r, 1, 1, i-1);
         end
+        
+        refel.Dr = Vr/refel.V;
     else
         # not ready
     end

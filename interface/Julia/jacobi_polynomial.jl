@@ -10,8 +10,8 @@ function jacobi_polynomial(x, alpha::Int, beta::Int, N::Int)
     PL = zeros(N+1,length(x));
     
     # Initial values P_0(x) and P_1(x)
-    gamma0 = 2^(alpha+beta+1)/(alpha+beta+1)*factorial(alpha+1)*
-                factorial(beta+1)/factorial(alpha+beta+1);
+    gamma0 = 2^(alpha+beta+1)/(alpha+beta+1)*factorial(alpha)*
+                factorial(beta)/factorial(alpha+beta);
     PL[1,:] = 1.0/sqrt(gamma0) .* ones(length(x));
     if N==0
         return PL[1,:];
@@ -30,7 +30,7 @@ function jacobi_polynomial(x, alpha::Int, beta::Int, N::Int)
       anew = 2/(h1+2)*sqrt( (i+1)*(i+1+alpha+beta)*(i+1+alpha)*
           (i+1+beta)/((h1+1)*(h1+3)));
       bnew = - (alpha^2-beta^2)/(h1*(h1+2));
-      PL[i+2,:] = (-aold/anew) .* PL[i,:] + ((xp-bnew)/anew) .* PL[i+1,:];
+      PL[i+2,:] = (-aold/anew) .* PL[i,:] + ((x.-bnew)./anew) .* PL[i+1,:];
       aold =anew;
     end;
     

@@ -9,12 +9,12 @@ function refel_nodes!(refel, nodetype)
         if nodetype == UNIFORM
             refel.r = Array(-1:(2/(refel.Np-1)):1);
         elseif nodetype == GAUSS
-            refel.r = jacobi_gauss_quad(0,0,refel.order)[1];
+            refel.r = jacobi_gauss_quad(0,0,refel.N)[1];
         elseif nodetype == LOBATTO
-            if order == 1
+            if refel.N == 1
                 refel.r = [-1; 1];
             else
-                refel.r = [-1; jacobi_gauss_quad(1,1,refel.order-2)[1] ; 1];
+                refel.r = [-1; jacobi_gauss_quad(1,1,refel.N-2)[1] ; 1];
             end
         end
     elseif refel.dim == 2
@@ -24,6 +24,6 @@ function refel_nodes!(refel, nodetype)
         # 3D has tets, hexs and prisms
         
     else
-        # Not ready 
+        # Not ready
     end
 end

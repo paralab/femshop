@@ -35,7 +35,7 @@ function jacobi_gauss_quad(alpha::Int, beta::Int, N::Int)
     # Find eigenvalues and vectors
     E = eigen(J);
     #x = E.values;
-    w = (E.vectors[1,:]').^2 .*2^(alpha+beta+1)/(alpha+beta+1)*factorial(alpha+1)*
-        factorial(beta+1)/factorial(alpha+beta+1);
+    w = (E.vectors[1,:]').^2 .*2^(alpha+beta+1)/(alpha+beta+1)*factorial(alpha)*
+        factorial(beta)/factorial(alpha+beta);
     return (E.values,w);
 end

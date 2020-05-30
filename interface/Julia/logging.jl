@@ -1,7 +1,7 @@
 #=
 # Optional log writing
 =#
-export printerr, init_log, log_entry, log_dump_config, close_log
+export printerr, init_log, log_entry, log_dump_config, log_dump_prob, close_log
 
 log_line_index = 1;
 use_log = false;
@@ -39,6 +39,19 @@ function log_dump_config(config)
         log_line_index += 1;
         for f in fieldnames(Femshop_config)
             println(log_file, string(log_line_index)*".\t\t"*string(f)*" = "*string(getfield(config, f)));
+            log_line_index += 1;
+        end
+    end
+end
+
+function log_dump_prob(problem)
+    global log_line_index;
+    global use_log;
+    if use_log
+        println(log_file, string(log_line_index)*".\tDumping problem:");
+        log_line_index += 1;
+        for f in fieldnames(Femshop_prob)
+            println(log_file, string(log_line_index)*".\t\t"*string(f)*" = "*string(getfield(problem, f)));
             log_line_index += 1;
         end
     end

@@ -43,3 +43,5 @@ include("variables.jl");
 # Femshop submodules
 include("CodeGenerator.jl");
 using .CodeGenerator
+include("DGSolver.jl");
+using .DGSolver

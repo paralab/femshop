@@ -9,19 +9,23 @@ export @language, @domain, @mesh, @solver, @functionSpace, @trialFunction,
         @testFunction, @nodes, @order, @boundary, @variable, @initial,
         @timeInterval,
         @outputMesh, @useLog, @finalize
-export init_femshop, set_language, add_mesh, output_mesh, add_initial_condition, finalize
+export init_femshop, set_language, add_mesh, output_mesh, add_initial_condition, solve, finalize
 
-include("femshop_includes.jl");
+#include("femshop_includes.jl");
 
 # Module's global variables
-config = Femshop_config();
-prob = Femshop_prob();
+config = nothing;
+prob = nothing;
 project_name = "";
 output_dir = pwd();
 mesh_data = nothing;
 gen_files = nothing;
 
+include("femshop_includes.jl");
 include("macros.jl"); # included here after globals are defined
+
+config = Femshop_config();
+prob = Femshop_prob();
 
 function set_language(lang, dirpath, name, head="")
     global output_dir = dirpath;
@@ -40,7 +44,18 @@ function output_mesh(file, format)
 end
 
 function add_initial_condition(varindex)
-    #prob.initial[varindex] = genfunctions[end];
+    while length(prob.initial) < varindex
+        prob.initial = [prob.initial; nothing];
+    end
+    prob.initial[varindex] = genfunctions[end];
+    # hold off on initializing till solve or generate is determined.
+end
+
+function solve()
+    # TEMPORARY ===============================
+    init_dgsolver();
+    DGSolver.solve();
+    # =========================================
 end
 
 function finalize()

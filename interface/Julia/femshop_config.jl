@@ -58,7 +58,7 @@ mutable struct Femshop_config
         4,
         true,
         false,
-        RK4,
+        LSRK4,
         false,
         OURS,
         VTK
