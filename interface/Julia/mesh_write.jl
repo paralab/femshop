@@ -2,8 +2,11 @@
 #
 # Writes a .msh file from a MeshData struct
 =#
-
 export write_mesh
+
+if !@isdefined(MeshData)
+    include("mesh_data.jl")
+end
 
 # Writes to the file stream using the mesh
 function write_mesh_MSHv2(file, mesh::MeshData)

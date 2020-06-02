@@ -2,23 +2,15 @@
 #
 # Reads a .msh file and builds a MeshData struct
 =#
+export read_mesh
 
-export read_mesh, MeshData
-
-struct MeshData
-    nx::Int;                    # Number of nodes
-    nodes::Array{Float64,2};    # node locations
-    indices::Array{Int,1};      # node indices may not be in order
-    
-    nel::Int;                   # Number of elements
-    elements::Array{Int,2};     # Element vertex to node mapping
-    etypes::Array{Int,1};       # Element types as defined by GMSH
-    nv::Array{Int,1};           # Elements can have different numbers of vertices
+if !@isdefined(MeshData)
+    include("mesh_data.jl")
 end
 
-# numbers of nodes for first and second order elements as defined by GMSH
+# numbers of CORNER nodes for first and second order elements as defined by GMSH
 # TODO add higher order types
-etypetonv = [2, 3, 4, 4, 8, 6, 5, 3, 6, 9, 10, 27, 18, 14, 1, 8, 20, 15, 13];
+etypetonv = [2, 3, 4, 4, 8, 6, 5, 2, 3, 4, 4, 8, 6, 5, 1, 4, 8, 6, 5];
 
 # Reads from the file stream
 # Returns a MeshData struct
@@ -111,10 +103,15 @@ function read_msh_v2(file)
         end
     end
     
-    return MeshData(nx, nodes, indices, nel, elements, etypes, nv);
+    # Now find all face related info
+    faces = build_faces(nel, elements, etypes);
+    normals = find_normals(nel, elements, etypes, faces, nodes);
+    bdry = find_boundaries(nel, faces);
+    
+    return MeshData(nx, nodes, indices, nel, elements, etypes, nv, faces, normals, bdry);
 end
 
 function read_msh_v4(file)
-    # Not ready yet
+    println("msh version 4+ is not yet supported.")
     return MeshData(0, [], [], 0, [], [], []);
 end

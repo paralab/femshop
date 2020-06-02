@@ -1,8 +1,7 @@
 # Just a scratch file for testing things
 
 if !@isdefined(Femshop)
-    #include("C:\\Users\\e\\Documents\\GitHub\\femshop\\interface\\Julia\\Femshop.jl");
-    include("olde/Femshop.jl");
+    include("Femshop.jl");
     using .Femshop
 end
 # Try making an optional log
