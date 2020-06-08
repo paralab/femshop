@@ -3,19 +3,15 @@
 =#
 export printerr, init_log, log_entry, log_dump_config, log_dump_prob, close_log
 
-log_line_index = 1;
-use_log = false;
-log_file = nothing;
-
 function printerr(msg)
     log_entry("Error: "*msg);
     println("Error: "*msg);
 end
 
 function init_log(name, dir)
-    file = open(dir*"\\"*name*"_log.txt", "w");
+    file = open(dir*"\\"*name*".txt", "w");
     println(file, "######################################");
-    println(file, "# Femshop Log for: "*name);
+    println(file, "# Femshop Log for: "*project_name);
     println(file, "######################################");
     println(file, "");
     global log_file = file;

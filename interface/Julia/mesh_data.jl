@@ -1,28 +1,48 @@
 #=
 # A struct containing mesh information
 =#
-export MeshData, build_faces, find_boundaries, find_normals
+export MeshData, build_faces, find_boundaries_neighbors, find_normals
 
 struct MeshData
+    #### Minimal required information ####
+    # Nodes
     nx::Int;                    # Number of nodes
     nodes::Array{Float64,2};    # node locations
     indices::Array{Int,1};      # node indices may not be in order
-    
+    # Volume elements
     nel::Int;                   # Number of elements
     elements::Array{Int,2};     # Element vertex to node mapping
     etypes::Array{Int,1};       # Element types as defined by GMSH
     nv::Array{Int,1};           # Elements can have different numbers of vertices
     
+    #### Optional information that will be built if not provided ####
+    # Faces of volume elements
     face2node::Array{Int,3}     # Nodes defining each face of each element
     normals::Array{Float64,3}   # Normal vectors for each face of each element
-    bdry::Array{Int,2};         # Boundary ID for each face (0=interior face)
+    bdryID::Array{Int,2};       # Boundary ID for each face (0=interior face)
+    neighbors::Array{Int, 2}    # Index of neighboring element for each face (self index for boundary)
+    # Boundary elements (redundant?)
+    #nbel::Int                   # Number of boundary elements
+    #belements::Array{Int, 2}    # Boundary element vertex to node mapping
+    #betypes::Array{Int, 1}      # Boundary element types
+    #nbv::Array{Int,1}           # Number of vertices of boundary elements
+    
+    MeshData(n, x, ind, ne, el, et, v) = (
+        faces = build_faces(n, el, et);
+        norms = find_normals(n, el, et, faces, x);
+        (bdry, neighbors) = find_boundaries_neighbors(n, faces);
+        new(n, x, ind, ne, el, et, v, faces, norms, bdry, neighbors);
+    )
+    MeshData(n, x, ind, ne, el, et, v, faces, norms, bdry, neighbors) = (
+        new(n, x, ind, ne, el, et, v, faces, norms, bdry, neighbors);
+    )
 end
 
-# numbers of nodes and faces for first order elements as defined by GMSH
+# numbers of nodes and faces for first and second order elements as defined by GMSH
 # line, triangle, quad, tet, hex, prism, 5-pyramid
-etypetonv = [2, 3, 4, 4, 8, 6, 5]; # number of vertices
-etypetonf = [2, 3, 4, 4, 6, 5, 5]; # number of faces
-etypetonfn= [1, 3, 4, 3, 4, 4, 4]; # number of nodes for each face (except prism and 5-pyramids!)
+etypetonv = [2, 3, 4, 4, 8, 6, 5, 2, 3, 4, 4, 8, 6, 5, 1, 4, 8, 6, 5]; # number of vertices
+etypetonf = [2, 3, 4, 4, 6, 5, 5, 2, 3, 4, 4, 6, 5, 5, 1, 4, 6, 5, 5]; # number of faces
+etypetonfn= [1, 3, 4, 3, 4, 4, 4, 1, 3, 4, 3, 4, 4, 4, 1, 3, 4, 4, 4]; # number of nodes for each face (except prism and 5-pyramids!)
 
 
 function build_faces(nel, elements, etypes)
@@ -130,8 +150,9 @@ function normal3(a, b, c)
     return [nx/d; ny/d; nz/d];
 end
 
-function find_boundaries(nel, faces)
+function find_boundaries_neighbors(nel, faces)
     bdry = zeros(Int, nel, 6);
+    neighbors = zeros(Int, nel, 6);
     foundmatch = false;
     for ei=1:nel
         for fi=1:6
@@ -142,9 +163,12 @@ function find_boundaries(nel, faces)
                         for fj=1:6
                             if faces[ej,fj,1] > 0
                                 # This huge set of loops compares each face of each element with every other.
-                                # If there are no two faes with the same set of nodes, it is a boundary.
+                                # If there are no two faces with the same set of nodes, it is a boundary.
+                                # Otherwise set them as neighbors.
                                 if shared_face(faces[ei,fi,:], faces[ej,fj,:])
                                     foundmatch = true;
+                                    neighbors[ei, fi] = ej;
+                                    neighbors[ej, fj] = ei;
                                 end
                             else
                                 break;
@@ -157,13 +181,14 @@ function find_boundaries(nel, faces)
                 end
                 if !foundmatch
                     bdry[ei, fi] = 612;
+                    neighbors[ei, fi] = ei;
                 end
             else
                 break;
             end
         end
     end
-    return bdry;
+    return (bdry, neighbors);
 end
 
 function shared_face(f1, f2)

@@ -22,16 +22,8 @@ macro language(lang, filename, header)
 end
 
 # Optionally create a log file
-macro useLog() return :(@uselog("logFile")) end
-macro useLog(name)
-    return esc(quote
-        if @isdefined(outputDirPath)
-            @useLog($name, outputDirPath);
-        else
-            @useLog($name, pwd());
-        end
-    end)
-end
+macro useLog() return :(@uselog(Femshop.project_name)) end
+macro useLog(name) return esc(:(@useLog($name, Femshop.output_dir))) end
 macro useLog(name, dir)
     return esc(quote
         init_log($name, $dir);

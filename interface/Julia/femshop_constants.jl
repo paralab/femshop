@@ -5,7 +5,8 @@ Use string values to make printing/interpretation easier
 export JULIA, CPP, MATLAB, SQUARE, IRREGULAR, TREE, UNSTRUCTURED, CG, DG, HDG,
         NODAL, MODAL, LEGENDRE, UNIFORM, GAUSS, LOBATTO, NONLINEAR_NEWTON,
         NONLINEAR_SOMETHING, EULER_EXPLICIT, EULER_IMPLICIT, RK4, LSRK4,
-        ABM4, OURS, PETSC, VTK, RAW_OUTPUT, CUSTOM_OUTPUT, DIRICHLET, MSH_V2, MSH_V4,
+        ABM4, OURS, PETSC, VTK, RAW_OUTPUT, CUSTOM_OUTPUT, DIRICHLET, NEUMANN, ROBIN,
+        MSH_V2, MSH_V4,
         SCALAR, VECTOR, TENSOR
 
 # Languages for generated code
@@ -62,6 +63,8 @@ const MSH_V4 = "msh-4";
 
 #BC
 const DIRICHLET = "Dirichlet";
+const NEUMANN = "Neumann";
+const ROBIN = "Robin";
 
 # variables
 const SCALAR = "scalar";

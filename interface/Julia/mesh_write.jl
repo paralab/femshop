@@ -5,7 +5,7 @@
 export write_mesh
 
 if !@isdefined(MeshData)
-    include("mesh_data.jl")
+    #include("mesh_data.jl")
 end
 
 # Writes to the file stream using the mesh
@@ -48,8 +48,8 @@ function write_mesh_MSHv4(file, mesh::MeshData)
     minn = mesh.indices[1];
     maxn = minn;
     for i=2:mesh.nx
-        minn = min(minn,indices[i]);
-        maxn = max(maxn,indices[i]);
+        minn = min(minn,mesh.indices[i]);
+        maxn = max(maxn,mesh.indices[i]);
     end
     dim = 1;
     if mesh.etypes[1] > 1

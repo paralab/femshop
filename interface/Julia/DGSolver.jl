@@ -8,15 +8,13 @@ export init_dgsolver, solve
 import ..Femshop: JULIA, CPP, MATLAB, SQUARE, IRREGULAR, TREE, UNSTRUCTURED, CG, DG, HDG,
         NODAL, MODAL, LEGENDRE, UNIFORM, GAUSS, LOBATTO, NONLINEAR_NEWTON,
         NONLINEAR_SOMETHING, EULER_EXPLICIT, EULER_IMPLICIT, RK4, LSRK4,
-        ABM4, OURS, PETSC, VTK, RAW_OUTPUT, CUSTOM_OUTPUT, DIRICHLET, MSH_V2, MSH_V4,
+        ABM4, OURS, PETSC, VTK, RAW_OUTPUT, CUSTOM_OUTPUT, DIRICHLET, NEUMANN, ROBIN,
+        MSH_V2, MSH_V4,
         SCALAR, VECTOR, TENSOR
 import ..Femshop: log_entry, printerr
 import ..Femshop: config, prob, variables, mesh_data
 
 using LinearAlgebra
-
-include("refel.jl");
-include("time_steppers.jl");
 
 # Globals
 refel = nothing;
@@ -32,15 +30,18 @@ vmapm = [];
 vmapp = [];
 vmapb = [];
 mapb = [];
-vmapI = [];
-vmapO = [];
-mapI = [];
-mapO = [];
+# vmapI = [];
+# vmapO = [];
+# mapI = [];
+# mapO = [];
+
+include("refel.jl");
+include("time_steppers.jl");
+include("dg_operators.jl");
 
 function init_dgsolver()
     if config.dimension == 1
         setup1D();
-        log_entry("Set up DG solver.");
         # build initial conditions
         for vind=1:length(variables)
             variables[vind].values = zeros(size(allnodes));
@@ -57,6 +58,7 @@ function init_dgsolver()
                 end
             end
         end
+        
     else
         #not ready
     end
@@ -71,17 +73,11 @@ function setup1D()
                   mesh_data.nodes[mesh_data.elements[:,1]']);
     global J = refel.Dr*allnodes;
     global rx = 1 ./J;
-    global Fmask = [1;refel.Np];
-    global normals = ones(refel.Nfaces, nel);
-    normals[1,:] = -ones(nel);
+    global Fmask = [1;refel.Np]; # elemental nodes on the faces
+    global normals = mesh_data.normals[:,1:2,1]';
     global Fscale = 1 ./J[Fmask,:];
-    # The rest of this assumes simple left to right ordering of elements.
-    # Should do it differently.
-    global e2e = zeros(Int, nel, refel.Nfaces);
-    e2e[2:end,1] = 1:(nel-1);
-    e2e[1,1] = 1;
-    e2e[:,2] = 1:nel;
-    global e2f = ones(Int, nel, refel.Nfaces);
+    global e2e = mesh_data.neighbors[:,1:2];
+    global e2f = ones(Int, nel, refel.Nfaces); # assumes left face is face 1, right is 2 (OK)
     e2f[2:end,1] = 2 .*e2f[2:end,1];
     e2f[end,2] = 2;
     global vmapm = zeros(Int, nel*refel.Nfaces);
@@ -89,59 +85,80 @@ function setup1D()
     for i=1:nel
         vmapm[i*2-1] = (i-1)*refel.Np + 1;
         vmapm[i*2] = i*refel.Np;
-        vmapp[i*2-1] = vmapm[i*2-1] - 1;
-        vmapp[i*2] = vmapm[i*2] + 1;
+        
+        j = mesh_data.neighbors[i,1];
+        vmapp[i*2-1] = j*refel.Np;
+        j = mesh_data.neighbors[i,2];
+        vmapp[i*2] = (j-1)*refel.Np + 1;
     end
-    vmapp[1] = vmapm[1];
-    vmapp[end] = vmapm[end];
-    global mapb = [1; nel*refel.Nfaces];
+    # boundaries have their own index
+    left = 1;
+    right = nel;
+    for i=1:nel
+        if mesh_data.neighbors[i,1] == i
+            left = i;
+        end
+        if mesh_data.neighbors[i,2] == i
+            right = i;
+        end
+    end
+    vl = (left-1)*refel.Nfaces + 1;
+    vr = right*refel.Nfaces;
+    vmapp[vl] = vmapm[vl];
+    vmapp[vr] = vmapm[vr];
+    global mapb = [vl; vr];
     global vmapb = vmapm[mapb];
-    global vmapI = 1;
-    global vmapO = nel*refel.Np;
-    global mapI = 1;
-    global mapO = nel*2;
+    # global vmapI = vmapm[vl];
+    # global vmapO = vmapm[vr];
+    # global mapI = (left-1)*2 + 1;
+    # global mapO = right*2;
 end
 
-function solve()
+function solve(lhs, lhspars, rhs, rhspars)
     if prob.time_dependent
-        #### TEMP this is just for the heat equation, must change
-        rhs = heatRHS;
-        ###########
-        
         stepper = init_stepper(allnodes, config.stepper);
         log_entry("Beginning "*string(stepper.Nsteps)*" time steps.");
-        T = @elapsed(stepper.step(stepper.Nsteps, stepper.dt, rhs));
+        T = @elapsed(stepper.step(stepper.Nsteps, stepper.dt, rhspars, rhs));
         log_entry("Completed time steps in "*string(T)*" seconds.");
     else
         
     end
 end
 
-##### TEMP ##### Just for testing
-function heatRHS(vars, time)
-    # Define field differences at faces
-    du = (vars[1].values[vmapm]-vars[1].values[vmapp])./2;
-    du = reshape(du,(2,mesh_data.nel));
+function rhs_dg_1d(pars, rhsv, vars, time)
+    dif = zeros(2, mesh_data.nel, length(vars));
+    for vi=1:length(vars)
+        if vars[vi].ready
+            rhsv[:,:,vi] = vars[vi].values;
+        end
+    end
     
-    # impose boundary condition -- Dirichlet BC's
-    uin  = -vars[1].values[vmapI];
-    uout = -vars[1].values[vmapO];
-    du[mapI] = (vars[1].values[vmapI] - uin)./2;
-    du[mapO] = (vars[1].values[vmapO] - uout)./2;
+    for i=1:length(pars.solve_order)
+        next = pars.solve_order[i];
+        for vi = 1:length(vars)
+            if pars.dependence[next, vi] == 1
+                subdif = (rhsv[:,:,vi][vmapm]-rhsv[:,:,vi][vmapp]).*0.5;
+                subdif = reshape(subdif,(2,mesh_data.nel));
+                # Impose boundary condition on dif
+                apply_bc1D!(pars.bdry_type[vi], pars.bdry_func[vi], time, rhsv[:,:,vi], subdif);
+                dif[:,:,vi] = subdif;
+            end
+        end
+        # evaluate the rhs expression
+        rhsv[:,:,next] = pars.rhs_eq[next](rhsv, dif, time);
+    end
     
-    # Compute q and form differences at faces
-    q = rx.*(refel.Dr*vars[1].values) .- refel.lift*(Fscale.*(normals.*du));
-    dq = (q[vmapm]-q[vmapp])./2;
-    dq = reshape(dq,(2,mesh_data.nel));
-    
-    # impose boundary condition -- Neumann BC's
-    qin  = q[vmapI];
-    qout = q[vmapO];
-    dq[mapI] = (q[vmapI] - qin)./2;
-    dq[mapO] = (q[vmapO] - qout)./2;
-    
-    # compute right hand side
-    return [rx.*(refel.Dr*q).-refel.lift*(Fscale.*(normals.*dq)) q];
+    return rhsv;
+end
+
+function apply_bc1D!(type, func, time, var, dif)
+    if type == DIRICHLET
+        dif[mapb] = var[vmapb] .+ func(time);
+    elseif type == NEUMANN
+        dif[mapb] = func(time) .* ones(size(dif[mapb]));
+    elseif type == ROBIN
+        # TODO
+    end
 end
 
 end #module

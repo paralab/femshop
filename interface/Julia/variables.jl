@@ -3,10 +3,6 @@
 =#
 export Variable, add_variable
 
-#TODO move these to Femshop.jl
-var_count = 0;
-variables = [];
-
 mutable struct Variable
     symbol                  # symbol used in expressions referring to this variable
     index::Int              # index in the Femshop list of variables

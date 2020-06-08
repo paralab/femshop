@@ -3,10 +3,6 @@
 =#
 export GenFunction, @stringToFunction, add_genfunction, @makeFunction
 
-#TODO: Move these global variables into Femshop.jl
-genfunc_count = 0;
-genfunctions = [];
-
 # Stores everything we could need about a generated function.
 struct GenFunction      # example:
     name::String        # "genfunction_7"
