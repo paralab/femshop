@@ -94,7 +94,11 @@ function get_indices{Iter}(Iter curr, SIMPLEX_DIM dim) where {Iter}
        #if it is 0 then it will be nodal vector, 1 then edge vector, 2 surface vector etc. 
 # with_halo : allocate mem. for halo regions as well. 
 # dof : degrees of freedoms
-function create_vector{T}(SIMPLEX_DIM dim, with_halo=false, dof=1) where {T}
+function alloc_vector{T}(SIMPLEX_DIM dim, with_halo=false, dof=1) where {T}
+end
+
+# deallocation for the vector. 
+function dealloc_vector{Vec}(Vec vec) where {Vec}
 end
 
 # perform the halo sync. between proc. for a given vector (async begin non blocking call).
