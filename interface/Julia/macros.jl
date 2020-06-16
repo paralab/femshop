@@ -42,6 +42,9 @@ end
 macro solver(type)
     return esc(quote
         Femshop.config.solver_type = $type;
+        if $type == DG
+            set_solver(Femshop.DGSolver);
+        end
     end)
 end
 
@@ -145,10 +148,17 @@ macro variable(var, type)
     end)
 end
 
-macro boundary(bid, bc_type, bc_exp)
+macro boundary(var, bid, bc_type, bc_exp)
     return esc(quote
-        Femshop.prob.bid = $bid;
-        Femshop.prob.bc_type = $bc_type;
+        if Femshop.config.dimension == 1
+            args = "x,t";
+        elseif Femshop.config.dimension == 2
+            args = "x,y,t";
+        elseif Femshop.config.dimension == 3
+            args = "x,y,z,t";
+        end
+        @makeFunction(args, $bc_exp);
+        add_boundary_condition($var, $bid, $bc_type);
     end)
 end
 
@@ -159,7 +169,7 @@ macro timeInterval(t)
     end)
 end
 
-macro initial(ic)
+macro initial(var, ic)
     return esc(quote
         if Femshop.config.dimension == 1
             args = "x";
@@ -168,22 +178,69 @@ macro initial(ic)
         elseif Femshop.config.dimension == 3
             args = "x,y,z";
         end
-        @initial(args, $ic);
+        @initial($var, args, $ic);
     end)
 end
-macro initial(args, ic)
+macro initial(var, args, ic)
     return esc(quote
         @makeFunction($args, $ic);
-        add_initial_condition(1);
+        add_initial_condition($var.index);
     end)
 end
 
 macro testFunction(var)
-    varsym = "testFunction_"*string(var);
+    varsym = string(var);
     return esc(quote
         $var = Symbol($varsym);
+        add_test_function($var);
     end)
 end
+
+macro weakForm(var, ex)
+    return esc(quote
+        wfex = Meta.parse($ex);
+        args = "; time=0";
+        for v in Femshop.variables
+            global args = args*", "*string(v.symbol)*"=0";
+        end
+        (lhs_expr, rhs_expr) = sp_parse(wfex, $var.symbol, Femshop.test_function_symbol);
+        @makeFunction(args, string(lhs_expr));
+        set_lhs($var);
+        
+        @makeFunction(args, string(rhs_expr));
+        set_rhs($var);
+        
+        Femshop.log_entry("Set weak form for variable "*string($var.symbol)*" to: "*string(lhs_expr)*" = "*string(rhs_expr));
+    end)
+end
+
+################# temporary
+macro RHS(var, ex)
+    return esc(quote
+        args = "v, flux, time";
+        if $var == u
+            eq = "Femshop.solver.mass_inv_advective(v[:,:,2]) .- Femshop.solver.surface_int(flux[:,:,2])";
+        else
+            eq = "Femshop.solver.mass_inv_advective(v[:,:,1]) .- Femshop.solver.surface_int(flux[:,:,1])";
+        end
+        @makeFunction(args, eq);
+        set_rhs($var);
+    end)
+end
+
+macro LHS(var, ex)
+    if typeof(ex) == Symbol
+        return esc(quote set_lhs($var, 0) end);
+    elseif ex.head === :call && ex.args[1] === :Dt
+        #arg = ex.args[2];
+        return esc(quote set_lhs($var, 0, lhs_time_deriv=true) end);
+    end
+    return esc(quote
+        set_lhs($var, 0)
+    end)
+end
+
+############################
 
 macro finalize()
     return esc(:(Femshop.finalize()));

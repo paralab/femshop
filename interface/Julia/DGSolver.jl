@@ -125,11 +125,12 @@ function solve(lhs, lhspars, rhs, rhspars)
     end
 end
 
-function rhs_dg_1d(pars, rhsv, vars, time)
-    dif = zeros(2, mesh_data.nel, length(vars));
+function rhs_dg_1d(pars, v, vars, time)
+    flux = zeros(2, mesh_data.nel, length(vars));
+    rhsv = zeros(size(v));
     for vi=1:length(vars)
         if vars[vi].ready
-            rhsv[:,:,vi] = vars[vi].values;
+            rhsv[:,:,vi] = v[:,:,vi];
         end
     end
     
@@ -137,25 +138,30 @@ function rhs_dg_1d(pars, rhsv, vars, time)
         next = pars.solve_order[i];
         for vi = 1:length(vars)
             if pars.dependence[next, vi] == 1
-                subdif = (rhsv[:,:,vi][vmapm]-rhsv[:,:,vi][vmapp]).*0.5;
-                subdif = reshape(subdif,(2,mesh_data.nel));
-                # Impose boundary condition on dif
-                apply_bc1D!(pars.bdry_type[vi], pars.bdry_func[vi], time, rhsv[:,:,vi], subdif);
-                dif[:,:,vi] = subdif;
+                subflux = (v[:,:,vi][vmapm]-v[:,:,vi][vmapp]).*0.5;
+                subflux = reshape(subflux,(2,mesh_data.nel));
+                # Impose boundary condition on flux
+                apply_bc1D!(pars.bdry_type[vi], pars.bdry_func[vi].func, time, v[:,:,vi], subflux);
+                flux[:,:,vi] = subflux;
             end
         end
         # evaluate the rhs expression
-        rhsv[:,:,next] = pars.rhs_eq[next](rhsv, dif, time);
+        rhsv[:,:,next] = pars.rhs_eq[next].func(v, flux, time);
+        # If the LHS was like DT(u), change nothing. If it was like (u), put rhsv into v
+        if !prob.lhs_time_deriv[next]
+            v[:,:,next] = rhsv[:,:,next];
+        end
     end
     
     return rhsv;
 end
 
-function apply_bc1D!(type, func, time, var, dif)
+function apply_bc1D!(type, func, time, v, flux)
+    x = allnodes[vmapb];
     if type == DIRICHLET
-        dif[mapb] = var[vmapb] .+ func(time);
+        flux[mapb] = v[vmapb] .+ func(x,time);
     elseif type == NEUMANN
-        dif[mapb] = func(time) .* ones(size(dif[mapb]));
+        flux[mapb] = func(x,time) .* ones(size(flux[mapb]));
     elseif type == ROBIN
         # TODO
     end

@@ -40,6 +40,8 @@ include("function_utils.jl");
 include("variables.jl");
 
 # Femshop submodules
+include("SymbolicParser.jl")
+using .SymbolicParser
 include("CodeGenerator.jl");
 using .CodeGenerator
 include("DGSolver.jl");

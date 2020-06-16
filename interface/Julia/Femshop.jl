@@ -7,9 +7,12 @@ module Femshop
 # Public macros and functions
 export @language, @domain, @mesh, @solver, @functionSpace, @trialFunction,
         @testFunction, @nodes, @order, @boundary, @variable, @initial,
-        @timeInterval,
+        @timeInterval, @weakForm, @LHS, @RHS,
         @outputMesh, @useLog, @finalize
-export init_femshop, set_language, add_mesh, output_mesh, add_initial_condition, solve, finalize
+export init_femshop, set_language, set_solver, add_mesh, output_mesh, add_test_function, add_initial_condition, 
+        add_boundary_condition, set_rhs, set_lhs, solve, finalize
+export sp_parse
+export Variable, add_variable
 
 ### Module's global variables ###
 # config
@@ -18,6 +21,7 @@ prob = nothing;
 project_name = "unnamedProject";
 output_dir = pwd();
 gen_files = nothing;
+solver = nothing;
 #log
 use_log = false;
 log_file = nothing;
@@ -30,6 +34,12 @@ variables = [];
 #generated functions
 genfunc_count = 0;
 genfunctions = [];
+test_function_symbol = nothing;
+#rhs
+rhs_functions = [];
+rhs_params = nothing;
+#lhs
+lhs_functions = [];
 
 include("femshop_includes.jl");
 include("macros.jl"); # included here after globals are defined
@@ -48,14 +58,19 @@ function init_femshop(name="unnamedProject")
     global mesh_data = nothing;
     global var_count = 0;
     global variables = [];
-    global genfun_count = 0;
+    global genfunc_count = 0;
     global genfunctions = [];
+    global test_function_symbol = nothing;
 end
 
 function set_language(lang, dirpath, name, head="")
     global output_dir = dirpath;
     global project_name = name;
     global gen_files = CodeGenerator.init_codegenerator(lang, dirpath, name, head);
+end
+
+function set_solver(s)
+    global solver = s;
 end
 
 function add_mesh(mesh)
@@ -68,12 +83,85 @@ function output_mesh(file, format)
     log_entry("Wrote mesh data to file: "*file*".msh");
 end
 
+function add_test_function(v)
+    global test_function_symbol = v;
+    log_entry("Set test function symbol: "*string(v));
+end
+
+function add_variable(var)
+    global var_count += 1;
+    # adjust values arrays
+    if var.type == SCALAR
+        var.values = zeros(prob.mesh_dofs);
+    elseif var.type == VECTOR
+        var.values = zeros(prob.mesh_dofs, config.dimension);
+    elseif var.type == TENSOR
+        var.values = zeros(prob.mesh_dofs, config.dimension*config.dimension);
+    end
+    global variables = [variables; var];
+    
+    global rhs_functions = [rhs_functions; nothing];
+    global lhs_functions = [lhs_functions; nothing];
+    
+    log_entry("Added variable: "*string(var.symbol)*" of type: "*var.type);
+end
+
 function add_initial_condition(varindex)
+    global prob;
     while length(prob.initial) < varindex
         prob.initial = [prob.initial; nothing];
     end
     prob.initial[varindex] = genfunctions[end];
+    
+    log_entry("Initial condition for "*string(variables[varindex].symbol)*" : "*genfunctions[end].str);
     # hold off on initializing till solve or generate is determined.
+end
+
+function add_boundary_condition(var, bid, type)
+    global prob;
+    # make sure the arrays are big enough
+    if size(prob.bc_func)[1] < var.index || size(prob.bc_func)[2] < bid
+        tmp1 = Array{String,2}(undef, (var.index + 2, bid + 2));
+        tmp2 = Array{GenFunction,2}(undef, (var.index + 2, bid + 2));
+        tmp3 = zeros(Int, (var.index + 2, bid + 2));
+        fill!(tmp1, "");
+        fill!(tmp2, GenFunction("","","",0,0));
+        tmp1[1:size(prob.bc_func)[1], 1:size(prob.bc_func)[2]] = Base.deepcopy(prob.bc_type);
+        tmp2[1:size(prob.bc_func)[1], 1:size(prob.bc_func)[2]] = Base.deepcopy(prob.bc_func);
+        tmp3[1:size(prob.bc_func)[1], 1:size(prob.bc_func)[2]] = prob.bid;
+        prob.bc_type = tmp1;
+        prob.bc_func = tmp2;
+        prob.bid = tmp3;
+    end
+    prob.bc_func[var.index, bid] = genfunctions[end];
+    prob.bc_type[var.index, bid] = type;
+    prob.bid[var.index, bid] = bid;
+    
+    log_entry("Boundary condition: var="*string(var.symbol)*" bid="*string(bid)*" type="*type*" val="*genfunctions[end].str);
+end
+
+function set_rhs(var)
+    global rhs_functions[var.index] = genfunctions[end];
+end
+
+function set_lhs(var, lhs_time_deriv=false)
+    # lhs_time_derivative signals if the problem is time dependent 
+    # and if this variable's eq. will have the form Dt(var) = RHS
+    while length(prob.lhs_time_deriv) < var.index
+        prob.lhs_time_deriv = [prob.lhs_time_deriv; false];
+    end
+    prob.lhs_time_deriv[var.index] = lhs_time_deriv;
+    
+    global lhs_functions[var.index] = genfunctions[end];
+end
+
+
+function get_solve_order()
+    ### Temporary
+    solve_order = [2;1];
+    dependence = [0 1 ; 1 0];
+    ###
+    return (solve_order, dependence);
 end
 
 function solve()
@@ -87,7 +175,9 @@ function solve()
         if config.dimension == 1
             if prob.time_dependent
                 rhs = DGSolver.rhs_dg_1d;
-                rhspars = build_rhs_params();
+                (solve_order, dependence) = get_solve_order();
+                global rhs_params = RHSParams(solve_order, dependence, rhs_functions, prob.bid, prob.bc_type, prob.bc_func);
+                rhspars = rhs_params;
             else
                 # TODO
             end

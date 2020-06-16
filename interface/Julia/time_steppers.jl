@@ -39,6 +39,9 @@ function lsrk4(Nsteps, dt, rhsparams, rhs)
     
     resu = zeros(size(variables[1].values)[1], size(variables[1].values)[2], length(variables)); #TODO only enough for scalars
     rhsv = zeros(size(variables[1].values)[1], size(variables[1].values)[2], length(variables)); #TODO only enough for scalars
+    for vi=1:length(variables)
+        rhsv[:,:,vi] = variables[vi].values;
+    end
     time = 0;
     rktime = 0;
     for ti=1:Nsteps
@@ -48,6 +51,7 @@ function lsrk4(Nsteps, dt, rhsparams, rhs)
             resu = rk4a[rki].*resu + dt.*rhsv;
             for vi=1:length(variables)
                 variables[vi].values = variables[vi].values .+ rk4b[rki].*resu[:,:,vi];
+                rhsv[:,:,vi] = variables[vi].values;
             end
         end
         time += dt;

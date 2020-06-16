@@ -8,8 +8,11 @@ struct GenFunction      # example:
     name::String        # "genfunction_7"
     args::String        # "x"
     str::String         # "sin(x)"
-    expr::Expr          # expression: sin(x)
+    expr                # expression: sin(x) NOTE: could be an Expr, Symbol, Number,
     func                # handle for: genfunction_7(x) = sin(x)
+    
+    # Only for creating an empty place holder
+    # GenFunction() = new("","","",0,0);
 end
 
 # Generates a function
