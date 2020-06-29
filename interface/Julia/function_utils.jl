@@ -1,7 +1,7 @@
 #=
 # function utils
 =#
-export GenFunction, @stringToFunction, add_genfunction, @makeFunction
+export GenFunction, @stringToFunction, add_genfunction, @makeFunction, @makeFunctions
 
 # Stores everything we could need about a generated function.
 struct GenFunction      # example:
@@ -10,9 +10,6 @@ struct GenFunction      # example:
     str::String         # "sin(x)"
     expr                # expression: sin(x) NOTE: could be an Expr, Symbol, Number,
     func                # handle for: genfunction_7(x) = sin(x)
-    
-    # Only for creating an empty place holder
-    # GenFunction() = new("","","",0,0);
 end
 
 # Generates a function
@@ -38,5 +35,27 @@ macro makeFunction(args, fun)
         ex = Meta.parse($fun);
         nf = GenFunction(name, $args, $fun, ex, @stringToFunction(name, $args, $fun));
         add_genfunction(nf);
+    end)
+end
+
+# Makes either: a constant number, a genfunction, or an array of genfunctions
+macro makeFunctions(ex)
+    return esc(quote
+        nfuns = 0;
+        args = "x=0,y=0,z=0,t=0";
+        if typeof($ex) <: Array
+            for i=1:length($ex)
+                if typeof($ex[i]) == String
+                    @makeFunction(args, $ex[i]);
+                    global nfuns = nfuns + 1;
+                end
+            end
+        else
+            if typeof($ex) == String
+                @makeFunction(args, $ex);
+                nfuns = 1;
+            end
+        end
+        nfuns
     end)
 end

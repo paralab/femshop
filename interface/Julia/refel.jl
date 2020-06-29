@@ -6,7 +6,7 @@
 #
 # Can be used for 1, 2, 3, 4 dimensions
 =#
-include("refel_nodes.jl");
+#include("refel_nodes.jl");
 include("jacobi_polynomial.jl");
 
 mutable struct Refel
@@ -19,6 +19,8 @@ mutable struct Refel
     s::Array{Float64}       # Node coordinates in s (dim 2)
     t::Array{Float64}       # Node coordinates in t (dim 3)
     u::Array{Float64}       # Node coordinates in u (dim 4)
+    
+    wr:: Array{Float64}     # Quadrature weights
     
     V::Array{Float64}       # Vandermonde matrix
     invV::Array{Float64}    # Inverse V
@@ -38,6 +40,7 @@ mutable struct Refel
         nnodes,
         nfaces,
         [],[],[],[],
+        [],
         [],[],[],[],[],[],[],[]
     )
 end

@@ -103,12 +103,7 @@ function read_msh_v2(file)
         end
     end
     
-    # Now find all face related info
-    faces = build_faces(nel, elements, etypes);
-    normals = find_normals(nel, elements, etypes, faces, nodes);
-    (bdry, neighbors) = find_boundaries_neighbors(nel, faces);
-    
-    return MeshData(nx, nodes, indices, nel, elements, etypes, nv, faces, normals, bdry, neighbors);
+    return MeshData(nx, nodes, indices, nel, elements, etypes, nv);
 end
 
 function read_msh_v4(file)

@@ -223,6 +223,40 @@ function distribute_negative(ex)
     end
 end
 
+# dot(u+v, w+x)  ->  dot(u,w) + dot(v,w) + ...
+function expand_dot(ex)
+    left = expand(ex.args[2]);
+    right = expand(ex.args[3]);
+    if typeof(left) <: Number  || typeof(right) <: Number # shouldn't happen. 
+        return 0;
+    end
+    # 
+    lterms = get_all_terms(left);
+    rterms = get_all_terms(right);
+    plusex = :(a+b);
+    dotex = :(dot(a,b));
+    if length(lterms) < 1 || length(rterms) < 1 # one of the arguments disappeared(became 0?)
+        return 0;
+    end
+    if length(lterms) == 1 && length(rterms) == 1 # dot(a,b) = dot(a,b)
+        dotex.args[2] = lterms[1];
+        dotex.args[3] = rterms[1];
+        result = dotex;
+    else
+        plusex.args = [:+];
+        for i=1:length(lterms)
+            for j=1:length(rterms);
+                dotex.args[2] = lterms[i];
+                dotex.args[3] = rterms[j];
+                plusex.args = [plusex.args ; copy(dotex)];
+            end
+        end
+        result = plusex;
+    end
+    
+    return result;
+end
+
 # Takes an expression like grad(ex)
 # grad(au - bv) = grad(a)u + a*grad(u) + -grad(b)v + -b*grad(v)
 function expand_grad(ex)
@@ -264,7 +298,67 @@ function expand_grad(ex)
             return plusex;
         end
     end
+    return ex;
+end
+
+# div(5*a*u + b)  ->  (dot(5*grad(a),u) + a*div(u)) + div(b)
+# assume the last factor is the vector (above u and b are vectors)
+function expand_div(ex)
+    inside = ex.args[2];
+    if typeof(inside) <: Number # div(4) = 0
+        return 0;
+    elseif typeof(inside) == Symbol # div(a) = div(a)
+        return ex;
+    elseif typeof(inside) == Expr
+        if inside.args[1] === :- && length(inside.args) == 2 # div(-u) = -div(u)
+            inside = inside.args[2];
+            newex = :(div(a));
+            newex.args[2] = inside;
+            newex = expand_div(newex);
+            if newex == 0
+                return 0;
+            end
+            newex = distribute_negative(newex);
+            return newex;
+        elseif inside.args[1] === :+ # div(a+b) = div(a) + div(b)
+            plusex = copy(inside);
+            for i=2:length(inside.args)
+                divex = :(div(a));
+                divex.args[2] = inside.args[i];
+                plusex.args[i] = expand_div(divex);
+            end
+            return plusex;
+        elseif inside.args[1] === :* # div(a*b*c*u) = dot(grad(a*b*c),u) + a*b*c*div(u)
+            mulex = copy(inside);
+            gradex = :(grad(a));
+            divex = :(div(a));
+            dotex = :(dot(a,b));
+            plusex = :(a+b);
+            
+            vect = mulex.args[end];
+            if length(mulex.args) > 3
+                scal = copy(mulex);
+                scal.args = scal.args[1:end-1];
+            else
+                scal = mulex.args[2];
+            end
+            
+            gradex.args[2] = scal;
+            gradex = expand_grad(gradex);
+            divex.args[2] = vect;
+            divex = expand_div(divex);
+            dotex.args[2] = gradex;
+            dotex.args[3] = vect;
+            dotex = expand_dot(dotex);
+            mulex.args[end] = divex;
+            plusex.args[2] = dotex;
+            plusex.args[3] = mulex;
+            
+            return plusex;
+        end
+    end
     
+    return ex;
 end
 
 # (Dt(2*a*u*v))  ->  2*a*Dt(u)*v
@@ -358,6 +452,8 @@ function expand(ex)
             newex = expand(newex);
         elseif newex.args[1] === :grad # use expand_grad to expand this 
             newex = expand_grad(newex);
+        elseif newex.args[1] === :div # use expand_div to expand this 
+            newex = expand_div(newex);
         end
         # TODO consider powers: (a+b)^2  ->  aa+ab+ba+bb
         

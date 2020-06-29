@@ -148,17 +148,19 @@ macro variable(var, type)
     end)
 end
 
+macro coefficient(c, val)
+    csym = string(c);
+    return esc(quote
+        $c = Symbol($csym);
+        nfuns = @makeFunctions($val);
+        $c = add_coefficient($c, $val, nfuns);
+    end)
+end
+
 macro boundary(var, bid, bc_type, bc_exp)
     return esc(quote
-        if Femshop.config.dimension == 1
-            args = "x,t";
-        elseif Femshop.config.dimension == 2
-            args = "x,y,t";
-        elseif Femshop.config.dimension == 3
-            args = "x,y,z,t";
-        end
-        @makeFunction(args, $bc_exp);
-        add_boundary_condition($var, $bid, $bc_type);
+        nfuns = @makeFunctions($bc_exp);
+        add_boundary_condition($var, $bid, $bc_type, $bc_exp, nfuns);
     end)
 end
 
@@ -171,20 +173,8 @@ end
 
 macro initial(var, ic)
     return esc(quote
-        if Femshop.config.dimension == 1
-            args = "x";
-        elseif Femshop.config.dimension == 2
-            args = "x,y";
-        elseif Femshop.config.dimension == 3
-            args = "x,y,z";
-        end
-        @initial($var, args, $ic);
-    end)
-end
-macro initial(var, args, ic)
-    return esc(quote
-        @makeFunction($args, $ic);
-        add_initial_condition($var.index);
+        nfuns = @makeFunctions($ic);
+        add_initial_condition($var.index, $ic, nfuns);
     end)
 end
 

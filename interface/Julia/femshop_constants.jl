@@ -7,7 +7,7 @@ export JULIA, CPP, MATLAB, SQUARE, IRREGULAR, TREE, UNSTRUCTURED, CG, DG, HDG,
         NONLINEAR_SOMETHING, EULER_EXPLICIT, EULER_IMPLICIT, RK4, LSRK4,
         ABM4, OURS, PETSC, VTK, RAW_OUTPUT, CUSTOM_OUTPUT, DIRICHLET, NEUMANN, ROBIN,
         MSH_V2, MSH_V4,
-        SCALAR, VECTOR, TENSOR
+        SCALAR, VECTOR, TENSOR, SYM_TENSOR
 
 # Languages for generated code
 const JULIA = "Julia";
@@ -70,3 +70,4 @@ const ROBIN = "Robin";
 const SCALAR = "scalar";
 const VECTOR = "vector";
 const TENSOR = "tensor";
+const SYM_TENSOR = "sym_tensor";

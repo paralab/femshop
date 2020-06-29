@@ -2,30 +2,19 @@
 # External modules
 using SparseArrays
 using LinearAlgebra
-# When we need SymPy
-#=
-######################
-# NOTE: This is not a long term solution.
-# Once the package is set up, we can put this dependency in the .toml
-######################
-try
-    using SymPy
-catch e
-    println("Julia SymPy is not installed. Shall I install for you?[y/n]");
-    if readline()[1] == 'y'
-        println("Alright. This could take a minute.");
-        using Pkg
-        Pkg.update();
-        Pkg.add("Conda")
-        using Conda
-        Conda.update()
-        Pkg.add("SymPy")
-        using SymPy
-    else
-        println("Proceeding without SymPy (Which is fine. We don't use it yet.)");
-    end
-end
-=#
+
+# ######################
+# # NOTE: This is not a long term solution.
+# # Once the package is set up, we can put this dependency in the .toml
+# try
+#     using SymEngine
+# catch e
+#     println("Julia SymEngine is not yet installed. Installing now.");
+#     using Pkg
+#     Pkg.add("SymEngine")
+#     using SymEngine
+# end
+# ######################
 
 # include these first
 include("femshop_constants.jl");
@@ -38,6 +27,8 @@ include("mesh_read.jl");
 include("mesh_write.jl")
 include("function_utils.jl");
 include("variables.jl");
+include("coefficient.jl");
+include("bilinear_linear.jl");
 
 # Femshop submodules
 include("SymbolicParser.jl")

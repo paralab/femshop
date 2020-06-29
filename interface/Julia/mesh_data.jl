@@ -17,6 +17,7 @@ struct MeshData
     
     #### Optional information that will be built if not provided ####
     # Faces of volume elements
+    invind::Dict                # Inverse of indices, maps node index to position in nodes array
     face2node::Array{Int,3}     # Nodes defining each face of each element
     normals::Array{Float64,3}   # Normal vectors for each face of each element
     bdryID::Array{Int,2};       # Boundary ID for each face (0=interior face)
@@ -28,13 +29,14 @@ struct MeshData
     #nbv::Array{Int,1}           # Number of vertices of boundary elements
     
     MeshData(n, x, ind, ne, el, et, v) = (
+        inv = Dict(ind[i] => i for i=1:length(ind));
         faces = build_faces(n, el, et);
         norms = find_normals(n, el, et, faces, x);
         (bdry, neighbors) = find_boundaries_neighbors(n, faces);
-        new(n, x, ind, ne, el, et, v, faces, norms, bdry, neighbors);
+        new(n, x, ind, ne, el, et, v, inv, faces, norms, bdry, neighbors);
     )
-    MeshData(n, x, ind, ne, el, et, v, faces, norms, bdry, neighbors) = (
-        new(n, x, ind, ne, el, et, v, faces, norms, bdry, neighbors);
+    MeshData(n, x, ind, ne, el, et, v, inv, faces, norms, bdry, neighbors) = (
+        new(n, x, ind, ne, el, et, v, inv, faces, norms, bdry, neighbors);
     )
 end
 
@@ -43,7 +45,6 @@ end
 etypetonv = [2, 3, 4, 4, 8, 6, 5, 2, 3, 4, 4, 8, 6, 5, 1, 4, 8, 6, 5]; # number of vertices
 etypetonf = [2, 3, 4, 4, 6, 5, 5, 2, 3, 4, 4, 6, 5, 5, 1, 4, 6, 5, 5]; # number of faces
 etypetonfn= [1, 3, 4, 3, 4, 4, 4, 1, 3, 4, 3, 4, 4, 4, 1, 3, 4, 4, 4]; # number of nodes for each face (except prism and 5-pyramids!)
-
 
 function build_faces(nel, elements, etypes)
     f2n = zeros(Int, nel, 6, 4); #(elementind, faceind, nodeind)
