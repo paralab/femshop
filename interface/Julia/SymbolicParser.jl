@@ -151,9 +151,12 @@ end
 function translate_term(t, var, test)
     facs = [];
     term = nothing;
+    borl = :RHS;
     if t.arity == 0
         # If arity=0, there's nothing to translate.
         return t.factors[1];
+    elseif t.arity == 2
+        borl = :LHS;
     end
     
     # if there's a negative, strip it off and put it around everything -a*b -> -(a*b)
@@ -193,10 +196,10 @@ function translate_term(t, var, test)
         if typeof(tpart) == Symbol
             # (?,t)
             if typeof(p2) == Expr && p2.args[1] === :grad
-                op = :operator_advection;
+                op = :advection_operator;
                 p2 = p2.args[2];
             elseif !(p2 === nothing)
-                op = :operator_mass;
+                op = :mass_operator;
             else
                 op = :test_int
                 p2 = tpart;
@@ -204,10 +207,10 @@ function translate_term(t, var, test)
         elseif typeof(tpart) == Expr && tpart.args[1] === :grad
             # (?, grad(t))
             if typeof(p2) == Expr && p2.args[1] === :grad
-                op = :operator_stiffness;
+                op = :stiffness_operator;
                 p2 = p2.args[2];
             elseif !(p2 === nothing)
-                op = :operator_advection_transpose;
+                op = :advection_transpose_operator;
             else
                 op = :test_int
                 p2 = tpart;
@@ -224,16 +227,20 @@ function translate_term(t, var, test)
             return nothing;
         end
         term = :(a(b));
-        term.args[1] = op;
-        term.args[2] = p2;
+        #term.args[1] = op;
+        #term.args[2] = p2;
+        #term.args = [op ; p2 ; :x ; :refel ; borl];
+        term.args = [op ; p2 ; :args];
     else
         if op === nothing || p2 === nothing
             term = p1;
         else
             term = :(a*b(c));
             term.args[2] = p1;
-            term.args[3].args[1] = op;
-            term.args[3].args[2] = p2;
+            #term.args[3].args[1] = op;
+            #term.args[3].args[2] = p2;
+            #term.args[3].args = [op ; p2 ; :x ; :refel ; borl];
+            term.args[3].args = [op ; p2 ; :args];
         end
     end
     

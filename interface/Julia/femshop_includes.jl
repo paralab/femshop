@@ -23,8 +23,12 @@ include("femshop_prob.jl");
 
 # include these next
 include("logging.jl");
+include("refel.jl");
+include("mesh_data.jl");
 include("mesh_read.jl");
 include("mesh_write.jl")
+include("grid.jl");
+include("simple_mesh.jl");
 include("function_utils.jl");
 include("variables.jl");
 include("coefficient.jl");
@@ -37,6 +41,8 @@ include("CodeGenerator.jl");
 using .CodeGenerator
 include("DGSolver.jl");
 using .DGSolver
+include("CGSolver.jl");
+using .CGSolver
 
 # include these last (depend on submodules)
 include("rhs_params.jl");

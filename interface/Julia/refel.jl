@@ -6,7 +6,7 @@
 #
 # Can be used for 1, 2, 3, 4 dimensions
 =#
-#include("refel_nodes.jl");
+include("refel_nodes.jl");
 include("jacobi_polynomial.jl");
 
 mutable struct Refel
@@ -15,20 +15,34 @@ mutable struct Refel
     Np::Int                 # Number of nodes
     Nfaces::Int             # Number of faces
     
-    r::Array{Float64}       # Node coordinates in r (dim 1)
-    s::Array{Float64}       # Node coordinates in s (dim 2)
-    t::Array{Float64}       # Node coordinates in t (dim 3)
-    u::Array{Float64}       # Node coordinates in u (dim 4)
+    r1d::Array{Float64}     # Node coordinates in 1D
+    r::Array{Float64}       # dim-dim Node coordinates
     
-    wr:: Array{Float64}     # Quadrature weights
+    wr1d::Array{Float64}    # r1d Quadrature weights
+    wr::Array{Float64}      # r Quadrature weights
     
-    V::Array{Float64}       # Vandermonde matrix
+    g1d::Array{Float64}     # 1D Gauss points
+    wg1d::Array{Float64}    # 1D Gauss weights
+    
+    g::Array{Float64}       # dim-dim Gauss
+    wg::Array{Float64}      # dim-dim Gauss weights
+    
+    V::Array{Float64}       # Vandermonde matrix at r
+    gradV::Array{Float64}   # grad of basis at r
     invV::Array{Float64}    # Inverse V
-    mass::Array{Float64}    # Mass matrix
-    Dr::Array{Float64}      # Differentiation matrix wrt r
-    Ds::Array{Float64}      # Differentiation matrix wrt s (empty for 1D)
-    Dt::Array{Float64}      # Differentiation matrix wrt t (empty for 1,2D)
-    Du::Array{Float64}      # Differentiation matrix wrt u (empty for 1~3D)
+    
+    Vg::Array{Float64}      # Vandermonde matrix at Gauss
+    gradVg::Array{Float64}  # grad of basis at g
+    invVg::Array{Float64}   # Inverse Vg
+    
+    Dr::Array{Float64}      # Differentiation matrix for r
+    Dg::Array{Float64}      # Differentiation matrix for g
+    
+    Q1d::Array{Float64}     # 
+    Q::Array{Float64}       # 
+    Qx::Array{Float64}      # 
+    Qy::Array{Float64}      # 
+    Qz::Array{Float64}      # 
     
     # for DG
     lift::Array{Float64}    # Surface integral matrix
@@ -39,9 +53,15 @@ mutable struct Refel
         order,
         nnodes,
         nfaces,
-        [],[],[],[],
-        [],
-        [],[],[],[],[],[],[],[]
+        [],[],
+        [],[],
+        [],[],
+        [],[],
+        [],[],[],
+        [],[],[],
+        [],[],
+        [],[],[],[],[],
+        []
     )
 end
 
@@ -51,11 +71,13 @@ function build_refel(dimension, order, nfaces, nodetype)
         println("Error: buildRefel(dimension, order, nfaces, nodetype), check for valid parameters.");
         return nothing;
     end
-    # Number of points determined by order and dimension
-    if (dimension == 1)     Np = order+1;
-    elseif (dimension == 2) Np = (Int)((order+1)*(order+2)/2);
-    elseif (dimension == 3) Np = (Int)((order+1)*(order+2)*(order+3)/6);
-    elseif (dimension == 4) Np = (Int)((order+1)*(order+2)*(order+3)*(order+4)/24);
+    # Number of points determined by order element type
+    if (dimension == 1)     Np = order+1; # line segment
+    elseif (dimension == 2 && nfaces == 3) Np = (Int)((order+1)*(order+2)/2); # triangle
+    elseif (dimension == 2 && nfaces == 4) Np = (Int)((order+1)*(order+1)); # quad
+    elseif (dimension == 3 && nfaces == 4) Np = (Int)((order+1)*(order+2)*(order+3)/6); # tet
+    elseif (dimension == 3 && nfaces == 6) Np = (Int)((order+1)*(order+1)*(order+1)); # hex
+    elseif (dimension == 4) Np = (Int)((order+1)*(order+2)*(order+3)*(order+4)/24); # ??
     end
     
     refel = Refel(dimension, order, Np, nfaces);
@@ -63,43 +85,60 @@ function build_refel(dimension, order, nfaces, nodetype)
     # Get nodes on the reference element
     refel_nodes!(refel, nodetype);
     
-    # Build Vandermonde matrix and inverse
-    if refel.dim == 1
-        refel.V = zeros(refel.Np, refel.N+1);
-        for i=1:refel.N+1
-            if config.trial_function == LEGENDRE
-                refel.V[:,i] = jacobi_polynomial(refel.r, 0, 0, i-1);
-            end
+    # Vandermonde matrix and grad,inv
+    refel.V = zeros(order+1, order+1);
+    refel.gradV = zeros(order+1, order+1);
+    for i=1:refel.N+1
+        if config.trial_function == LEGENDRE
+            refel.V[:,i] = jacobi_polynomial(refel.r1d, 0, 0, i-1);
         end
-        refel.invV = inv(refel.V);
-    else
-        # not ready
     end
+    for i=1:refel.N
+        refel.gradV[:,i+1] = sqrt(i*(i+1)) .* jacobi_polynomial(refel.r1d, 1, 1, i-1);
+    end
+    refel.invV = inv(refel.V);
     
-    # Build Mass matrix
-    refel.mass = inv(refel.V*refel.V');
+    # Gauss versions
+    refel.Vg = zeros(order+1, order+1);
+    refel.gradVg = zeros(order+1, order+1);
+    for i=1:refel.N+1
+        refel.Vg[:,i] = jacobi_polynomial(refel.g1d, 0, 0, i-1);
+    end
+    for i=1:refel.N
+        refel.gradVg[:,i+1] = sqrt(i*(i+1)) .* jacobi_polynomial(refel.r1d, 1, 1, i-1);
+    end
+    refel.invVg = inv(refel.Vg);
     
-    # Build differentiation matrices
+    # Differentiation matrices
+    #refel.Dr = (refel.invV*refel.gradV)';
+    #refel.Dg = (refel.invV*refel.gradVg)';
+    refel.Dr = refel.gradV*refel.invV;
+    refel.Dg = refel.gradVg*refel.invV;
+    
+    refel.Q1d = refel.Vg*refel.invV;
     if dimension == 1
-        Vr = zeros(refel.Np, refel.Np);
-        for i=1:refel.Np-1
-            Vr[:,i+1] = sqrt(i*(i+1)) .* jacobi_polynomial(refel.r, 1, 1, i-1);
-        end
-        
-        refel.Dr = Vr/refel.V;
-    else
-        # not ready
+        refel.Q = refel.Q1d;
+        refel.Qx = refel.Dg;
+    elseif dimension == 2
+        refel.Q = kron(refel.Q1d,refel.Q1d);
+        refel.Qx = kron(refel.Q1d,refel.Dg);
+        refel.Qy = kron(refel.Dg,refel.Q1d);
+    elseif dimension == 3
+        refel.Q = kron(kron(refel.Q1d, refel.Q1d), refel.Q1d);
+        refel.Qx = kron(kron(refel.Q1d, refel.Q1d), refel.Dg);
+        refel.Qy = kron(kron(refel.Q1d, refel.Dg), refel.Q1d);
+        refel.Qz = kron(kron(refel.Dg, refel.Q1d), refel.Q1d);
     end
     
-    # Build surface integral matrix
-    if dimension == 1
-        edgemat = zeros(refel.Np, 2);
-        edgemat[1,1] = 1;
-        edgemat[refel.Np,2] = 1;
-        refel.lift = refel.V * (refel.V' * edgemat);
-    else
-        # not ready
-    end
+    # # Build surface integral matrix
+    # if dimension == 1
+    #     edgemat = zeros(refel.Np, 2);
+    #     edgemat[1,1] = 1;
+    #     edgemat[refel.Np,2] = 1;
+    #     refel.lift = refel.V * (refel.V' * edgemat);
+    # else
+    #     # not ready
+    # end
     
     return refel;
 end

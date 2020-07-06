@@ -15,6 +15,8 @@ export sp_parse
 export Variable, add_variable
 export Coefficient, add_coefficient
 
+export mass_operator, stiffness_operator
+
 ### Module's global variables ###
 # config
 config = nothing;
@@ -29,6 +31,9 @@ log_file = nothing;
 log_line_index = 1;
 #mesh
 mesh_data = nothing;
+grid_data = nothing;
+loc2glb = nothing;
+refel = nothing;
 #problem variables
 var_count = 0;
 variables = [];
@@ -58,6 +63,9 @@ function init_femshop(name="unnamedProject")
         log_line_index = 1;
     end
     global mesh_data = nothing;
+    global grid_data = nothing;
+    global loc2glb = nothing;
+    global refel = nothing;
     global var_count = 0;
     global variables = [];
     global coefficients = [];
@@ -77,8 +85,17 @@ function set_solver(s)
 end
 
 function add_mesh(mesh)
-    global mesh_data = mesh;
-    log_entry("Added mesh with "*string(mesh.nx)*" nodes and "*string(mesh.nel)*" elements.");
+    if typeof(mesh) <: Tuple
+        global mesh_data = mesh[1];
+        global refel = mesh[2];
+        global grid_data = mesh[3]
+        global loc2glb = mesh[4];
+    else
+        global mesh_data = mesh;
+    end
+    
+    log_entry("Added mesh with "*string(mesh_data.nx)*" nodes and "*string(mesh_data.nel)*" elements.");
+    log_entry("Full grid has "*string(length(grid_data.allnodes))*" nodes.");
 end
 
 function output_mesh(file, format)
@@ -223,43 +240,19 @@ function set_lhs(var, lhs_time_deriv=false)
     global bilinears[var.index] = Bilinear(genfunctions[end]);
 end
 
-######## Not Ready #####################
-# function get_solve_order()
-#     ### Temporary
-#     solve_order = [2;1];
-#     dependence = [0 1 ; 1 0];
-#     ###
-#     return (solve_order, dependence);
-# end
-
-# function solve()
-#     lhs = nothing;
-#     lhspars = nothing;
-#     rhs = nothing;
-#     rhspars = nothing;
-#     if config.solver_type == DG
-#         t = @elapsed(init_dgsolver());
-#         log_entry("Set up DG solver.(took "*string(t)*" seconds)");
-#         if config.dimension == 1
-#             if prob.time_dependent
-#                 rhs = DGSolver.rhs_dg_1d;
-#                 (solve_order, dependence) = get_solve_order();
-#                 global rhs_params = RHSParams(solve_order, dependence, linears, prob.bid, prob.bc_type, prob.bc_func);
-#                 rhspars = rhs_params;
-#             else
-#                 # TODO
-#             end
-#         else
-#             # TODO
-#         end
+function solve(var)
+    if config.solver_type == CG
+        t = @elapsed(init_cgsolver());
+        log_entry("Set up CG solver.(took "*string(t)*" seconds)");
+        varind = var.index;
         
-#         DGSolver.solve(lhs, lhspars, rhs, rhspars);
-#     else
-#         # TODO
-#     end
-    
-# end
-#######################################
+        lhs = bilinears[varind];
+        rhs = linears[varind];
+        
+        t = @elapsed(var.values = CGSolver.solve(var, lhs, rhs));
+        log_entry("Solved for "*string(var.symbol)*".(took "*string(t)*" seconds)");
+    end
+end
 
 function finalize()
     # Finalize generation

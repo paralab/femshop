@@ -37,5 +37,6 @@ function jacobi_gauss_quad(alpha::Int, beta::Int, N::Int)
     #x = E.values;
     w = (E.vectors[1,:]').^2 .*2^(alpha+beta+1)/(alpha+beta+1)*factorial(alpha)*
         factorial(beta)/factorial(alpha+beta);
+    w = w[:];
     return (E.values,w);
 end

@@ -116,13 +116,29 @@ end
 
 # ============= end config , begin prob ==============
 
-macro mesh(file)
+macro mesh(m)
     return esc(quote
-        # open the file and read the mesh data
-        mfile = open($file, "r");
-        log_entry("Reading mesh file: "*$file);
-        add_mesh(read_mesh(mfile));
-        close(mfile);
+        if $m == LINEMESH || $m == QUADMESH
+            @mesh($m, 5)
+        else
+            # open the file and read the mesh data
+            mfile = open($m, "r");
+            log_entry("Reading mesh file: "*$m);
+            add_mesh(read_mesh(mfile));
+            close(mfile);
+        end
+        
+    end)
+end
+macro mesh(m, N)
+    return esc(quote
+        if $m == LINEMESH
+            log_entry("Building simple line mesh with nx elements, nx="*string($N));
+            add_mesh(simple_line_mesh($N+1));
+        elseif $m == QUADMESH
+            log_entry("Building simple quad mesh with nx*nx elements, nx="*string($N));
+            add_mesh(simple_quad_mesh($N+1));
+        end
     end)
 end
 
@@ -189,10 +205,7 @@ end
 macro weakForm(var, ex)
     return esc(quote
         wfex = Meta.parse($ex);
-        args = "; time=0";
-        for v in Femshop.variables
-            global args = args*", "*string(v.symbol)*"=0";
-        end
+        args = "args";
         (lhs_expr, rhs_expr) = sp_parse(wfex, $var.symbol, Femshop.test_function_symbol);
         @makeFunction(args, string(lhs_expr));
         set_lhs($var);

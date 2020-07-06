@@ -30,9 +30,9 @@ struct MeshData
     
     MeshData(n, x, ind, ne, el, et, v) = (
         inv = Dict(ind[i] => i for i=1:length(ind));
-        faces = build_faces(n, el, et);
-        norms = find_normals(n, el, et, faces, x);
-        (bdry, neighbors) = find_boundaries_neighbors(n, faces);
+        faces = build_faces(ne, el, et);
+        norms = find_normals(ne, el, et, faces, x);
+        (bdry, neighbors) = find_boundaries_neighbors(ne, faces);
         new(n, x, ind, ne, el, et, v, inv, faces, norms, bdry, neighbors);
     )
     MeshData(n, x, ind, ne, el, et, v, inv, faces, norms, bdry, neighbors) = (
