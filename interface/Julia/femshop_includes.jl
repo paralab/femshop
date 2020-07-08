@@ -33,6 +33,7 @@ include("function_utils.jl");
 include("variables.jl");
 include("coefficient.jl");
 include("bilinear_linear.jl");
+include("time_steppers.jl");
 
 # Femshop submodules
 include("SymbolicParser.jl")
@@ -43,6 +44,3 @@ include("DGSolver.jl");
 using .DGSolver
 include("CGSolver.jl");
 using .CGSolver
-
-# include these last (depend on submodules)
-include("rhs_params.jl");

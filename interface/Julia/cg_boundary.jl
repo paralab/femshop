@@ -63,3 +63,31 @@ function dirichlet_bc(A, b, val, bdry, t=0)
     
     return (A, b);
 end
+
+function dirichlet_bc_rhs_only(b, val, bdry, t=0)
+    N = length(b);
+    
+    if config.dimension == 1
+        for i=1:length(bdry)
+            if typeof(val) <: Number
+                b[bdry[i]]=val;
+            elseif typeof(val) == Coefficient && typeof(val.value[1]) == GenFunction
+                b[bdry[i]]=val.value[1].func(grid_data.allnodes[i,1],0,0,t);
+            end
+        end
+        
+    elseif config.dimension == 2
+        for i=1:length(bdry)
+            if typeof(val) <: Number
+                b[bdry[i]]=val;
+            elseif typeof(val) == Coefficient && typeof(val.value[1]) == GenFunction
+                b[bdry[i]]=val.value[1].func(grid_data.allnodes[i,1],grid_data.allnodes[i,2],0,t);
+            end
+        end
+        
+    else
+        
+    end
+    
+    return b;
+end

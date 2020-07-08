@@ -361,14 +361,14 @@ function expand_div(ex)
     return ex;
 end
 
-# (Dt(2*a*u*v))  ->  2*a*Dt(u)*v
+# (Dt(2*a*u*v))  ->  2*a*Dt(u*v)
 function handle_dt(ex, var)
     inside = ex.args[2];
     facs = get_all_factors(inside);
     out = [];
     in = [];
     for i=1:length(facs)
-        if is_var_op(facs[i], var)
+        if is_var_op(facs[i], var) || is_test_op(facs[i],var)
             in = [in ; facs[i]];
         else
             out = [out ; facs[i]];

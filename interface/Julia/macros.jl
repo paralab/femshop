@@ -114,6 +114,13 @@ macro order(Nmin, Nmax)
     end)
 end
 
+macro stepper(s) return esc(:(@stepper($s, 0))) end
+macro stepper(s, cfl)
+    return esc(quote
+        set_stepper($s, $cfl);
+    end)
+end
+
 # ============= end config , begin prob ==============
 
 macro mesh(m)
@@ -183,6 +190,9 @@ end
 macro timeInterval(t)
     return esc(quote
         Femshop.prob.time_dependent = true;
+        if Femshop.time_stepper === nothing
+            @stepper(EULER_IMPLICIT);
+        end
         Femshop.prob.end_time = $t;
     end)
 end
@@ -207,13 +217,68 @@ macro weakForm(var, ex)
         wfex = Meta.parse($ex);
         args = "args";
         (lhs_expr, rhs_expr) = sp_parse(wfex, $var.symbol, Femshop.test_function_symbol);
-        @makeFunction(args, string(lhs_expr));
-        set_lhs($var);
-        
-        @makeFunction(args, string(rhs_expr));
-        set_rhs($var);
-        
-        Femshop.log_entry("Set weak form for variable "*string($var.symbol)*" to: "*string(lhs_expr)*" = "*string(rhs_expr));
+        if typeof(lhs_expr) <: Tuple && length(lhs_expr) == 2
+            # build the expressions depending on type of time stepper
+            # explicit -> dtlhs         :   (rhs - lhs)
+            # implicit -> dtlhs + lhs   :   rhs
+            # CN       -> dtlhs + 0.5*lhs : (rhs-0.5*lhs)
+            if Femshop.config.stepper == EULER_IMPLICIT
+                plusex = :(a+b);
+                timesdt = :(dt.*a);
+                timesdt.args[3] = lhs_expr[2];
+                plusex.args[2] = lhs_expr[1];
+                plusex.args[3] = timesdt;
+                newlhs = copy(plusex);
+                
+                timesdt.args[3] = rhs_expr;
+                plusex.args[2] = lhs_expr[1];
+                plusex.args[3] = timesdt;
+                newrhs = plusex;
+                
+            elseif Femshop.config.stepper == CRANK_NICHOLSON
+                # newlhs = :(a+b);
+                # timesdt = :((dt*0.5).*a);
+                # timesdt.args[3] = lhs_expr[2];
+                # newlhs.args[2] = lhs_expr[1];
+                # newlhs.args[3] = copy(timesdt);
+                
+                # newrhs = :(a-b);
+                # newrhs.args[2] = rhs_expr;
+                # newrhs.args[3] = lhs_expr[2];
+                # timesdt.args[3] = newrhs;
+                # newrhs = timesdt;
+                
+            else # explicit steppers
+                newlhs = lhs_expr[1];
+                
+                minusex = :(a-b);
+                plusex = :(a+b);
+                timesdtex = :(dt.*a);
+                minusex.args[2] = rhs_expr;
+                minusex.args[3] = lhs_expr[2];
+                timesdtex.args[3] = minusex;
+                plusex.args[2] = lhs_expr[1];
+                plusex.args[3] = timesdtex;
+                newrhs = plusex;
+            end
+            
+            # need to add a line to extract dt from args
+            @makeFunction(args, "(dt=args[7]; "*string(newlhs)*")");
+            set_lhs($var);
+            @makeFunction(args, "(dt=args[7]; "*string(newrhs)*")");
+            set_rhs($var);
+            
+            Femshop.log_entry("Set weak form for variable "*string($var.symbol)*" to: "*string(newlhs)*" = "*string(newrhs));
+            
+        else
+            # No time derivatives
+            @makeFunction(args, string(lhs_expr));
+            set_lhs($var);
+            @makeFunction(args, string(rhs_expr));
+            set_rhs($var);
+            
+            Femshop.log_entry("Set weak form for variable "*string($var.symbol)*" to: "*string(lhs_expr)*" = "*string(rhs_expr));
+        end
     end)
 end
 

@@ -33,6 +33,7 @@ include("parser_utils.jl");
 function sp_parse(ex, var, test)
     terms = get_all_terms(expand(ex));
     spterms = Array{sp_term,1}(undef,length(terms));
+    dtterms = []; # Will hold index of terms that are wrapped in Dt()
     for i=1:length(terms)
         # split the test, var and coef factors
         # Note: The number and symbol cases shouldn't happen, but are included for completeness
@@ -51,17 +52,28 @@ function sp_parse(ex, var, test)
             tf = []; # test function factors
             cf = []; # coefficient factors
             vf = []; # variable factors
-            # handle Dt factors Dt(a*u*v) -> a*v*Dt(u)
+            
+            # handle Dt factors Dt(a*u*v) -> a*Dt(u*v)
             newfacs = copy(facs);
             refactor = false;
             for j=1:length(facs)
-                if typeof(facs[j]) == Expr && facs[j].args[1] === :Dt
-                    newfacs[j] = handle_dt(facs[j], var);
-                    refactor = true;
+                # get past possible negative sign
+                if typeof(facs[j]) == Expr && facs[j].args[1] === :-
+                    if typeof(facs[j].args[2]) == Expr && facs[j].args[2].args[1] === :Dt
+                        newfacs[j].args[2] = facs[j].args[2].args[2]; # wrap the whole term in Dt
+                        refactor = true;
+                    end
+                else
+                    if typeof(facs[j]) == Expr && facs[j].args[1] === :Dt
+                        newfacs[j] = facs[j]. args[2]; # wrap the whole term in Dt
+                        refactor = true;
+                    end
                 end
             end
             if refactor
+                # Dt() is stripped off, but noted
                 facs = get_all_factors(assemble_term(newfacs));
+                push!(dtterms, i);
             end
             
             for j=1:length(facs)
@@ -112,10 +124,21 @@ function sp_parse(ex, var, test)
     
     # Translate each term into expressions like p1*operator(p2)
     lhsterms = [];
+    lhsdtterms = [];
     rhsterms = [];
     for i=1:length(spterms)
+        adddt = false
+        for j=1:length(dtterms)
+            if dtterms[j] == i
+                adddt = true;
+            end
+        end
         if spterms[i].arity > 1
-            lhsterms = [lhsterms ; translate_term(spterms[i], var, test)];
+            if adddt
+                lhsdtterms = [lhsdtterms ; translate_term(spterms[i], var, test)];
+            else
+                lhsterms = [lhsterms ; translate_term(spterms[i], var, test)];
+            end
         else
             rhsterms = [rhsterms ; distribute_negative(translate_term(spterms[i], var, test))];
         end
@@ -130,6 +153,15 @@ function sp_parse(ex, var, test)
         lhs = 0; # this should never happen
     end
     
+    if length(lhsdtterms) > 1
+        lhsdt = :(a+b);
+        lhsdt.args = [:+ ; lhsdtterms];
+    elseif length(lhsdtterms) == 1
+        lhsdt = lhsdtterms[1];
+    else
+        lhsdt = 0;
+    end
+    
     if length(rhsterms) > 1
         rhs = :(a+b);
         rhs.args = [:+ ; rhsterms];
@@ -139,7 +171,11 @@ function sp_parse(ex, var, test)
         rhs = 0;
     end
     
-    return (lhs, rhs);
+    if length(lhsdtterms) > 0
+        return ((lhsdt, lhs), rhs);
+    else
+        return (lhs, rhs);
+    end
 end
 
 # Translate a term into an expression using symbolic operators

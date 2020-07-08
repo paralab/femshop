@@ -5,12 +5,12 @@ We can reorganize things and make submodules as desired.
 module Femshop
 
 # Public macros and functions
-export @language, @domain, @mesh, @solver, @functionSpace, @trialFunction,
+export @language, @domain, @mesh, @solver, @stepper, @functionSpace, @trialFunction,
         @testFunction, @nodes, @order, @boundary, @variable, @coefficient, @initial,
         @timeInterval, @weakForm, @LHS, @RHS,
         @outputMesh, @useLog, @finalize
-export init_femshop, set_language, set_solver, add_mesh, output_mesh, add_test_function, add_initial_condition, 
-        add_boundary_condition, set_rhs, set_lhs, solve, finalize
+export init_femshop, set_language, set_solver, set_stepper, add_mesh, output_mesh, add_test_function, 
+        add_initial_condition, add_boundary_condition, set_rhs, set_lhs, solve, finalize
 export sp_parse
 export Variable, add_variable
 export Coefficient, add_coefficient
@@ -47,6 +47,9 @@ linears = [];
 rhs_params = nothing;
 #lhs
 bilinears = [];
+dt_bilinears = [];
+#time stepper
+time_stepper = nothing;
 
 include("femshop_includes.jl");
 include("macros.jl"); # included here after globals are defined
@@ -59,8 +62,8 @@ function init_femshop(name="unnamedProject")
     global gen_files = nothing;
     if log_file != nothing
         close(log_file);
-        use_log = false;
-        log_line_index = 1;
+        global use_log = false;
+        global log_line_index = 1;
     end
     global mesh_data = nothing;
     global grid_data = nothing;
@@ -72,6 +75,10 @@ function init_femshop(name="unnamedProject")
     global genfunc_count = 0;
     global genfunctions = [];
     global test_function_symbol = nothing;
+    global linears = [];
+    global bilinears = [];
+    global dt_bilinears = [];
+    global time_stepper = nothing;
 end
 
 function set_language(lang, dirpath, name, head="")
@@ -82,6 +89,10 @@ end
 
 function set_solver(s)
     global solver = s;
+end
+
+function set_stepper(type, cfl)
+    global time_stepper = Stepper(type, cfl);
 end
 
 function add_mesh(mesh)
@@ -111,14 +122,15 @@ end
 function add_variable(var)
     global var_count += 1;
     # adjust values arrays
+    N = size(grid_data.allnodes)[1];
     if var.type == SCALAR
-        var.values = zeros(prob.mesh_dofs);
+        var.values = zeros(N);
     elseif var.type == VECTOR
-        var.values = zeros(prob.mesh_dofs, config.dimension);
+        var.values = zeros(N, config.dimension);
     elseif var.type == TENSOR
-        var.values = zeros(prob.mesh_dofs, config.dimension*config.dimension);
+        var.values = zeros(N, config.dimension*config.dimension);
     elseif var.type == SYM_TENSOR
-        var.values = zeros(prob.mesh_dofs, Int((config.dimension*(config.dimension+1))/2));
+        var.values = zeros(N, Int((config.dimension*(config.dimension+1))/2));
     end
     global variables = [variables; var];
     
@@ -229,15 +241,18 @@ function set_rhs(var)
     global linears[var.index] = Linear(genfunctions[end]);
 end
 
-function set_lhs(var, lhs_time_deriv=false)
+function set_lhs(var)
+    global bilinears[var.index] = Bilinear(genfunctions[end]);
+end
+
+function set_dt_lhs(var)
     # lhs_time_derivative signals if the problem is time dependent 
     # and if this variable's eq. will have the form Dt(var) = RHS
     while length(prob.lhs_time_deriv) < var.index
         prob.lhs_time_deriv = [prob.lhs_time_deriv; false];
     end
-    prob.lhs_time_deriv[var.index] = lhs_time_deriv;
-    
-    global bilinears[var.index] = Bilinear(genfunctions[end]);
+    prob.lhs_time_deriv[var.index] = true;
+    global dt_bilinears[var.index] = Bilinear(genfunctions[end]);
 end
 
 function solve(var)
@@ -249,7 +264,14 @@ function solve(var)
         lhs = bilinears[varind];
         rhs = linears[varind];
         
-        t = @elapsed(var.values = CGSolver.solve(var, lhs, rhs));
+        if prob.time_dependent
+            global time_stepper = init_stepper(grid_data.allnodes, time_stepper);
+            t = @elapsed(var.values = CGSolver.solve(var, lhs, rhs, time_stepper));
+            
+        else
+            t = @elapsed(var.values = CGSolver.solve(var, lhs, rhs));
+        end
+        
         log_entry("Solved for "*string(var.symbol)*".(took "*string(t)*" seconds)");
     end
 end
