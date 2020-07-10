@@ -44,6 +44,8 @@ macro solver(type)
         Femshop.config.solver_type = $type;
         if $type == DG
             set_solver(Femshop.DGSolver);
+        elseif $type == CG
+            set_solver(Femshop.CGSolver);
         end
     end)
 end
@@ -141,10 +143,16 @@ macro mesh(m, N)
     return esc(quote
         if $m == LINEMESH
             log_entry("Building simple line mesh with nx elements, nx="*string($N));
-            add_mesh(simple_line_mesh($N+1));
+            meshtime = @elapsed(add_mesh(simple_line_mesh($N+1)));
+            log_entry("Grid building took "*string(meshtime)*" seconds");
         elseif $m == QUADMESH
             log_entry("Building simple quad mesh with nx*nx elements, nx="*string($N));
-            add_mesh(simple_quad_mesh($N+1));
+            meshtime = @elapsed(add_mesh(simple_quad_mesh($N+1)));
+            log_entry("Grid building took "*string(meshtime)*" seconds");
+        elseif $m == HEXMESH
+            log_entry("Building simple hex mesh with nx*nx*nx elements, nx="*string($N));
+            meshtime = @elapsed(add_mesh(simple_hex_mesh($N+1)));
+            log_entry("Grid building took "*string(meshtime)*" seconds");
         end
     end)
 end

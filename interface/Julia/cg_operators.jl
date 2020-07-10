@@ -8,7 +8,7 @@
 #   5. bilinear or linear? bilinear builds a matrix operator, linear builds a vector
 #   6. time for time dependent coefficients
 =#
-export mass_operator, stiffness_operator
+#export mass_operator, stiffness_operator
 
 function zero_operator(ex, args)
     ref = args[4];

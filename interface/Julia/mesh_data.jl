@@ -67,12 +67,12 @@ function build_faces(nel, elements, etypes)
             f2n[ei,3,1:3] = elements[ei,[0 1 3]];
             f2n[ei,4,1:3] = elements[ei,[0 3 2]];
         elseif etypes[ei] == 5 # hex
-            f2n[ei,1,1:4] = elements[ei,[0 4 7 3]];
-            f2n[ei,2,1:4] = elements[ei,[1 2 6 5]];
-            f2n[ei,3,1:4] = elements[ei,[0 1 5 4]];
-            f2n[ei,4,1:4] = elements[ei,[2 3 7 6]];
-            f2n[ei,5,1:4] = elements[ei,[0 3 2 1]];
-            f2n[ei,6,1:4] = elements[ei,[4 5 6 7]];
+            f2n[ei,1,1:4] = elements[ei,[1 5 8 4]];
+            f2n[ei,2,1:4] = elements[ei,[2 3 7 6]];
+            f2n[ei,3,1:4] = elements[ei,[1 2 6 5]];
+            f2n[ei,4,1:4] = elements[ei,[3 4 8 7]];
+            f2n[ei,5,1:4] = elements[ei,[1 4 3 2]];
+            f2n[ei,6,1:4] = elements[ei,[5 6 7 8]];
         elseif etypes[ei] == 6 # prism
             f2n[ei,1,1:3] = elements[ei,[0 2 1]];
             f2n[ei,2,1:3] = elements[ei,[3 4 5]];

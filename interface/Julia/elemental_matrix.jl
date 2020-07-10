@@ -48,13 +48,13 @@ function elemental_stiffness(refel, detJ, J, gpts, coef=0)
         # 3D factor   4  2  6
         #             5  6  3
         # first compute dj.w.J.J'
-        factor[:,1] = (J.rx.*J.rx + J.ry.*J.ry + J.rz.*J.rz ) .* J .* refel.wg .* mu ; # d2u/dx^2
-        factor[:,2] = (J.sx.*J.sx + J.sy.*J.sy + J.sz.*J.sz ) .* J .* refel.wg .* mu ; # d2u/dy^2
-        factor[:,3] = (J.tx.*J.tx + J.ty.*J.ty + J.tz.*J.tz ) .* J .* refel.wg .* mu ; # d2u/dz^2
+        factor[:,1] = (J.rx.*J.rx + J.ry.*J.ry + J.rz.*J.rz ) .* detJ .* refel.wg .* mu ; # d2u/dx^2
+        factor[:,2] = (J.sx.*J.sx + J.sy.*J.sy + J.sz.*J.sz ) .* detJ .* refel.wg .* mu ; # d2u/dy^2
+        factor[:,3] = (J.tx.*J.tx + J.ty.*J.ty + J.tz.*J.tz ) .* detJ .* refel.wg .* mu ; # d2u/dz^2
         
-        factor[:,4] = (J.rx.*J.sx + J.ry.*J.sy + J.rz.*J.sz ) .* J .* refel.wg .* mu ; # d2u/dxdy
-        factor[:,5] = (J.rx.*J.tx + J.ry.*J.ty + J.rz.*J.tz ) .* J .* refel.wg .* mu ; # d2u/dxdz
-        factor[:,6] = (J.sx.*J.tx + J.sy.*J.ty + J.sz.*J.tz ) .* J .* refel.wg .* mu ; # d2u/dydz
+        factor[:,4] = (J.rx.*J.sx + J.ry.*J.sy + J.rz.*J.sz ) .* detJ .* refel.wg .* mu ; # d2u/dxdy
+        factor[:,5] = (J.rx.*J.tx + J.ry.*J.ty + J.rz.*J.tz ) .* detJ .* refel.wg .* mu ; # d2u/dxdz
+        factor[:,6] = (J.sx.*J.tx + J.sy.*J.ty + J.sz.*J.tz ) .* detJ .* refel.wg .* mu ; # d2u/dydz
         
         Ke =  refel.Qx' * diagm(factor[:,1]) * refel.Qx +
               refel.Qy' * diagm(factor[:,2]) * refel.Qy +

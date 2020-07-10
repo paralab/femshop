@@ -9,7 +9,7 @@ export JULIA, CPP, MATLAB, SQUARE, IRREGULAR, TREE, UNSTRUCTURED, CG, DG, HDG,
         MSH_V2, MSH_V4,
         SCALAR, VECTOR, TENSOR, SYM_TENSOR,
         LHS, RHS,
-        LINEMESH, QUADMESH
+        LINEMESH, QUADMESH, HEXMESH
 
 # Languages for generated code
 const JULIA = "Julia";
@@ -81,3 +81,4 @@ const RHS = "rhs";
 # simple mesh types
 const LINEMESH = "line_mesh";
 const QUADMESH = "quad_mesh";
+const HEXMESH = "hex_mesh";

@@ -1,24 +1,28 @@
 #=
-# 1D Poisson, Dirichlet bc, CG
+# 1D Poisson, Dirichlet bc
+# CG, Linear element
 # Simplest test possible
 =#
 if !@isdefined(Femshop)
-    include("Femshop.jl");
+    include("../Femshop.jl");
     using .Femshop
 end
-init_femshop("poisson1d");
+init_femshop("poisson3d");
 
 # Try making an optional log
-@useLog("poisson1dlog")
+@useLog("poisson3dlog")
+
+n = 10;
+ord = 2;
 
 # Set up the configuration (order doesn't matter)
-@domain(1, SQUARE, UNSTRUCTURED)    # dimension, geometry, decomposition
+@domain(3, SQUARE, UNSTRUCTURED)    # dimension, geometry, decomposition
 @solver(CG)                         # DG, CG, etc.
-@functionSpace(LEGENDRE, 2)         # function, order (or use testFunction and trialFunction)
+@functionSpace(LEGENDRE, ord)         # function, order (or use testFunction and trialFunction)
 @nodes(LOBATTO)                     # elemental node arrangement
 
 # Specify the problem
-@mesh(LINEMESH, 20)                   # .msh file or generate our own
+@mesh(HEXMESH, n)                   # .msh file or generate our own
 
 @variable(u)                        # same as @variable(u, SCALAR)
 
@@ -27,14 +31,18 @@ init_femshop("poisson1d");
 @boundary(u, 1, DIRICHLET, 0)
 
 # Write the weak form 
-@coefficient(f, "-pi*pi*sin(pi*x)")
+@coefficient(f, "-3*pi*pi*sin(pi*x)*sin(pi*y)*sin(pi*z)")
 @weakForm(u, "-grad(u)*grad(v) - f*v")
 
 solve(u);
 
 # solution is stored in the variable's "values"
 using Plots
-display(plot(Femshop.grid_data.allnodes, u.values, markershape=:circle))
+pyplot();
+N = n*ord+1;
+half = Int(round(N/2));
+range = (N*N*half+1):(N*N*(half+1));
+display(plot(Femshop.grid_data.allnodes[range,1], Femshop.grid_data.allnodes[range,2], u.values[range], st=:surface))
 
 # check
 log_dump_config(Femshop.config);

@@ -93,6 +93,8 @@ end
 
 function set_stepper(type, cfl)
     global time_stepper = Stepper(type, cfl);
+    global config.stepper = type;
+    log_entry("Set time stepper to "*type);
 end
 
 function add_mesh(mesh)
@@ -105,7 +107,7 @@ function add_mesh(mesh)
         global mesh_data = mesh;
     end
     
-    log_entry("Added mesh with "*string(mesh_data.nx)*" nodes and "*string(mesh_data.nel)*" elements.");
+    log_entry("Added mesh with "*string(mesh_data.nx)*" vertices and "*string(mesh_data.nel)*" elements.");
     log_entry("Full grid has "*string(length(grid_data.allnodes))*" nodes.");
 end
 
