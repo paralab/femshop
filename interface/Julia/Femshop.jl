@@ -240,11 +240,11 @@ function add_boundary_condition(var, bid, type, ex, nfuns)
 end
 
 function set_rhs(var)
-    global linears[var.index] = Linear(genfunctions[end]);
+    global linears[var.index] = genfunctions[end];
 end
 
 function set_lhs(var)
-    global bilinears[var.index] = Bilinear(genfunctions[end]);
+    global bilinears[var.index] = genfunctions[end];
 end
 
 function set_dt_lhs(var)
@@ -258,24 +258,37 @@ function set_dt_lhs(var)
 end
 
 function solve(var)
-    if config.solver_type == CG
-        t = @elapsed(init_cgsolver());
-        log_entry("Set up CG solver.(took "*string(t)*" seconds)");
-        varind = var.index;
-        
-        lhs = bilinears[varind];
-        rhs = linears[varind];
-        
-        if prob.time_dependent
-            global time_stepper = init_stepper(grid_data.allnodes, time_stepper);
-            t = @elapsed(var.values = CGSolver.solve(var, lhs, rhs, time_stepper));
+    # Generate files or solve directly
+    if gen_files != nothing
+        generate_main();
+        generate_config();
+        generate_prob();
+        generate_mesh();
+        generate_genfunction(); 
+        generate_bilinear(bilinears[1]);
+        generate_linear(linears[1]);
+        #generate_stepper();
+    else
+        if config.solver_type == CG
+            t = @elapsed(init_cgsolver());
+            log_entry("Set up CG solver.(took "*string(t)*" seconds)");
+            varind = var.index;
             
-        else
-            t = @elapsed(var.values = CGSolver.solve(var, lhs, rhs));
+            lhs = bilinears[varind];
+            rhs = linears[varind];
+            
+            if prob.time_dependent
+                global time_stepper = init_stepper(grid_data.allnodes, time_stepper);
+                t = @elapsed(var.values = CGSolver.solve(var, lhs, rhs, time_stepper));
+                
+            else
+                t = @elapsed(var.values = CGSolver.solve(var, lhs, rhs));
+            end
+            
+            log_entry("Solved for "*string(var.symbol)*".(took "*string(t)*" seconds)");
         end
-        
-        log_entry("Solved for "*string(var.symbol)*".(took "*string(t)*" seconds)");
     end
+    
 end
 
 function finalize()

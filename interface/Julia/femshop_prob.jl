@@ -6,29 +6,25 @@ if !@isdefined(IRREGULAR)
 end
 
 mutable struct Femshop_prob
-    mesh_dofs::Int          # DOFs corresponding to the mesh, not variables
+    # Boundary condition info
+    bc_type::Array{String,2}        # DIRICHLET, etc. for each variable and bid
+    bid::Array{Int,2}               # BID for each variable and boundary section
+    bc_func::Array{Any,2}           # GenFunctions or numbers for each variable and bid
     
-    # Domain
-    bc_type::Array{String,2}
-    bid::Array{Int,2}
-    bc_func::Array{Any,2}
+    # Time dependence info
+    time_dependent::Bool            # Is this problem time dependent
+    end_time::Float64               # If so, what is the final time
+    initial::Array{Any,2}           # An array of initial condition GenFunctions, one for each variable
+    lhs_time_deriv::Array{Bool,1}   # (may be removed) signals LHS time derivatives for each variable
     
-    # Time dependent info
-    time_dependent::Bool
-    end_time::Float64
-    initial                 # an array of GenFunctions, one for each variable
-    lhs_time_deriv::Array{Bool,1}
-    
-
-    # Constructor builds a default prob.
+    # Constructor builds an empty prob.
     Femshop_prob() = new(
-        0,
-        Array{String,2}(undef,(1,1)),
-        Array{Int,2}(undef,(1,1)),
-        Array{Any,2}(undef,(1,1)),
-        false,
-        0,
-        [],
-        []
+        Array{String,2}(undef,(0,0)), 
+        Array{Int,2}(undef,(0,0)), 
+        Array{Any,2}(undef,(0,0)),
+        false, 
+        0, 
+        Array{Any,2}(undef,(0,0)), 
+        Array{Bool,1}(undef,(0))
     );
 end

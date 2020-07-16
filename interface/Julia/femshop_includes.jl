@@ -32,7 +32,7 @@ include("simple_mesh.jl");
 include("function_utils.jl");
 include("variables.jl");
 include("coefficient.jl");
-include("bilinear_linear.jl");
+#include("bilinear_linear.jl");
 include("operators.jl");
 include("time_steppers.jl");
 
