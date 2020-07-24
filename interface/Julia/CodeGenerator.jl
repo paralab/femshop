@@ -5,7 +5,7 @@ module CodeGenerator
 
 export init_codegenerator, finalize_codegenerator, Genfiles,
         generate_main, generate_config, generate_prob, generate_mesh, generate_genfunction, 
-        generate_bilinear, generate_linear, generate_stepper
+        generate_bilinear, generate_linear, generate_stepper, generate_output
 
 import ..Femshop: JULIA, CPP, MATLAB, SQUARE, IRREGULAR, TREE, UNSTRUCTURED, CG, DG, HDG,
         NODAL, MODAL, LEGENDRE, UNIFORM, GAUSS, LOBATTO, NONLINEAR_NEWTON,
@@ -29,10 +29,11 @@ mutable struct Genfiles
     bilinear;   # bilinear function: bilinear(args) returns elemental matrix
     linear;     # linear function: linear(args) returns elemental vector
     stepper;    # optional time stepper for time dependent problems
+    output;     # output
     
     files;      # an iterable list of these files
     
-    Genfiles(m,c,p,n,g,b,l,s) = new(m,c,p,n,g,b,l,s,[m,c,p,n,g,b,l,s]);
+    Genfiles(m,c,p,n,g,b,l,s,o) = new(m,c,p,n,g,b,l,s,o,[m,c,p,n,g,b,l,s,o]);
 end
 
 language = 0;
@@ -46,6 +47,8 @@ genfiles = nothing;
 
 include("generate_matlab_utils.jl");
 include("generate_matlab_files.jl");
+include("generate_cpp_utils.jl");
+include("generate_dendro_files.jl");
 
 function init_codegenerator(lang, dir, name, header)
     if lang == JULIA
@@ -81,8 +84,9 @@ function init_codegenerator(lang, dir, name, header)
     b = open(genDir*"/Bilinear"*genFileExtension, "w");
     l = open(genDir*"/Linear"*genFileExtension, "w");
     s = open(genDir*"/Stepper"*genFileExtension, "w");
+    o = open(genDir*"/Output"*genFileExtension, "w");
     
-    global genfiles = Genfiles(m,c,p,n,g,b,l,s);
+    global genfiles = Genfiles(m,c,p,n,g,b,l,s,o);
     
     # write headers
     generate_head(m,headerText);
@@ -93,6 +97,7 @@ function init_codegenerator(lang, dir, name, header)
     generate_head(b,"Bilinear term");
     generate_head(l,"Linear term");
     generate_head(s,"Time stepper");
+    generate_head(o,"Output");
     
     log_entry("Created code files for: "*name);
     
@@ -106,30 +111,69 @@ function finalize_codegenerator()
     log_entry("Closed generated code files.");
 end
 
-# These temporarily just do matlab. TODO select language
+# Select the generator functions based on language
 function generate_main()
-    matlab_main_file();
+    if language == MATLAB
+        matlab_main_file();
+    elseif language == CPP
+        dendro_main_file();
+    end
 end
-function generate_config()
-    matlab_config_file();
+function generate_config(params=(5, 1, 0.3, 0.000001, 100))
+    if language == MATLAB
+        matlab_config_file();
+    elseif language == CPP
+        dendro_config_file(params); #params has (maxdepth, wavelet_tol, partition_tol, solve_tol, solve_max_iters)
+    end
 end
 function generate_prob()
-    matlab_prob_file();
+    if language == MATLAB
+        matlab_prob_file();
+    elseif language == CPP
+        dendro_prob_file();
+    end
 end
 function generate_mesh()
-    matlab_mesh_file();
+    if language == MATLAB
+        matlab_mesh_file();
+    elseif language == CPP
+        #dendro_mesh_file();
+    end
 end
 function generate_genfunction()
-    matlab_genfunction_file();
+    if language == MATLAB
+        matlab_genfunction_file();
+    elseif language == CPP
+        dendro_genfunction_file();
+    end
 end
 function generate_bilinear(ex)
-    matlab_bilinear_file(ex);
+    if language == MATLAB
+        matlab_bilinear_file(ex);
+    elseif language == CPP
+        dendro_bilinear_file(ex);
+    end
 end
 function generate_linear(ex)
-    matlab_linear_file(ex);
+    if language == MATLAB
+        matlab_linear_file(ex);
+    elseif language == CPP
+        dendro_linear_file(ex);
+    end
 end
 function generate_stepper()
-    matlab_stepper_file();
+    if language == MATLAB
+        matlab_stepper_file();
+    elseif language == CPP
+        #dendro_stepper_file();
+    end
+end
+function generate_output()
+    if language == MATLAB
+        #matlab_output_file();
+    elseif language == CPP
+        dendro_output_file();
+    end
 end
         
 # private ###

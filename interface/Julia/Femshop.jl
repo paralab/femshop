@@ -9,7 +9,7 @@ export @language, @domain, @mesh, @solver, @stepper, @functionSpace, @trialFunct
         @testFunction, @nodes, @order, @boundary, @variable, @coefficient, @initial,
         @timeInterval, @weakForm, @LHS, @RHS,
         @outputMesh, @useLog, @finalize
-export init_femshop, set_language, set_solver, set_stepper, add_mesh, output_mesh, add_test_function, 
+export init_femshop, set_language, dendro, set_solver, set_stepper, add_mesh, output_mesh, add_test_function, 
         add_initial_condition, add_boundary_condition, set_rhs, set_lhs, solve, finalize
 export sp_parse
 export Variable, add_variable
@@ -25,6 +25,7 @@ project_name = "unnamedProject";
 output_dir = pwd();
 gen_files = nothing;
 solver = nothing;
+dendro_params = nothing;
 #log
 use_log = false;
 log_file = nothing;
@@ -60,6 +61,7 @@ prob = Femshop_prob();
 function init_femshop(name="unnamedProject")
     global project_name = name;
     global gen_files = nothing;
+    global dendro_params = nothing;
     if log_file != nothing
         close(log_file);
         global use_log = false;
@@ -85,6 +87,10 @@ function set_language(lang, dirpath, name, head="")
     global output_dir = dirpath;
     global project_name = name;
     global gen_files = CodeGenerator.init_codegenerator(lang, dirpath, name, head);
+end
+
+function dendro(;max_depth=6, wavelet_tol=0.1, partition_tol=0.3, solve_tol=1e-6, max_iters=100)
+    global dendro_params = (max_depth, wavelet_tol, partition_tol, solve_tol, max_iters);
 end
 
 function set_solver(s)
@@ -202,9 +208,9 @@ function add_boundary_condition(var, bid, type, ex, nfuns)
     global prob;
     # make sure the arrays are big enough
     if size(prob.bc_func)[1] < var_count || size(prob.bc_func)[2] < bid
-        tmp1 = Array{String,2}(undef, (var_count, bid + 2));
-        tmp2 = Array{Any,2}(undef, (var_count, bid + 2));
-        tmp3 = zeros(Int, (var_count, bid + 2));
+        tmp1 = Array{String,2}(undef, (var_count, bid));
+        tmp2 = Array{Any,2}(undef, (var_count, bid));
+        tmp3 = zeros(Int, (var_count, bid));
         fill!(tmp1, "");
         fill!(tmp2, GenFunction("","","",0,0));
         tmp1[1:size(prob.bc_func)[1], 1:size(prob.bc_func)[2]] = Base.deepcopy(prob.bc_type);
@@ -261,13 +267,18 @@ function solve(var)
     # Generate files or solve directly
     if gen_files != nothing
         generate_main();
-        generate_config();
+        if dendro_params != nothing
+            generate_config(dendro_params);
+        else
+            generate_config();
+        end
         generate_prob();
         generate_mesh();
         generate_genfunction(); 
         generate_bilinear(bilinears[1]);
         generate_linear(linears[1]);
         #generate_stepper();
+        generate_output();
     else
         if config.solver_type == CG
             t = @elapsed(init_cgsolver());
