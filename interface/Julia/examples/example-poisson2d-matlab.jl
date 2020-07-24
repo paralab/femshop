@@ -1,7 +1,6 @@
 #=
-# 1D Poisson, Dirichlet bc
-# CG, Linear element
-# Simplest test possible
+# 2D Poisson, Dirichlet bc
+# Uses HOMG(MATLAB)
 =#
 if !@isdefined(Femshop)
     include("../Femshop.jl");
@@ -28,7 +27,7 @@ init_femshop("poisson2dmatlab");
 
 @testFunction(v)                    # sets the symbol for a test function
 
-@boundary(u, 1, DIRICHLET, "x")
+@boundary(u, 1, DIRICHLET, "sin(3*pi*x)")
 
 # Write the weak form 
 @coefficient(f, "-2*pi*pi*sin(pi*x)*sin(pi*y)")
