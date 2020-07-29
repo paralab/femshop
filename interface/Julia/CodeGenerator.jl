@@ -17,7 +17,7 @@ import ..Femshop: JULIA, CPP, MATLAB, SQUARE, IRREGULAR, TREE, UNSTRUCTURED, CG,
         LINEMESH, QUADMESH, HEXMESH
 import ..Femshop: Femshop_config, Femshop_prob, GenFunction, Variable, Coefficient
 import ..Femshop: log_entry, printerr
-import ..Femshop: config, prob, mesh_data, grid_data, genfunctions, variables, coefficients, linears, bilinears
+import ..Femshop: config, prob, mesh_data, grid_data, genfunctions, variables, coefficients, linears, bilinears, operator_list
 
 # Holds a set of file streams for generated code
 mutable struct Genfiles

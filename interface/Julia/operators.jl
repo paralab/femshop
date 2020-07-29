@@ -1,7 +1,9 @@
 #=
 # Operators used in generated expressions
 =#
-export mass_operator, stiffness_operator
+export mass_operator, stiffness_operator, operator_list
+
+operator_list = [:mass_operator, :stiffness_operator];
 
 function zero_operator(ex, args)
     solver.zero_operator(ex,args);

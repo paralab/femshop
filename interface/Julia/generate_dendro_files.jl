@@ -2,6 +2,7 @@
 # Dendro file generation functions
 =#
 
+# False if the genfunction is in linears or bilinears
 function isfunction(g)
     for b in bilinears
         if b.name == g.name
@@ -15,6 +16,7 @@ function isfunction(g)
     end
     return true;
 end
+# builds a c++ functional for a constant
 function dendro_number_to_function(name, val)
     indent = "";
     args = ["x"; "y"; "z"; "var"];
@@ -25,6 +27,7 @@ function dendro_number_to_function(name, val)
     content = ["var[0] = "*string(val)*";"];
     return cpp_functional(indent, name, args, argtypes, ret, rettype, captures, content);
 end
+# changes symbol "a" to symbol "b" in expression ex
 function swap_symbol(a, b, ex)
     if typeof(ex) == Symbol
         if ex === a
@@ -43,6 +46,58 @@ function swap_symbol(a, b, ex)
     else
         return ex;
     end
+end
+# operator(old args) -> operator(args) in expression ex for elemental operators
+function swap_op_args(newargs, ex)
+    if !(typeof(ex) == Expr && ex.head == :call)
+        return ex;
+    end
+    
+    for op in operator_list
+        if op === ex.args[1]
+            # found one, swap the args
+            ex.args = [ex.args[1]; newargs];
+            return ex;
+        end
+    end
+    
+    # It is not on the list. Recursively swap
+    for i=2:length(ex.args)
+        ex.args[i] = swap_op_args(newargs, ex.args[i]);
+    end
+    
+    return ex;
+end
+# Translate julia operator names into dendro ones
+# mass_operator -> FemshopDendroOperators::mass_operator
+# - -> FemshopDendroOperators::negative
+function translate_to_dendro(ex)
+    if !(typeof(ex) == Expr && ex.head == :call)
+        return ex;
+    end
+    
+    #These ops should be leaves
+    for op in operator_list
+        if op === ex.args[1]
+            newname = "femshopDendroOp_"*string(op);
+            ex.args[1] = Meta.parse(newname);
+            return ex;
+        end
+    end
+    
+    # Check this operator, then recursively translate the args
+    if ex.args[1] === :-
+        ex.args[1] = :(femshopDendroOp_negative);
+        ex.args = [ex.args; :refEl];
+        # Many more are needed. TODO
+    end
+    newex = copy(ex);
+    for i=2:length(newex.args)
+        newex.args[i] = translate_to_dendro(newex.args[i]);
+    end
+    
+    return newex;
+    
 end
 function dendro_genfunction_to_string(genfun)
     newex = swap_symbol(:x, :(gridX_to_X(x)), genfun.expr); # swap x for gridX_to_X(x)
@@ -145,78 +200,42 @@ end
 
 function dendro_bilinear_file(bl)
     file = genfiles.bilinear;
-    # TEMPORARY
-    content = """
-    // computation for the LHS
-
-    //x derivative
-    DENDRO_TENSOR_IIAX_APPLY_ELEM(nrp,Dg,in,imV1);
-    DENDRO_TENSOR_IAIX_APPLY_ELEM(nrp,Q1d,imV1,imV2);
-    DENDRO_TENSOR_AIIX_APPLY_ELEM(nrp,Q1d,imV2,Qx);
-
-    //y derivative
-    DENDRO_TENSOR_IIAX_APPLY_ELEM(nrp,Q1d,in,imV1);
-    DENDRO_TENSOR_IAIX_APPLY_ELEM(nrp,Dg,imV1,imV2);
-    DENDRO_TENSOR_AIIX_APPLY_ELEM(nrp,Q1d,imV2,Qy);
-
-    //z derivative
-    DENDRO_TENSOR_IIAX_APPLY_ELEM(nrp,Q1d,in,imV1);
-    DENDRO_TENSOR_IAIX_APPLY_ELEM(nrp,Q1d,imV1,imV2);
-    DENDRO_TENSOR_AIIX_APPLY_ELEM(nrp,Dg,imV2,Qz);
-
-    for(unsigned int k=0;k<(eleOrder+1);k++)
-        for(unsigned int j=0;j<(eleOrder+1);j++)
-            for(unsigned int i=0;i<(eleOrder+1);i++)
-            {
-                Qx[k*(eleOrder+1)*(eleOrder+1)+j*(eleOrder+1)+i]*=( ((Jy*Jz)/Jx)*W1d[i]*W1d[j]*W1d[k]);
-                Qy[k*(eleOrder+1)*(eleOrder+1)+j*(eleOrder+1)+i]*=( ((Jx*Jz)/Jy)*W1d[i]*W1d[j]*W1d[k]);
-                Qz[k*(eleOrder+1)*(eleOrder+1)+j*(eleOrder+1)+i]*=( ((Jx*Jy)/Jz)*W1d[i]*W1d[j]*W1d[k]);
-            }
-
-
-    DENDRO_TENSOR_IIAX_APPLY_ELEM(nrp,DgT,Qx,imV1);
-    DENDRO_TENSOR_IAIX_APPLY_ELEM(nrp,QT1d,imV1,imV2);
-    DENDRO_TENSOR_AIIX_APPLY_ELEM(nrp,QT1d,imV2,Qx);
-
-    DENDRO_TENSOR_IIAX_APPLY_ELEM(nrp,QT1d,Qy,imV1);
-    DENDRO_TENSOR_IAIX_APPLY_ELEM(nrp,DgT,imV1,imV2);
-    DENDRO_TENSOR_AIIX_APPLY_ELEM(nrp,QT1d,imV2,Qy);
-
-    DENDRO_TENSOR_IIAX_APPLY_ELEM(nrp,QT1d,Qz,imV1);
-    DENDRO_TENSOR_IAIX_APPLY_ELEM(nrp,QT1d,imV1,imV2);
-    DENDRO_TENSOR_AIIX_APPLY_ELEM(nrp,DgT,imV2,Qz);
-
-    for(unsigned int i=0;i<nPe;i++)
-        out[i]=Qx[i]+Qy[i]+Qz[i];
-    """
-    print(file, content);
+    
+    argsym = :TEMPORARYARGS;
+    
+    # swap the args for elemental operators
+    ex = swap_op_args(argsym, bl.expr);
+    
+    # Translate toperators to dendro ops
+    ex = translate_to_dendro(ex);
+    
+    # Turn it into a string
+    str = string(ex);
+    str = replace(str, r"([\d)])([(A-Za-z])" => s"\1*\2"); # explicitly multiply with "*"
+    str = replace(str, "TEMPORARYARGS"=>"in, out, refEl, Jx, Jy, Jz, imV1, imV2, Qx, Qy, Qz");
+    #println("bilinear gets: "*str);
+    
+    print(file, str);
 end
 
 function dendro_linear_file(l)
     file = genfiles.linear;
-    # TEMPORARY
-    content = """
-    // computation for the RHS
-
-    // interpolate to quadrature points.
-    DENDRO_TENSOR_IIAX_APPLY_ELEM(nrp,Q1d,in,imV1);
-    DENDRO_TENSOR_IAIX_APPLY_ELEM(nrp,Q1d,imV1,imV2);
-    DENDRO_TENSOR_AIIX_APPLY_ELEM(nrp,Q1d,imV2,out);
-
-    //std::cout<<"Mass:  elem: "<<elem<<" ele Sz: "<<(elem.maxX()-elem.minX())<<" szX: "<<szX<<" Jx: "<<Jx<<" J: "<<(Jx*Jy*Jz)<<std::endl;
-
-    for(unsigned int k=0;k<(eleOrder+1);k++)
-        for(unsigned int j=0;j<(eleOrder+1);j++)
-            for(unsigned int i=0;i<(eleOrder+1);i++)
-                out[k*(eleOrder+1)*(eleOrder+1)+j*(eleOrder+1)+i]*=(Jx*Jy*Jz*W1d[i]*W1d[j]*W1d[k]);
-
-
-    // apply transpose operator
-    DENDRO_TENSOR_IIAX_APPLY_ELEM(nrp,QT1d,out,imV1);
-    DENDRO_TENSOR_IAIX_APPLY_ELEM(nrp,QT1d,imV1,imV2);
-    DENDRO_TENSOR_AIIX_APPLY_ELEM(nrp,QT1d,imV2,out);
-    """
-    print(file, content);
+    
+    argsym = :TEMPORARYARGS;
+    
+    # swap the args for elemental operators
+    ex = swap_op_args(argsym, l.expr);
+    
+    # Translate toperators to dendro ops
+    ex = translate_to_dendro(ex);
+    
+    # Turn it into a string
+    str = string(ex);
+    str = replace(str, r"([\d)])([(A-Za-z])" => s"\1*\2"); # explicitly multiply with "*"
+    str = replace(str, "TEMPORARYARGS"=>"in, out, refEl, Jx, Jy, Jz, imV1, imV2, Qx, Qy, Qz");
+    #println("linear gets: "*str);
+    
+    print(file, str);
 end
 
 function dendro_stepper_file()
@@ -422,9 +441,15 @@ function dendro_linear_skeleton(file, headerfile)
         const double Jy = 1.0/(refElSz/(double (szY)));
         const double Jz = 1.0/(refElSz/(double (szZ)));
         
+        double* Qx = {0};
+        double* Qy = {0};
+        double* Qz = {0};
+        
+        out = 
         //////////////will be generated/////////////////////////////////////////////
         #include "Linear.cpp"
         ////////////////////////////////////////////////////////////////////////////
+        ;
     }
     
     void FemshopDendroSkeleton::RHSVec::setBdryFunction(std::function<void(double,double,double,double*)> bdry){
@@ -501,6 +526,7 @@ function dendro_linear_skeleton(file, headerfile)
 
     #include "oda.h"
     #include "feVector.h"
+    #include "femshop_operators.h"
 
     namespace FemshopDendroSkeleton
     {
@@ -582,11 +608,11 @@ function dendro_bilinear_skeleton(file, headerfile)
 
         const RefElement* refEl=m_uiOctDA->getReferenceElement();
 
-        const double * Q1d=refEl->getQ1d();
-        const double * QT1d=refEl->getQT1d();
-        const double * Dg=refEl->getDg1d();
-        const double * DgT=refEl->getDgT1d();
-        const double * W1d=refEl->getWgq();
+        //const double * Q1d=refEl->getQ1d();
+        //const double * QT1d=refEl->getQT1d();
+        //const double * Dg=refEl->getDg1d();
+        //const double * DgT=refEl->getDgT1d();
+        //const double * W1d=refEl->getWgq();
 
         const unsigned int eleOrder=refEl->getOrder();
         const unsigned int nPe=(eleOrder+1)*(eleOrder+1)*(eleOrder+1);
@@ -606,10 +632,11 @@ function dendro_bilinear_skeleton(file, headerfile)
         const double Jy = 1.0/(refElSz/(double (szY)));
         const double Jz = 1.0/(refElSz/(double (szZ)));
         
-        
+        out = 
         //////////////will be generated/////////////////////////////////////////////
         #include "Bilinear.cpp"
         ////////////////////////////////////////////////////////////////////////////
+        ;
     }
     
     void FemshopDendroSkeleton::LHSMat::setBdryFunction(std::function<void(double,double,double,double*)> bdry){
@@ -837,6 +864,7 @@ function dendro_bilinear_skeleton(file, headerfile)
 
     #include "oda.h"
     #include "feMatrix.h"
+    #include "femshop_operators.h"
 
     namespace FemshopDendroSkeleton
     {
