@@ -178,13 +178,124 @@ function sp_parse(ex, var, test)
     end
 end
 
+# Idea:
+# (u,v) -> TEST * WEIGHT * TRIAL
+# (au,v) -> TEST * COEFWEIGHT * TRIAL
+# (grad(u),grad(v)) -> GRADTEST * WEIGHT * GRADTRIAL
+# (agrad(u),grad(v)) -> GRADTEST * COEFWEIGHT * GRADTRIAL
+# (grad(au),grad(v)) -> GRADTEST * WEIGHT * GRADTRIAL * COEF
+# (grad(u),v) -> TEST * W * GRADTRIAL
+# (u,grad(v)) -> GRADTEST * W * TRIAL
+# BUT not pattern matching,
+# 1. translate v->TEST, u->TRIAL, etc
+# 2. reorder: TEST on left, WEIGHT/COEF , TRIAL on right
+function translate_term(t, var, test)
+    facs = [];
+    term = nothing;
+    borl = :RHS;
+    if t.arity == 0
+        # If arity=0, there's nothing to translate.
+        return t.factors[1];
+    elseif t.arity == 2
+        borl = :LHS;
+    end
+    
+    # if there's a negative, strip it off and put it around everything -a*b -> -(a*b)
+    negative = false;
+    vpart = t.factors[2];
+    if typeof(vpart) == Expr && vpart.args[1] === :-
+        negative = !negative;
+        vpart = t.factors[2].args[2];
+    end
+    tpart = t.factors[3];
+    if typeof(tpart) == Expr && tpart.args[1] === :-
+        negative = !negative;
+        tpart = t.factors[3].args[2];
+    end
+    cpart = t.factors[1];
+    if typeof(cpart) == Expr && cpart.args[1] === :-
+        negative = !negative;
+        cpart = cpart.args[2];
+    end
+    
+    test_factor = nothing;
+    trial_factor = nothing;
+    coef_factor = nothing;
+    if !(tpart === nothing) # There is a test function part
+        if typeof(tpart) == Symbol # (?,v)
+            test_factor = :TEST;
+        elseif typeof(tpart) == Expr && tpart.args[1] === :grad # (?, grad(v))
+            test_factor = :GRADTEST;
+        else
+            # other possibilities are not ready
+        end
+    else # There is no test function part?? This shouldn't happen
+        #
+    end
+        
+    if !(vpart === nothing) # There is a variable part
+        if typeof(vpart) == Symbol # (?u,?)
+            trial_factor = :TRIAL;
+        elseif typeof(vpart) == Expr && vpart.args[1] === :grad # (?grad(u),v) 
+            trial_factor = :GRADTRIAL;
+        else
+            # other possibilities are not ready
+        end
+    else # There is no variable part. RHS
+        
+    end
+    
+    if !(cpart === nothing) # There is a coefficient part
+        if typeof(cpart) <: Number
+            coef_factor = cpart;
+        elseif typeof(cpart) == Expr && cpart.args[1] === :grad # grad(c)
+            # still thinking
+        else
+            coef_factor = cpart;
+        end
+    else # There is no coefficient part.
+        
+    end
+    
+    # assemble the term, assumes test_factor is something
+    if coef_factor === nothing
+        if trial_factor === nothing
+            term = test_factor;
+        else
+            term = :(a*b);
+            term.args[2] = test_factor;
+            term.args[3] = trial_factor;
+        end
+    else
+        if trial_factor === nothing
+            term = :(a*b);
+            term.args[2] = test_factor;
+            term.args[3] = coef_factor;
+        else
+            term = :(a*b*c);
+            term.args[2] = test_factor;
+            term.args[3] = coef_factor;
+            term.args[4] = trial_factor;
+        end
+    end
+    
+    # negative sign
+    if negative
+        negex = :(-a);
+        negex.args[2] = term;
+        term = negex;
+    end
+    
+    return term;
+end
+
 # Translate a term into an expression using symbolic operators
 # example with test function v and variable u:
 # u*v  ->  mass(u)
 # grad(u)*v  ->  advection(u)
 # u*grad(v)  ->  advection_transpose(u)
 # grad(u)*grad(v)  ->  stiffness(u)
-function translate_term(t, var, test)
+function translate_term_olde(t, var, test)
     facs = [];
     term = nothing;
     borl = :RHS;

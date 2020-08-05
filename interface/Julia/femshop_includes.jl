@@ -32,8 +32,7 @@ include("simple_mesh.jl");
 include("function_utils.jl");
 include("variables.jl");
 include("coefficient.jl");
-#include("bilinear_linear.jl");
-include("operators.jl");
+include("geometric_factors.jl");
 include("time_steppers.jl");
 
 # Femshop submodules
@@ -41,7 +40,7 @@ include("SymbolicParser.jl")
 using .SymbolicParser
 include("CodeGenerator.jl");
 using .CodeGenerator
-include("DGSolver.jl");
-using .DGSolver
+#include("DGSolver.jl");
+#using .DGSolver
 include("CGSolver.jl");
 using .CGSolver

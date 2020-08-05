@@ -5,7 +5,8 @@ module CodeGenerator
 
 export init_codegenerator, finalize_codegenerator, Genfiles,
         generate_main, generate_config, generate_prob, generate_mesh, generate_genfunction, 
-        generate_bilinear, generate_linear, generate_stepper, generate_output
+        generate_bilinear, generate_linear, generate_stepper, generate_output,
+        generate_code_layer
 
 import ..Femshop: JULIA, CPP, MATLAB, SQUARE, IRREGULAR, TREE, UNSTRUCTURED, CG, DG, HDG,
         NODAL, MODAL, LEGENDRE, UNIFORM, GAUSS, LOBATTO, NONLINEAR_NEWTON,
@@ -17,7 +18,7 @@ import ..Femshop: JULIA, CPP, MATLAB, SQUARE, IRREGULAR, TREE, UNSTRUCTURED, CG,
         LINEMESH, QUADMESH, HEXMESH
 import ..Femshop: Femshop_config, Femshop_prob, GenFunction, Variable, Coefficient
 import ..Femshop: log_entry, printerr
-import ..Femshop: config, prob, mesh_data, grid_data, genfunctions, variables, coefficients, linears, bilinears, operator_list
+import ..Femshop: config, prob, mesh_data, grid_data, genfunctions, variables, coefficients, linears, bilinears
 
 # Holds a set of file streams for generated code
 mutable struct Genfiles
@@ -45,6 +46,7 @@ blockCommentChar = [""; ""];
 headerText = "";
 genfiles = nothing;
 
+include("generate_code_layer.jl");
 include("generate_matlab_utils.jl");
 include("generate_matlab_files.jl");
 include("generate_cpp_utils.jl");

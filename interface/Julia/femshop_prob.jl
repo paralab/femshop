@@ -14,7 +14,7 @@ mutable struct Femshop_prob
     # Time dependence info
     time_dependent::Bool            # Is this problem time dependent
     end_time::Float64               # If so, what is the final time
-    initial::Array{Any,2}           # An array of initial condition GenFunctions, one for each variable
+    initial::Array{Any,1}           # An array of initial condition GenFunctions, one for each variable, vector vars can have an array of functions
     lhs_time_deriv::Array{Bool,1}   # (may be removed) signals LHS time derivatives for each variable
     
     # Constructor builds an empty prob.
@@ -24,7 +24,7 @@ mutable struct Femshop_prob
         Array{Any,2}(undef,(0,0)),
         false, 
         0, 
-        Array{Any,2}(undef,(0,0)), 
+        Array{Any,1}(undef,(0)), 
         Array{Bool,1}(undef,(0))
     );
 end

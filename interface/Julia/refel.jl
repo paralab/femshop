@@ -40,9 +40,9 @@ mutable struct Refel
     
     Q1d::Array{Float64}     # 
     Q::Array{Float64}       # 
-    Qx::Array{Float64}      # 
-    Qy::Array{Float64}      # 
-    Qz::Array{Float64}      # 
+    Qr::Array{Float64}      # 
+    Qs::Array{Float64}      # 
+    Qt::Array{Float64}      # 
     
     # for DG
     lift::Array{Float64}    # Surface integral matrix
@@ -118,16 +118,16 @@ function build_refel(dimension, order, nfaces, nodetype)
     refel.Q1d = refel.Vg*refel.invV;
     if dimension == 1
         refel.Q = refel.Q1d;
-        refel.Qx = refel.Dg;
+        refel.Qr = refel.Dg;
     elseif dimension == 2
         refel.Q = kron(refel.Q1d,refel.Q1d);
-        refel.Qx = kron(refel.Q1d,refel.Dg);
-        refel.Qy = kron(refel.Dg,refel.Q1d);
+        refel.Qr = kron(refel.Q1d,refel.Dg);
+        refel.Qs = kron(refel.Dg,refel.Q1d);
     elseif dimension == 3
         refel.Q = kron(kron(refel.Q1d, refel.Q1d), refel.Q1d);
-        refel.Qx = kron(kron(refel.Q1d, refel.Q1d), refel.Dg);
-        refel.Qy = kron(kron(refel.Q1d, refel.Dg), refel.Q1d);
-        refel.Qz = kron(kron(refel.Dg, refel.Q1d), refel.Q1d);
+        refel.Qr = kron(kron(refel.Q1d, refel.Q1d), refel.Dg);
+        refel.Qs = kron(kron(refel.Q1d, refel.Dg), refel.Q1d);
+        refel.Qt = kron(kron(refel.Dg, refel.Q1d), refel.Q1d);
     end
     
     # # Build surface integral matrix

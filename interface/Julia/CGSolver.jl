@@ -12,16 +12,16 @@ import ..Femshop: JULIA, CPP, MATLAB, SQUARE, IRREGULAR, TREE, UNSTRUCTURED, CG,
             MSH_V2, MSH_V4,
             SCALAR, VECTOR, TENSOR, SYM_TENSOR,
             LHS, RHS,
-            LINEMESH, QUADMESH
+            LINEMESH, QUADMESH, HEXMESH
 import ..Femshop: log_entry, printerr
 import ..Femshop: config, prob, variables, mesh_data, grid_data, loc2glb, refel, time_stepper
 import ..Femshop: Variable, Coefficient, GenFunction
 
 using LinearAlgebra, SparseArrays
 
-include("cg_operators.jl");
+#include("cg_operators.jl");
 include("cg_boundary.jl");
-include("elemental_matrix.jl");
+#include("elemental_matrix.jl");
 
 function init_cgsolver()
     dim = config.dimension;
@@ -118,11 +118,11 @@ function assemble(var, bilinear, linear, t=0.0, dt=0.0)
         xe = grid_data.allnodes[glb[:],:];  # coordinates of this element's nodes for evaluating coefficient functions
         
         args = (var, xe, glb, refel, RHS, t, dt);
-        linchunk = linear.func.func(args);  # get the elemental linear part
+        linchunk = linear.func(args);  # get the elemental linear part
         b[glb] .+= linchunk;
         
         args = (var, xe, glb, refel, LHS, t, dt);
-        bilinchunk = bilinear.func.func(args); # the elemental bilinear part
+        bilinchunk = bilinear.func(args); # the elemental bilinear part
         A[glb, glb] .+= bilinchunk;         # This will be very inefficient for sparse A
     end
     
@@ -145,7 +145,7 @@ function assemble_rhs_only(var, linear, t=0.0, dt=0.0)
         xe = grid_data.allnodes[glb[:],:];  # coordinates of this element's nodes for evaluating coefficient functions
         
         args = (var, xe, glb, refel, RHS, t, dt);
-        linchunk = linear.func.func(args);  # get the elemental linear part
+        linchunk = linear.func(args);  # get the elemental linear part
         b[glb] .+= linchunk;
     end
     

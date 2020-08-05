@@ -44,16 +44,22 @@ macro makeFunctions(ex)
         nfuns = 0;
         args = "x=0,y=0,z=0,t=0";
         if typeof($ex) <: Array
-            for i=1:length($ex)
-                if typeof($ex[i]) == String
-                    @makeFunction(args, $ex[i]);
-                    global nfuns = nfuns + 1;
+            if typeof($ex[1]) <: Number
+                nfuns = 0;
+            else
+                for i=1:length($ex)
+                    if typeof($ex[i]) == String
+                        @makeFunction(args, $ex[i]);
+                        global nfuns = nfuns + 1;
+                    end
                 end
             end
         else
             if typeof($ex) == String
                 @makeFunction(args, $ex);
                 nfuns = 1;
+            elseif typeof($ex) <: Number
+                nfuns = 0;
             end
         end
         nfuns

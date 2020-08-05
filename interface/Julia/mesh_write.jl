@@ -4,10 +4,6 @@
 =#
 export write_mesh
 
-if !@isdefined(MeshData)
-    #include("mesh_data.jl")
-end
-
 # Writes to the file stream using the mesh
 function write_mesh_MSHv2(file, mesh::MeshData)
     # Write the format info

@@ -12,6 +12,7 @@ export @language, @domain, @mesh, @solver, @stepper, @functionSpace, @trialFunct
 export init_femshop, set_language, dendro, set_solver, set_stepper, add_mesh, output_mesh, add_test_function, 
         add_initial_condition, add_boundary_condition, set_rhs, set_lhs, solve, finalize
 export sp_parse
+export generate_code_layer
 export Variable, add_variable
 export Coefficient, add_coefficient
 
@@ -152,21 +153,25 @@ function add_coefficient(c, val, nfuns)
     global coefficients;
     if typeof(val) <: Array
         vals = [];
-        ind = length(genfunctions) - nfuns + 1;
-        for i=1:length(val)
-            if typeof(val[i]) == String
-                push!(vals, genfunctions[ind]);
-                ind += 1;
-            else
-                push!(vals, val[i]);
+        if nfuns == 0 # constant values
+            vals = val;
+        else # genfunction values
+            ind = length(genfunctions) - nfuns + 1;
+            for i=1:length(val)
+                if typeof(val[i]) == String
+                    push!(vals, genfunctions[ind]);
+                    ind += 1;
+                else
+                    push!(vals, val[i]);
+                end
             end
+            push!(coefficients, Coefficient(c, vals));
         end
-        push!(coefficients, Coefficient(c, vals));
     else
-        if typeof(val) == String
-            push!(coefficients, Coefficient(c, [genfunctions[end]]));
-        else
+        if nfuns == 0 # constant value
             push!(coefficients, Coefficient(c, [val]));
+        else # genfunction value
+            push!(coefficients, Coefficient(c, [genfunctions[end]]));
         end
     end
     log_entry("Added coefficient "*string(c)*" : "*string(val));
@@ -198,7 +203,6 @@ function add_initial_condition(varindex, ex, nfuns)
             prob.initial[varindex] = ex;
         end
     end
-    prob.initial[varindex] = genfunctions[end];
     
     log_entry("Initial condition for "*string(variables[varindex].symbol)*" : "*string(prob.initial[varindex]));
     # hold off on initializing till solve or generate is determined.

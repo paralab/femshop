@@ -4,10 +4,6 @@
 =#
 export read_mesh
 
-if !@isdefined(MeshData)
-    include("mesh_data.jl")
-end
-
 # numbers of CORNER nodes for first and second order elements as defined by GMSH
 # TODO add higher order types
 etypetonv = [2, 3, 4, 4, 8, 6, 5, 2, 3, 4, 4, 8, 6, 5, 1, 4, 8, 6, 5];

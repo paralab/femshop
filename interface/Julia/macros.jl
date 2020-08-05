@@ -183,7 +183,7 @@ macro coefficient(c, val)
     csym = string(c);
     return esc(quote
         $c = Symbol($csym);
-        nfuns = @makeFunctions($val);
+        nfuns = @makeFunctions($val); # if val is constant, nfuns will be 0
         $c = add_coefficient($c, $val, nfuns);
     end)
 end
@@ -222,6 +222,8 @@ end
 
 macro weakForm(var, ex)
     return esc(quote
+        using LinearAlgebra
+        
         wfex = Meta.parse($ex);
         args = "args";
         (lhs_expr, rhs_expr) = sp_parse(wfex, $var.symbol, Femshop.test_function_symbol);
@@ -271,21 +273,26 @@ macro weakForm(var, ex)
             end
             
             # need to add a line to extract dt from args
-            @makeFunction(args, "(dt=args[7]; "*string(newlhs)*")");
+            lhs_code = generate_code_layer(newlhs);
+            @makeFunction(args, string(lhs_code));
             set_lhs($var);
-            @makeFunction(args, "(dt=args[7]; "*string(newrhs)*")");
+            rhs_code = generate_code_layer(newrhs, $var.symbol);
+            @makeFunction(args, string(rhs_code));
             set_rhs($var);
             
-            Femshop.log_entry("Set weak form for variable "*string($var.symbol)*" to: "*string(newlhs)*" = "*string(newrhs));
+            Femshop.log_entry("Set weak form for variable "*string($var.symbol)*" to: "*string(lhs_code)*" = "*string(rhs_code));
             
         else
             # No time derivatives
-            @makeFunction(args, string(lhs_expr));
+            # change symbolic layer into code layer
+            lhs_code = generate_code_layer(lhs_expr);
+            @makeFunction(args, string(lhs_code));
             set_lhs($var);
-            @makeFunction(args, string(rhs_expr));
+            rhs_code = generate_code_layer(rhs_expr, $var.symbol);
+            @makeFunction(args, string(rhs_code));
             set_rhs($var);
             
-            Femshop.log_entry("Set weak form for variable "*string($var.symbol)*" to: "*string(lhs_expr)*" = "*string(rhs_expr));
+            Femshop.log_entry("Set weak form for variable "*string($var.symbol)*" to: "*string(lhs_code)*" = "*string(rhs_code));
         end
     end)
 end
