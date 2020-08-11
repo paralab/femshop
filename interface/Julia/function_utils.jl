@@ -50,7 +50,7 @@ macro makeFunctions(ex)
                 for i=1:length($ex)
                     if typeof($ex[i]) == String
                         @makeFunction(args, $ex[i]);
-                        global nfuns = nfuns + 1;
+                        nfuns += 1;
                     end
                 end
             end

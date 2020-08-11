@@ -102,13 +102,13 @@ function generate_code_layer_julia(ex, rhsvar=nothing)
             if !(typeof(needed_coef[i]) <: Number || needed_coef[i] === :dt)
                 tmps = "coef_"*string(i);
                 tmpc = Symbol(tmps);
-                (isconst, cval) = is_constant_coef(needed_coef[i]);
-                if isconst
-                    # constant coefficient
+                (ctype, cval) = get_coef_val(needed_coef[i]);
+                if ctype == 1
+                    # constant coefficient -> coef_n = cval
                     tmpn = cval;
                     push!(code.args, Expr(:(=), tmpc, tmpn)); # allocate coef_n
-                else
-                    # variable coefficients
+                elseif ctype == 2
+                    # genfunction coefficients -> coef_n = coef.value[1].func(cargs)
                     tmpv = :(a[coefi]);
                     tmpv.args[1] = tmpc;
                     tmpn = :(a.value[1]);
@@ -118,11 +118,19 @@ function generate_code_layer_julia(ex, rhsvar=nothing)
                     append!(tmpb.args, cargs);
                     push!(code.args, Expr(:(=), tmpc, :(zeros(refel.Np)))); # allocate coef_n
                     push!(cloopin.args, Expr(:(=), tmpv, tmpb)); # add it to the loop
+                elseif ctype == 3
+                    # variable values -> coef_n = variable.values
+                    tmpb = :(Femshop.variables[$cval].values[gbl]);
+                    push!(code.args, Expr(:(=), tmpc, tmpb));
                 end
             end
         end
-        cloop.args[2] = cloopin;
-        push!(code.args, cloop); # add loop to code
+        
+        if length(cloopin.args) > 0
+            cloop.args[2] = cloopin;
+            push!(code.args, cloop); # add loop to code
+        end
+        
     end
     
     # finally add the code expression
@@ -581,5 +589,34 @@ function is_constant_coef(c)
     end
     
     return (isit, val);
+end
+
+# Checks the type of coefficient: constant, genfunction, or variable
+# Returns: value, name, or array
+function get_coef_val(c)
+    type = 0;
+    val = 0;
+    for i=1:length(coefficients)
+        if c === coefficients[i].symbol
+            isit = (typeof(coefficients[i].value[1]) <: Number);
+            if isit
+                type = 1;
+                val = coefficients[i].value[1];
+            else
+                type = 2;
+                val = coefficients[i].value[1].name;
+            end
+        end
+    end
+    if type == 0
+        for i=1:length(variables)
+            if c === variables[i].symbol
+                type = 3;
+                val = variables[i].index;
+            end
+        end
+    end
+    
+    return (type, val);
 end
 

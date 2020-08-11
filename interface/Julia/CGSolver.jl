@@ -34,9 +34,9 @@ function init_cgsolver()
     end
     # build initial conditions
     for vind=1:length(variables)
-        variables[vind].values = zeros(size(grid_data.allnodes)[1]);
         if vind <= length(prob.initial)
             if prob.initial[vind] != nothing
+                variables[vind].values = zeros(size(grid_data.allnodes)[1]);
                 # Set initial condition
                 for ni=1:size(grid_data.allnodes)[1]
                     if dim == 1

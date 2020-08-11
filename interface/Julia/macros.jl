@@ -173,7 +173,7 @@ macro variable(var, type)
     varsym = string(var);
     return esc(quote
         varind = Femshop.var_count + 1;
-        $var = Symbol($varsym);
+        global $var = Symbol($varsym);
         $var = Femshop.Variable($var, varind, $type, [], [], false);
         add_variable($var);
     end)
@@ -182,7 +182,7 @@ end
 macro coefficient(c, val)
     csym = string(c);
     return esc(quote
-        $c = Symbol($csym);
+        global $c = Symbol($csym);
         nfuns = @makeFunctions($val); # if val is constant, nfuns will be 0
         $c = add_coefficient($c, $val, nfuns);
     end)
