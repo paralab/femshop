@@ -24,12 +24,13 @@ config = nothing;
 prob = nothing;
 project_name = "unnamedProject";
 output_dir = pwd();
+language = 0;
 gen_files = nothing;
 solver = nothing;
 dendro_params = nothing;
 #log
 use_log = false;
-log_file = nothing;
+log_file = "";
 log_line_index = 1;
 #mesh
 mesh_data = nothing;
@@ -46,10 +47,8 @@ genfunctions = [];
 test_function_symbol = nothing;
 #rhs
 linears = [];
-rhs_params = nothing;
 #lhs
 bilinears = [];
-dt_bilinears = [];
 #time stepper
 time_stepper = nothing;
 
@@ -61,13 +60,12 @@ prob = Femshop_prob();
 
 function init_femshop(name="unnamedProject")
     global project_name = name;
+    global language = JULIA;
     global gen_files = nothing;
     global dendro_params = nothing;
-    if log_file != nothing
-        close(log_file);
-        global use_log = false;
-        global log_line_index = 1;
-    end
+    global log_file = "";
+    global use_log = false;
+    global log_line_index = 1;
     global mesh_data = nothing;
     global grid_data = nothing;
     global loc2glb = nothing;
@@ -80,11 +78,11 @@ function init_femshop(name="unnamedProject")
     global test_function_symbol = nothing;
     global linears = [];
     global bilinears = [];
-    global dt_bilinears = [];
     global time_stepper = nothing;
 end
 
 function set_language(lang, dirpath, name, head="")
+    global language = lang;
     global output_dir = dirpath;
     global project_name = name;
     global gen_files = CodeGenerator.init_codegenerator(lang, dirpath, name, head);
@@ -249,22 +247,20 @@ function add_boundary_condition(var, bid, type, ex, nfuns)
     log_entry("Boundary condition: var="*string(var.symbol)*" bid="*string(bid)*" type="*type*" val="*string(prob.bc_func[var.index, bid]));
 end
 
-function set_rhs(var)
-    global linears[var.index] = genfunctions[end];
-end
-
-function set_lhs(var)
-    global bilinears[var.index] = genfunctions[end];
-end
-
-function set_dt_lhs(var)
-    # lhs_time_derivative signals if the problem is time dependent 
-    # and if this variable's eq. will have the form Dt(var) = RHS
-    while length(prob.lhs_time_deriv) < var.index
-        prob.lhs_time_deriv = [prob.lhs_time_deriv; false];
+function set_rhs(var, code="")
+    if language == 0 || language == JULIA
+        global linears[var.index] = genfunctions[end];
+    else
+        global linears[var.index] = code;
     end
-    prob.lhs_time_deriv[var.index] = true;
-    global dt_bilinears[var.index] = Bilinear(genfunctions[end]);
+end
+
+function set_lhs(var, code="")
+    if language == 0 || language == JULIA
+        global bilinears[var.index] = genfunctions[end];
+    else
+        global bilinears[var.index] = code;
+    end
 end
 
 function solve(var)
@@ -285,8 +281,7 @@ function solve(var)
         generate_output();
     else
         if config.solver_type == CG
-            t = @elapsed(init_cgsolver());
-            log_entry("Set up CG solver.(took "*string(t)*" seconds)");
+            init_cgsolver();
             varind = var.index;
             
             lhs = bilinears[varind];

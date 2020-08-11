@@ -223,11 +223,14 @@ end
 macro weakForm(var, ex)
     return esc(quote
         using LinearAlgebra
-        
+        log_entry("Making weak form for variable: "*string($var.symbol));
+        log_entry("Weak form, input: "*string($ex));
         wfex = Meta.parse($ex);
         args = "args";
         (lhs_expr, rhs_expr) = sp_parse(wfex, $var.symbol, Femshop.test_function_symbol);
-        if typeof(lhs_expr) <: Tuple && length(lhs_expr) == 2
+        
+        if typeof(lhs_expr) <: Tuple && length(lhs_expr) == 2 # has time derivative
+            log_entry("Weak form, symbolic layer: Dt("*string(lhs_expr[1])*") + "*string(lhs_expr[2])*" = "*string(rhs_expr));
             # build the expressions depending on type of time stepper
             # explicit -> dtlhs         :   (rhs - lhs)
             # implicit -> dtlhs + lhs   :   rhs
@@ -272,58 +275,50 @@ macro weakForm(var, ex)
                 newrhs = plusex;
             end
             
-            # need to add a line to extract dt from args
-            lhs_code = generate_code_layer(newlhs);
-            @makeFunction(args, string(lhs_code));
-            set_lhs($var);
-            rhs_code = generate_code_layer(newrhs, $var.symbol);
-            @makeFunction(args, string(rhs_code));
-            set_rhs($var);
+            Femshop.log_entry("Weak form, modified for time stepping: "*string(newlhs)*" = "*string(newrhs));
             
-            Femshop.log_entry("Set weak form for variable "*string($var.symbol)*" to: "*string(lhs_code)*" = "*string(rhs_code));
+            lhs_code = generate_code_layer(lhs_expr);
+            rhs_code = generate_code_layer(rhs_expr, $var.symbol);
+            Femshop.log_entry("Weak form, code layer: LHS = "*string(lhs_code)*" \n  RHS = "*string(rhs_code));
+            if Femshop.language == JULIA
+                @makeFunction(args, string(lhs_code));
+                set_lhs($var);
+                
+                @makeFunction(args, string(rhs_code));
+                set_rhs($var);
+            elseif Femshop.language == CPP
+                # Don't need to generate any functions
+                set_lhs($var, lhs_code);
+                set_rhs($var, rhs_code);
+            else
+                
+            end
             
-        else
-            # No time derivatives
+            
+        else  # No time derivatives
+            log_entry("Weak form, symbolic layer: "*string(lhs_expr)*" = "*string(rhs_expr));
+            
             # change symbolic layer into code layer
             lhs_code = generate_code_layer(lhs_expr);
-            @makeFunction(args, string(lhs_code));
-            set_lhs($var);
             rhs_code = generate_code_layer(rhs_expr, $var.symbol);
-            @makeFunction(args, string(rhs_code));
-            set_rhs($var);
+            Femshop.log_entry("Weak form, code layer: LHS = "*string(lhs_code)*" \n  RHS = "*string(rhs_code));
             
-            Femshop.log_entry("Set weak form for variable "*string($var.symbol)*" to: "*string(lhs_code)*" = "*string(rhs_code));
+            if Femshop.language == JULIA
+                @makeFunction(args, string(lhs_code));
+                set_lhs($var);
+                
+                @makeFunction(args, string(rhs_code));
+                set_rhs($var);
+            elseif Femshop.language == CPP
+                # Don't need to generate any functions
+                set_lhs($var, lhs_code);
+                set_rhs($var, rhs_code);
+            else
+                
+            end
         end
     end)
 end
-
-################# temporary
-macro RHS(var, ex)
-    return esc(quote
-        args = "v, flux, time";
-        if $var == u
-            eq = "Femshop.solver.mass_inv_advective(v[:,:,2]) .- Femshop.solver.surface_int(flux[:,:,2])";
-        else
-            eq = "Femshop.solver.mass_inv_advective(v[:,:,1]) .- Femshop.solver.surface_int(flux[:,:,1])";
-        end
-        @makeFunction(args, eq);
-        set_rhs($var);
-    end)
-end
-
-macro LHS(var, ex)
-    if typeof(ex) == Symbol
-        return esc(quote set_lhs($var, 0) end);
-    elseif ex.head === :call && ex.args[1] === :Dt
-        #arg = ex.args[2];
-        return esc(quote set_lhs($var, 0, lhs_time_deriv=true) end);
-    end
-    return esc(quote
-        set_lhs($var, 0)
-    end)
-end
-
-############################
 
 macro finalize()
     return esc(:(Femshop.finalize()));

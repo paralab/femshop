@@ -22,7 +22,7 @@ function jacobi_gauss_quad(alpha::Int, beta::Int, N::Int)
     end
     
     # Form symmetric matrix from recurrence.
-    J = zeros(N+1,N+1);
+    #J = zeros(N+1,N+1);
     h1 = 2*(0:N).+(alpha+beta);
     J = diagm(-1/2*(alpha^2-beta^2)./(h1.+2)./h1) +
         diagm(1 => 2 ./(h1[1:N].+2).*sqrtvec((1:N).*((1:N).+(alpha+beta)).*

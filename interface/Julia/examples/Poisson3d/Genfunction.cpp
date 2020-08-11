@@ -3,9 +3,20 @@
 /*
 Generated functions
 */
-std::function<void(double, double, double, double*)> genfunction_0 = [gridX_to_X,gridY_to_Y,gridZ_to_Z](double x, double y, double z, double* var){
-    var[0] = sin(4 * M_PI * gridX_to_X(x));
-};
-std::function<void(double, double, double, double*)> genfunction_1 = [gridX_to_X,gridY_to_Y,gridZ_to_Z](double x, double y, double z, double* var){
-    var[0] = -14 * M_PI * M_PI * sin(3 * M_PI * gridX_to_X(x)) * sin(2 * M_PI * gridY_to_Y(y)) * sin(M_PI * gridZ_to_Z(z));
-};
+#include "Genfunction.h"
+
+std::function<double(double)> gridxTox;
+std::function<double(double)> gridyToy;
+std::function<double(double)> gridzToz;
+
+void set_grid_funs(std::function<double(double)> gx2x, std::function<double(double)> gy2y, std::function<double(double)> gz2z){
+    gridxTox = gx2x;
+    gridyToy = gy2y;
+    gridzToz = gz2z;
+}
+void genfunction_0(double x, double y, double z, double* var){
+    var[0] = sin(3 * M_PI * gridxTox(x));
+}
+void genfunction_1(double x, double y, double z, double* var){
+    var[0] = -14 * M_PI * M_PI * sin(3 * M_PI * gridxTox(x)) * sin(2 * M_PI * gridyToy(y)) * sin(M_PI * gridzToz(z));
+}

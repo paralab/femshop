@@ -92,6 +92,32 @@ function cpp_functional(indent, name, args, argtypes, ret, rettype, captures, co
     return lines;
 end
 
+#= Generates:
+returntype name(args){
+    (content)
+}
+# Note: content should be an array of lines to allow indentation
+=#
+function cpp_function_def(indent, name, args, argtypes, rettype, content)
+    lines = [];
+    inner_indent = indent*"    ";
+    
+    arg = string(argtypes[1])*" "*string(args[1]);
+    argtype = string(argtypes[1]);
+    for i=2:length(args)
+        arg = arg*", "*string(argtypes[i])*" "*string(args[i]);
+        argtype = argtype*", "*string(argtypes[i]);
+    end
+    
+    push!(lines, indent*rettype*" "*name*"("*arg*"){");
+    for i=1:length(content)
+        push!(lines, inner_indent*content[i]);
+    end
+    push!(lines, indent*"}")
+    
+    return lines;
+end
+
 # #= Generates:
 # name = val;
 # # Note, if val is empty, nothing is needed, returns ""

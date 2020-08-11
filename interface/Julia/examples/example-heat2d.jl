@@ -31,7 +31,7 @@ T = 1;
 @boundary(u, 1, DIRICHLET, 0)
 
 # Write the weak form 
-@coefficient(f, "-0.1*sin(pi*x)*sin(pi*y)")
+@coefficient(f, "sin(6*pi*x)*sin(6*pi*y)")
 @weakForm(u, "Dt(u*v) + 0.01 * grad(u)*grad(v) - f*v")
 
 solve(u);

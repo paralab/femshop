@@ -17,7 +17,7 @@ init_femshop("coef");
 @nodes(LOBATTO)                     # elemental node arrangement
 
 # Specify the problem
-@mesh(QUADMESH, 30)                 # .msh file or generate our own
+@mesh(QUADMESH, 20)                 # .msh file or generate our own
 
 @variable(u)                        # same as @variable(u, SCALAR)
 
@@ -55,7 +55,7 @@ println("max error = "*string(maxerr));
 #display(plot(Femshop.grid_data.allnodes[:,1], Femshop.grid_data.allnodes[:,2], u.values, st=:surface))
 
 # check
-log_dump_config(Femshop.config);
-log_dump_prob(Femshop.prob);
+log_dump_config();
+log_dump_prob();
 
 @finalize()

@@ -37,11 +37,11 @@ void FemshopDendroSkeleton::LHSMat::elementalMatVec(const VECType* in,VECType* o
 
     const RefElement* refEl=m_uiOctDA->getReferenceElement();
 
-    //const double * Q1d=refEl->getQ1d();
-    //const double * QT1d=refEl->getQT1d();
-    //const double * Dg=refEl->getDg1d();
-    //const double * DgT=refEl->getDgT1d();
-    //const double * W1d=refEl->getWgq();
+    const double * Q1d=refEl->getQ1d();
+    const double * QT1d=refEl->getQT1d();
+    const double * Dg=refEl->getDg1d();
+    const double * DgT=refEl->getDgT1d();
+    const double * W1d=refEl->getWgq();
 
     const unsigned int eleOrder=refEl->getOrder();
     const unsigned int nPe=(eleOrder+1)*(eleOrder+1)*(eleOrder+1);
@@ -61,11 +61,9 @@ void FemshopDendroSkeleton::LHSMat::elementalMatVec(const VECType* in,VECType* o
     const double Jy = 1.0/(refElSz/(double (szY)));
     const double Jz = 1.0/(refElSz/(double (szZ)));
     
-    out = 
     //////////////will be generated/////////////////////////////////////////////
     #include "Bilinear.cpp"
     ////////////////////////////////////////////////////////////////////////////
-    ;
 }
 
 void FemshopDendroSkeleton::LHSMat::setBdryFunction(std::function<void(double,double,double,double*)> bdry){

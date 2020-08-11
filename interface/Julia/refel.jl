@@ -18,13 +18,13 @@ mutable struct Refel
     r1d::Array{Float64}     # Node coordinates in 1D
     r::Array{Float64}       # dim-dim Node coordinates
     
-    wr1d::Array{Float64}    # r1d Quadrature weights
-    wr::Array{Float64}      # r Quadrature weights
+    wr1d::Array{Float64}    # r1d gll Quadrature weights
+    wr::Array{Float64}      # r gll Quadrature weights
     
     g1d::Array{Float64}     # 1D Gauss points
     wg1d::Array{Float64}    # 1D Gauss weights
     
-    g::Array{Float64}       # dim-dim Gauss
+    g::Array{Float64}       # dim-dim Gauss points
     wg::Array{Float64}      # dim-dim Gauss weights
     
     V::Array{Float64}       # Vandermonde matrix at r
@@ -38,9 +38,13 @@ mutable struct Refel
     Dr::Array{Float64}      # Differentiation matrix for r
     Dg::Array{Float64}      # Differentiation matrix for g
     
-    Q1d::Array{Float64}     # 
-    Q::Array{Float64}       # 
-    Qr::Array{Float64}      # 
+    # Useful matrices, use them like so
+    # for integral(basis_j*basis_i) -> invV' * integral(modal_j*modal_i) * invV -> invV'*Vg'*diag(w*detJ)*Vg*invV -> Q'*diag(w*detJ)*Q
+    # for integral(gradbasis_j dot gradbasis_i) -> invV'*gradVg'*Jacobian'*diag(w*detJ)*Jacobian*gradVg*invV 
+    #                                           -> [QrQsQt]*Jacobian' * diag(w*detJ) * Jacobian*[QrQsQt]'
+    Q1d::Array{Float64}     # 1D quadrature matrix: like Vg*invV
+    Q::Array{Float64}       # dim-dim quadrature matrix
+    Qr::Array{Float64}      # quad of derivative matrix: like gradVg*invV
     Qs::Array{Float64}      # 
     Qt::Array{Float64}      # 
     
@@ -89,9 +93,7 @@ function build_refel(dimension, order, nfaces, nodetype)
     refel.V = zeros(order+1, order+1);
     refel.gradV = zeros(order+1, order+1);
     for i=1:refel.N+1
-        if config.trial_function == LEGENDRE
-            refel.V[:,i] = jacobi_polynomial(refel.r1d, 0, 0, i-1);
-        end
+        refel.V[:,i] = jacobi_polynomial(refel.r1d, 0, 0, i-1);
     end
     for i=1:refel.N
         refel.gradV[:,i+1] = sqrt(i*(i+1)) .* jacobi_polynomial(refel.r1d, 1, 1, i-1);
@@ -105,17 +107,16 @@ function build_refel(dimension, order, nfaces, nodetype)
         refel.Vg[:,i] = jacobi_polynomial(refel.g1d, 0, 0, i-1);
     end
     for i=1:refel.N
-        refel.gradVg[:,i+1] = sqrt(i*(i+1)) .* jacobi_polynomial(refel.r1d, 1, 1, i-1);
+        refel.gradVg[:,i+1] = sqrt(i*(i+1)) .* jacobi_polynomial(refel.g1d, 1, 1, i-1);
     end
     refel.invVg = inv(refel.Vg);
     
     # Differentiation matrices
-    #refel.Dr = (refel.invV*refel.gradV)';
-    #refel.Dg = (refel.invV*refel.gradVg)';
     refel.Dr = refel.gradV*refel.invV;
     refel.Dg = refel.gradVg*refel.invV;
     
     refel.Q1d = refel.Vg*refel.invV;
+    
     if dimension == 1
         refel.Q = refel.Q1d;
         refel.Qr = refel.Dg;

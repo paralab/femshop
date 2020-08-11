@@ -45,11 +45,9 @@ void FemshopDendroSkeleton::RHSVec::elementalComputVec(const VECType* in,VECType
     double* Qy = {0};
     double* Qz = {0};
     
-    out = 
     //////////////will be generated/////////////////////////////////////////////
     #include "Linear.cpp"
     ////////////////////////////////////////////////////////////////////////////
-    ;
 }
 
 void FemshopDendroSkeleton::RHSVec::setBdryFunction(std::function<void(double,double,double,double*)> bdry){

@@ -3,7 +3,7 @@
 
     #include "oda.h"
     #include "feMatrix.h"
-    #include "femshop_operators.h"
+    #include "Genfunction.h"
 
     namespace FemshopDendroSkeleton
     {

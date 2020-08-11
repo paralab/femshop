@@ -28,7 +28,7 @@ dendro(max_depth=6, wavelet_tol = 0.1, partition_tol = 0.3, solve_tol = 1e-6, ma
 
 @testFunction(v)                    # sets the symbol for a test function
 
-@boundary(u, 1, DIRICHLET, "sin(4*pi*x)")
+@boundary(u, 1, DIRICHLET, "sin(3*pi*x)")
 
 # Write the weak form 
 @coefficient(f, "-14*pi*pi*sin(3*pi*x)*sin(2*pi*y)*sin(pi*z)")

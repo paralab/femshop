@@ -4,16 +4,16 @@
 
 # False if the genfunction is in linears or bilinears
 function isfunction(g)
-    for b in bilinears
-        if b.name == g.name
-            return false;
-        end
-    end
-    for l in linears
-        if l.name == g.name
-            return false;
-        end
-    end
+    # for b in bilinears
+    #     if b.name == g.name
+    #         return false;
+    #     end
+    # end
+    # for l in linears
+    #     if l.name == g.name
+    #         return false;
+    #     end
+    # end
     return true;
 end
 # builds a c++ functional for a constant
@@ -47,68 +47,71 @@ function swap_symbol(a, b, ex)
         return ex;
     end
 end
-# operator(old args) -> operator(args) in expression ex for elemental operators
-function swap_op_args(newargs, ex)
-    if !(typeof(ex) == Expr && ex.head == :call)
-        return ex;
-    end
+# # operator(old args) -> operator(args) in expression ex for elemental operators
+# function swap_op_args(newargs, ex)
+#     if !(typeof(ex) == Expr && ex.head == :call)
+#         return ex;
+#     end
     
-    for op in operator_list
-        if op === ex.args[1]
-            # found one, swap the args
-            ex.args = [ex.args[1]; newargs];
-            return ex;
-        end
-    end
+#     for op in operator_list
+#         if op === ex.args[1]
+#             # found one, swap the args
+#             ex.args = [ex.args[1]; newargs];
+#             return ex;
+#         end
+#     end
     
-    # It is not on the list. Recursively swap
-    for i=2:length(ex.args)
-        ex.args[i] = swap_op_args(newargs, ex.args[i]);
-    end
+#     # It is not on the list. Recursively swap
+#     for i=2:length(ex.args)
+#         ex.args[i] = swap_op_args(newargs, ex.args[i]);
+#     end
     
-    return ex;
-end
-# Translate julia operator names into dendro ones
-# mass_operator -> FemshopDendroOperators::mass_operator
-# - -> FemshopDendroOperators::negative
-function translate_to_dendro(ex)
-    if !(typeof(ex) == Expr && ex.head == :call)
-        return ex;
-    end
+#     return ex;
+# end
+# # Translate julia operator names into dendro ones
+# # mass_operator -> FemshopDendroOperators::mass_operator
+# # - -> FemshopDendroOperators::negative
+# function translate_to_dendro(ex)
+#     if !(typeof(ex) == Expr && ex.head == :call)
+#         return ex;
+#     end
     
-    #These ops should be leaves
-    for op in operator_list
-        if op === ex.args[1]
-            newname = "femshopDendroOp_"*string(op);
-            ex.args[1] = Meta.parse(newname);
-            return ex;
-        end
-    end
+#     #These ops should be leaves
+#     for op in operator_list
+#         if op === ex.args[1]
+#             newname = "femshopDendroOp_"*string(op);
+#             ex.args[1] = Meta.parse(newname);
+#             return ex;
+#         end
+#     end
     
-    # Check this operator, then recursively translate the args
-    if ex.args[1] === :-
-        ex.args[1] = :(femshopDendroOp_negative);
-        ex.args = [ex.args; :refEl];
-        # Many more are needed. TODO
-    end
-    newex = copy(ex);
-    for i=2:length(newex.args)
-        newex.args[i] = translate_to_dendro(newex.args[i]);
-    end
+#     # Check this operator, then recursively translate the args
+#     if ex.args[1] === :-
+#         ex.args[1] = :(femshopDendroOp_negative);
+#         ex.args = [ex.args; :refEl];
+#         # Many more are needed. TODO
+#     end
+#     newex = copy(ex);
+#     for i=2:length(newex.args)
+#         newex.args[i] = translate_to_dendro(newex.args[i]);
+#     end
     
-    return newex;
+#     return newex;
     
-end
+# end
 function dendro_genfunction_to_string(genfun)
-    newex = swap_symbol(:x, :(gridX_to_X(x)), genfun.expr); # swap x for gridX_to_X(x)
-    newex = swap_symbol(:y, :(gridY_to_Y(y)), newex); # swap y for gridY_to_Y(y)
-    newex = swap_symbol(:z, :(gridZ_to_Z(z)), newex); # swap z for gridZ_to_Z(z)
+    newex = swap_symbol(:x, :(gridxTox(x)), genfun.expr); # swap x for gridX_to_X(x)
+    newex = swap_symbol(:y, :(gridyToy(y)), newex); # swap y for gridY_to_Y(y)
+    newex = swap_symbol(:z, :(gridzToz(z)), newex); # swap z for gridZ_to_Z(z)
     newex = swap_symbol(:pi, :M_PI, newex); # swap pi for M_PI
     s = string(newex);
     ns = replace(s, r"([\d)])([(A-Za-z])" => s"\1*\2"); # explicitly multiply with "*"
     return ns;
 end
 
+##############################################################################################################
+# begin file gen functions
+#
 function dendro_config_file(dparams)
     file = genfiles.config;
     # dparams has (maxdepth, wavelet_tol, partition_tol, solve_tol, solve_max_iters)
@@ -134,20 +137,57 @@ function dendro_genfunction_file()
     indent = "";
     args = ["x"; "y"; "z"; "var"];
     argtypes = ["double"; "double"; "double"; "double*"];
-    ret = "";
     rettype = "void";
-    captures = "gridX_to_X,gridY_to_Y,gridZ_to_Z";
+    
+    # always included
+    str = 
+"#include \"Genfunction.h\"
+
+std::function<double(double)> gridxTox;
+std::function<double(double)> gridyToy;
+std::function<double(double)> gridzToz;
+
+void set_grid_funs(std::function<double(double)> gx2x, std::function<double(double)> gy2y, std::function<double(double)> gz2z){
+    gridxTox = gx2x;
+    gridyToy = gy2y;
+    gridzToz = gz2z;
+}";
+    
+    println(file, str);
+    
     for i = 1:length(genfunctions)
         if isfunction(genfunctions[i])
             str = dendro_genfunction_to_string(genfunctions[i]);
             content = ["var[0] = "*str*";"];
-            lines = cpp_functional(indent, genfunctions[i].name, args, argtypes, ret, rettype, captures, content);
+            lines = cpp_function_def(indent, genfunctions[i].name, args, argtypes, rettype, content);
             
             for j=1:length(lines)
                 println(file, lines[j]);
             end
         end
     end
+    
+    # Also write the header file
+    headerfile = open(genDir*"/Genfunction.h", "w");
+    content = 
+"""#ifndef DENDRO_5_0_GENFUNCTIONS_H
+#define DENDRO_5_0_GENFUNCTIONS_H
+
+#include "functional"
+#include <math.h>
+
+void set_grid_funs(std::function<double(double)> gx2x, std::function<double(double)> gy2y, std::function<double(double)> gz2z);
+
+""";
+    
+    for i = 1:length(genfunctions)
+        content *= "void "*genfunctions[i].name*"(double x, double y, double z, double* var);\n";
+    end
+    
+    content *= "#endif //DENDRO_5_0_GENFUNCTIONS_H";
+    
+    println(headerfile, content);
+    close(headerfile);
 end
 
 function dendro_prob_file()
@@ -201,41 +241,41 @@ end
 function dendro_bilinear_file(bl)
     file = genfiles.bilinear;
     
-    argsym = :TEMPORARYARGS;
+    # argsym = :TEMPORARYARGS;
     
-    # swap the args for elemental operators
-    ex = swap_op_args(argsym, bl.expr);
+    # # swap the args for elemental operators
+    # ex = swap_op_args(argsym, bl.expr);
     
-    # Translate toperators to dendro ops
-    ex = translate_to_dendro(ex);
+    # # Translate toperators to dendro ops
+    # ex = translate_to_dendro(ex);
     
-    # Turn it into a string
-    str = string(ex);
-    str = replace(str, r"([\d)])([(A-Za-z])" => s"\1*\2"); # explicitly multiply with "*"
-    str = replace(str, "TEMPORARYARGS"=>"in, out, refEl, Jx, Jy, Jz, imV1, imV2, Qx, Qy, Qz");
-    #println("bilinear gets: "*str);
+    # # Turn it into a string
+    # str = string(ex);
+    # str = replace(str, r"([\d)])([(A-Za-z])" => s"\1*\2"); # explicitly multiply with "*"
+    # str = replace(str, "TEMPORARYARGS"=>"in, out, refEl, Jx, Jy, Jz, imV1, imV2, Qx, Qy, Qz");
+    # #println("bilinear gets: "*str);
     
-    print(file, str);
+    print(file, bl);
 end
 
 function dendro_linear_file(l)
     file = genfiles.linear;
     
-    argsym = :TEMPORARYARGS;
+    # argsym = :TEMPORARYARGS;
     
-    # swap the args for elemental operators
-    ex = swap_op_args(argsym, l.expr);
+    # # swap the args for elemental operators
+    # ex = swap_op_args(argsym, l.expr);
     
-    # Translate toperators to dendro ops
-    ex = translate_to_dendro(ex);
+    # # Translate toperators to dendro ops
+    # ex = translate_to_dendro(ex);
     
-    # Turn it into a string
-    str = string(ex);
-    str = replace(str, r"([\d)])([(A-Za-z])" => s"\1*\2"); # explicitly multiply with "*"
-    str = replace(str, "TEMPORARYARGS"=>"in, out, refEl, Jx, Jy, Jz, imV1, imV2, Qx, Qy, Qz");
-    #println("linear gets: "*str);
+    # # Turn it into a string
+    # str = string(ex);
+    # str = replace(str, r"([\d)])([(A-Za-z])" => s"\1*\2"); # explicitly multiply with "*"
+    # str = replace(str, "TEMPORARYARGS"=>"in, out, refEl, Jx, Jy, Jz, imV1, imV2, Qx, Qy, Qz");
+    # #println("linear gets: "*str);
     
-    print(file, str);
+    print(file, l);
 end
 
 function dendro_stepper_file()
@@ -269,7 +309,8 @@ function dendro_main_file()
     #include "refel.h"
     #include "operators.h"
     #include "cg.h"
-
+    
+    #include "Genfunction.h"
     #include "linear_skel.h"
     #include "bilinear_skel.h"
 
@@ -325,8 +366,9 @@ function dendro_main_file()
             var[0]=0;
         };
         
+        set_grid_funs(gridX_to_X, gridY_to_Y, gridZ_to_Z);
+        
         //////////////will be generated/////////////////////////////////////////////
-        #include "Genfunction.cpp"
         #include "Problem.cpp"
         /////////////////////////////////////////////////////////////////////////////
         
@@ -445,11 +487,9 @@ function dendro_linear_skeleton(file, headerfile)
         double* Qy = {0};
         double* Qz = {0};
         
-        out = 
         //////////////will be generated/////////////////////////////////////////////
         #include "Linear.cpp"
         ////////////////////////////////////////////////////////////////////////////
-        ;
     }
     
     void FemshopDendroSkeleton::RHSVec::setBdryFunction(std::function<void(double,double,double,double*)> bdry){
@@ -526,7 +566,7 @@ function dendro_linear_skeleton(file, headerfile)
 
     #include "oda.h"
     #include "feVector.h"
-    #include "femshop_operators.h"
+    #include "Genfunction.h"
 
     namespace FemshopDendroSkeleton
     {
@@ -608,11 +648,11 @@ function dendro_bilinear_skeleton(file, headerfile)
 
         const RefElement* refEl=m_uiOctDA->getReferenceElement();
 
-        //const double * Q1d=refEl->getQ1d();
-        //const double * QT1d=refEl->getQT1d();
-        //const double * Dg=refEl->getDg1d();
-        //const double * DgT=refEl->getDgT1d();
-        //const double * W1d=refEl->getWgq();
+        const double * Q1d=refEl->getQ1d();
+        const double * QT1d=refEl->getQT1d();
+        const double * Dg=refEl->getDg1d();
+        const double * DgT=refEl->getDgT1d();
+        const double * W1d=refEl->getWgq();
 
         const unsigned int eleOrder=refEl->getOrder();
         const unsigned int nPe=(eleOrder+1)*(eleOrder+1)*(eleOrder+1);
@@ -632,11 +672,9 @@ function dendro_bilinear_skeleton(file, headerfile)
         const double Jy = 1.0/(refElSz/(double (szY)));
         const double Jz = 1.0/(refElSz/(double (szZ)));
         
-        out = 
         //////////////will be generated/////////////////////////////////////////////
         #include "Bilinear.cpp"
         ////////////////////////////////////////////////////////////////////////////
-        ;
     }
     
     void FemshopDendroSkeleton::LHSMat::setBdryFunction(std::function<void(double,double,double,double*)> bdry){
@@ -864,7 +902,7 @@ function dendro_bilinear_skeleton(file, headerfile)
 
     #include "oda.h"
     #include "feMatrix.h"
-    #include "femshop_operators.h"
+    #include "Genfunction.h"
 
     namespace FemshopDendroSkeleton
     {

@@ -13,7 +13,7 @@ init_femshop("poisson3d");
 @useLog("poisson3dlog")
 
 n = 10;
-ord = 2;
+ord = 3;
 
 # Set up the configuration (order doesn't matter)
 @domain(3, SQUARE, UNSTRUCTURED)    # dimension, geometry, decomposition
@@ -36,16 +36,31 @@ ord = 2;
 
 solve(u);
 
+# exact solution is sin(pi*x)*sin(pi*y)*sin(pi*z)
+# check error
+maxerr = 0;
+exact(x,y,z) = sin(pi*x)*sin(pi*y)*sin(pi*z);
+
+for i=1:size(Femshop.grid_data.allnodes,1)
+    x = Femshop.grid_data.allnodes[i,1];
+    y = Femshop.grid_data.allnodes[i,2];
+    z = Femshop.grid_data.allnodes[i,3];
+    err = abs(u.values[i] - exact(x,y,z));
+    global maxerr;
+    maxerr = max(err,maxerr);
+end
+println("max error = "*string(maxerr));
+
 # solution is stored in the variable's "values"
-using Plots
-pyplot();
-N = n*ord+1;
-half = Int(round(N/2));
-range = (N*N*half+1):(N*N*(half+1));
-display(plot(Femshop.grid_data.allnodes[range,1], Femshop.grid_data.allnodes[range,2], u.values[range], st=:surface))
+#using Plots
+#pyplot();
+#N = n*ord+1;
+#half = Int(round(N/2));
+#range = (N*N*half+1):(N*N*(half+1));
+#display(plot(Femshop.grid_data.allnodes[range,1], Femshop.grid_data.allnodes[range,2], u.values[range], st=:surface))
 
 # check
-log_dump_config(Femshop.config);
-log_dump_prob(Femshop.prob);
+log_dump_config();
+log_dump_prob();
 
 @finalize()

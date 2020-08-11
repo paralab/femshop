@@ -1,0 +1,102 @@
+######################################
+# Femshop Log for: poisson3ddendro
+######################################
+
+1.	Set code generation language to C++.
+2.	Created code files for: poisson3d
+3.	Building simple quad mesh with nx*nx elements, nx=30
+4.	Added mesh with 961 vertices and 900 elements.
+5.	Full grid has 7442 nodes.
+6.	Grid building took 0.780196399 seconds
+7.	Added variable: u of type: scalar
+8.	Set test function symbol: v
+9.	Boundary condition: var=u bid=1 type=Dirichlet val=0
+10.	Generated function: genfunction_0
+11.	Added coefficient f : -14*pi*pi*sin(3*pi*x)*sin(2*pi*y)*sin(pi*z)
+12.	Making weak form for variable: u
+13.	Weak form, input: -grad(u)*grad(v) - f*v
+14.	Weak form, symbolic layer: -(GRADTEST * GRADTRIAL) = TEST * f
+15.	Weak form, code layer: LHS = DENDRO_TENSOR_IIAX_APPLY_ELEM(nrp,Dg,in,imV1);
+DENDRO_TENSOR_IAIX_APPLY_ELEM(nrp,Q1d,imV1,imV2);
+DENDRO_TENSOR_AIIX_APPLY_ELEM(nrp,Q1d,imV2,Qx);
+
+DENDRO_TENSOR_IIAX_APPLY_ELEM(nrp,Q1d,in,imV1);
+DENDRO_TENSOR_IAIX_APPLY_ELEM(nrp,Dg,imV1,imV2);
+DENDRO_TENSOR_AIIX_APPLY_ELEM(nrp,Q1d,imV2,Qy);
+
+DENDRO_TENSOR_IIAX_APPLY_ELEM(nrp,Q1d,in,imV1);
+DENDRO_TENSOR_IAIX_APPLY_ELEM(nrp,Q1d,imV1,imV2);
+DENDRO_TENSOR_AIIX_APPLY_ELEM(nrp,Dg,imV2,Qz);
+
+for(unsigned int k=0;k<(eleOrder+1);k++){
+    for(unsigned int j=0;j<(eleOrder+1);j++){
+        for(unsigned int i=0;i<(eleOrder+1);i++){
+            Qx[k*(eleOrder+1)*(eleOrder+1)+j*(eleOrder+1)+i]*=( ((Jy*Jz)/Jx)*-W1d[i]*W1d[j]*W1d[k]);
+            Qy[k*(eleOrder+1)*(eleOrder+1)+j*(eleOrder+1)+i]*=( ((Jx*Jz)/Jy)*-W1d[i]*W1d[j]*W1d[k]);
+            Qz[k*(eleOrder+1)*(eleOrder+1)+j*(eleOrder+1)+i]*=( ((Jx*Jy)/Jz)*-W1d[i]*W1d[j]*W1d[k]);
+        }
+    }
+}
+
+DENDRO_TENSOR_IIAX_APPLY_ELEM(nrp,DgT,Qx,imV1);
+DENDRO_TENSOR_IAIX_APPLY_ELEM(nrp,QT1d,imV1,imV2);
+DENDRO_TENSOR_AIIX_APPLY_ELEM(nrp,QT1d,imV2,Qx);
+
+DENDRO_TENSOR_IIAX_APPLY_ELEM(nrp,QT1d,Qy,imV1);
+DENDRO_TENSOR_IAIX_APPLY_ELEM(nrp,DgT,imV1,imV2);
+DENDRO_TENSOR_AIIX_APPLY_ELEM(nrp,QT1d,imV2,Qy);
+
+DENDRO_TENSOR_IIAX_APPLY_ELEM(nrp,QT1d,Qz,imV1);
+DENDRO_TENSOR_IAIX_APPLY_ELEM(nrp,QT1d,imV1,imV2);
+DENDRO_TENSOR_AIIX_APPLY_ELEM(nrp,DgT,imV2,Qz);
+
+for(unsigned int i=0;i<nPe;i++){
+    out[i]=Qx[i]+Qy[i]+Qz[i];
+}
+
+ 
+  RHS = DENDRO_TENSOR_IIAX_APPLY_ELEM(nrp,Q1d,in,imV1);
+DENDRO_TENSOR_IAIX_APPLY_ELEM(nrp,Q1d,imV1,imV2);
+DENDRO_TENSOR_AIIX_APPLY_ELEM(nrp,Q1d,imV2,out);
+
+for(unsigned int k=0;k<(eleOrder+1);k++){
+    for(unsigned int j=0;j<(eleOrder+1);j++){
+        for(unsigned int i=0;i<(eleOrder+1);i++){
+            out[k*(eleOrder+1)*(eleOrder+1)+j*(eleOrder+1)+i]*=(Jx*Jy*Jz*W1d[i]*W1d[j]*W1d[k]);
+        }
+    }
+}
+
+DENDRO_TENSOR_IIAX_APPLY_ELEM(nrp,QT1d,out,imV1);
+DENDRO_TENSOR_IAIX_APPLY_ELEM(nrp,QT1d,imV1,imV2);
+DENDRO_TENSOR_AIIX_APPLY_ELEM(nrp,QT1d,imV2,out);
+
+
+16.	Dumping configuration:
+17.		dimension = 3
+18.		geometry = square
+19.		mesh_type = unstructured
+20.		solver_type = CG
+21.		trial_function = Legendre
+22.		test_function = Legendre
+23.		elemental_nodes = Lobatto
+24.		quadrature = Gauss
+25.		p_adaptive = false
+26.		basis_order_min = 2
+27.		basis_order_max = 2
+28.		linear = true
+29.		t_adaptive = false
+30.		stepper = Euler-implicit
+31.		linalg_matrixfree = false
+32.		linalg_backend = ours
+33.		output_format = vtk
+34.	Dumping problem:
+35.		bc_type = ["Dirichlet"]
+36.		bid = [1]
+37.		bc_func = Any[0]
+38.		time_dependent = false
+39.		end_time = 0.0
+40.		initial = Any[]
+41.		lhs_time_deriv = Bool[]
+42.	Closed generated code files.
+43.	Completed. Closing Log.

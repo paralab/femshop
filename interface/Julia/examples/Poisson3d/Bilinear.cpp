@@ -3,4 +3,41 @@
 /*
 Bilinear term
 */
-femshopDendroOp_negative(femshopDendroOp_stiffness_operator(in, out, refEl, Jx, Jy, Jz, imV1, imV2, Qx, Qy, Qz), refEl)
+DENDRO_TENSOR_IIAX_APPLY_ELEM(nrp,Dg,in,imV1);
+DENDRO_TENSOR_IAIX_APPLY_ELEM(nrp,Q1d,imV1,imV2);
+DENDRO_TENSOR_AIIX_APPLY_ELEM(nrp,Q1d,imV2,Qx);
+
+DENDRO_TENSOR_IIAX_APPLY_ELEM(nrp,Q1d,in,imV1);
+DENDRO_TENSOR_IAIX_APPLY_ELEM(nrp,Dg,imV1,imV2);
+DENDRO_TENSOR_AIIX_APPLY_ELEM(nrp,Q1d,imV2,Qy);
+
+DENDRO_TENSOR_IIAX_APPLY_ELEM(nrp,Q1d,in,imV1);
+DENDRO_TENSOR_IAIX_APPLY_ELEM(nrp,Q1d,imV1,imV2);
+DENDRO_TENSOR_AIIX_APPLY_ELEM(nrp,Dg,imV2,Qz);
+
+for(unsigned int k=0;k<(eleOrder+1);k++){
+    for(unsigned int j=0;j<(eleOrder+1);j++){
+        for(unsigned int i=0;i<(eleOrder+1);i++){
+            Qx[k*(eleOrder+1)*(eleOrder+1)+j*(eleOrder+1)+i]*=( ((Jy*Jz)/Jx)*-W1d[i]*W1d[j]*W1d[k]);
+            Qy[k*(eleOrder+1)*(eleOrder+1)+j*(eleOrder+1)+i]*=( ((Jx*Jz)/Jy)*-W1d[i]*W1d[j]*W1d[k]);
+            Qz[k*(eleOrder+1)*(eleOrder+1)+j*(eleOrder+1)+i]*=( ((Jx*Jy)/Jz)*-W1d[i]*W1d[j]*W1d[k]);
+        }
+    }
+}
+
+DENDRO_TENSOR_IIAX_APPLY_ELEM(nrp,DgT,Qx,imV1);
+DENDRO_TENSOR_IAIX_APPLY_ELEM(nrp,QT1d,imV1,imV2);
+DENDRO_TENSOR_AIIX_APPLY_ELEM(nrp,QT1d,imV2,Qx);
+
+DENDRO_TENSOR_IIAX_APPLY_ELEM(nrp,QT1d,Qy,imV1);
+DENDRO_TENSOR_IAIX_APPLY_ELEM(nrp,DgT,imV1,imV2);
+DENDRO_TENSOR_AIIX_APPLY_ELEM(nrp,QT1d,imV2,Qy);
+
+DENDRO_TENSOR_IIAX_APPLY_ELEM(nrp,QT1d,Qz,imV1);
+DENDRO_TENSOR_IAIX_APPLY_ELEM(nrp,QT1d,imV1,imV2);
+DENDRO_TENSOR_AIIX_APPLY_ELEM(nrp,DgT,imV2,Qz);
+
+for(unsigned int i=0;i<nPe;i++){
+    out[i]=Qx[i]+Qy[i]+Qz[i];
+}
+

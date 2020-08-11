@@ -19,6 +19,7 @@ This is an example for Poisson, Dirichlet bc.
 #include "operators.h"
 #include "cg.h"
 
+#include "Genfunction.h"
 #include "linear_skel.h"
 #include "bilinear_skel.h"
 
@@ -74,8 +75,9 @@ int main (int argc, char** argv)
         var[0]=0;
     };
     
+    set_grid_funs(gridX_to_X, gridY_to_Y, gridZ_to_Z);
+    
     //////////////will be generated/////////////////////////////////////////////
-    #include "Genfunction.cpp"
     #include "Problem.cpp"
     /////////////////////////////////////////////////////////////////////////////
     
