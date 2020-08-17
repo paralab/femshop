@@ -5,6 +5,9 @@
 =#
 
 struct Coefficient
-    symbol::Symbol
-    value::Array
+    symbol::Symbol          # symbol used in expressions
+    symvar                  # SymType object
+    index::Int              # index in the Femshop list of coefficients
+    type::String            # constants for SCALAR, VECTOR, etc.
+    value::Array            # An array of either constant values(numbers) or genfunctions
 end

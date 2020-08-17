@@ -174,17 +174,18 @@ macro variable(var, type)
     return esc(quote
         varind = Femshop.var_count + 1;
         global $var = Symbol($varsym);
-        $var = Femshop.Variable($var, varind, $type, [], [], false);
+        $var = Femshop.Variable($var, nothing, varind, $type, [], [], false);
         add_variable($var);
     end)
 end
 
-macro coefficient(c, val)
+macro coefficient(c, val) return esc(:(@coefficient($c, SCALAR, $val))); end
+macro coefficient(c, type, val)
     csym = string(c);
     return esc(quote
         global $c = Symbol($csym);
         nfuns = @makeFunctions($val); # if val is constant, nfuns will be 0
-        $c = add_coefficient($c, $val, nfuns);
+        $c = add_coefficient($c, $type, $val, nfuns);
     end)
 end
 
@@ -277,8 +278,8 @@ macro weakForm(var, ex)
             
             Femshop.log_entry("Weak form, modified for time stepping: "*string(newlhs)*" = "*string(newrhs));
             
-            lhs_code = generate_code_layer(lhs_expr);
-            rhs_code = generate_code_layer(rhs_expr, $var.symbol);
+            lhs_code = generate_code_layer(lhs_expr, $var.symbol, LHS);
+            rhs_code = generate_code_layer(rhs_expr, $var.symbol, RHS);
             Femshop.log_entry("Weak form, code layer: LHS = "*string(lhs_code)*" \n  RHS = "*string(rhs_code));
             if Femshop.language == JULIA
                 @makeFunction(args, string(lhs_code));
@@ -299,8 +300,8 @@ macro weakForm(var, ex)
             log_entry("Weak form, symbolic layer: "*string(lhs_expr)*" = "*string(rhs_expr));
             
             # change symbolic layer into code layer
-            lhs_code = generate_code_layer(lhs_expr);
-            rhs_code = generate_code_layer(rhs_expr, $var.symbol);
+            lhs_code = generate_code_layer(lhs_expr, $var.symbol, LHS);
+            rhs_code = generate_code_layer(rhs_expr, $var.symbol, RHS);
             Femshop.log_entry("Weak form, code layer: LHS = "*string(lhs_code)*" \n  RHS = "*string(rhs_code));
             
             if Femshop.language == JULIA

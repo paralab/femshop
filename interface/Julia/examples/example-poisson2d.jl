@@ -29,7 +29,7 @@ init_femshop("poisson2d");
 
 # Write the weak form 
 @coefficient(f, "-2*pi*pi*sin(pi*x)*sin(pi*y)")
-@weakForm(u, "-grad(u)*grad(v) - f*v")
+@weakForm(u, "-dot(grad(u), grad(v)) - f*v")
 
 solve(u);
 

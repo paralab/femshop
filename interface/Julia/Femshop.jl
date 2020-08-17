@@ -139,6 +139,11 @@ function add_variable(var)
     elseif var.type == SYM_TENSOR
         var.values = zeros(N, Int((config.dimension*(config.dimension+1))/2));
     end
+    
+    # make SymType
+    symvar = sym_var(string(var.symbol), var.type, config.dimension);
+    var.symvar = symvar;
+    
     global variables = [variables; var];
     
     global linears = [linears; nothing];
@@ -147,13 +152,17 @@ function add_variable(var)
     log_entry("Added variable: "*string(var.symbol)*" of type: "*var.type);
 end
 
-function add_coefficient(c, val, nfuns)
+function add_coefficient(c, type, val, nfuns)
     global coefficients;
-    if typeof(val) <: Array
-        vals = [];
-        if nfuns == 0 # constant values
-            vals = val;
-        else # genfunction values
+    vals = [];
+    if nfuns == 0 # constant values
+        vals = val;
+        if length(vals) == 1 && !(typeof(vals) <: Array)
+            vals = [val];
+        end
+            
+    else # genfunction values
+        if typeof(val) <: Array
             ind = length(genfunctions) - nfuns + 1;
             for i=1:length(val)
                 if typeof(val[i]) == String
@@ -163,15 +172,16 @@ function add_coefficient(c, val, nfuns)
                     push!(vals, val[i]);
                 end
             end
-            push!(coefficients, Coefficient(c, vals));
-        end
-    else
-        if nfuns == 0 # constant value
-            push!(coefficients, Coefficient(c, [val]));
-        else # genfunction value
-            push!(coefficients, Coefficient(c, [genfunctions[end]]));
+        else
+            push!(vals, genfunctions[end]);
         end
     end
+    
+    symvar = sym_var(string(c), type, config.dimension);
+    
+    index = length(coefficients);
+    push!(coefficients, Coefficient(c, symvar, index, type, vals));
+    
     log_entry("Added coefficient "*string(c)*" : "*string(val));
     
     return coefficients[end];

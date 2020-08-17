@@ -1,472 +1,303 @@
 #=
-# A set of tools for parsing the variational forms into expressions 
-# with symbolic operators implemented by Femshop solvers.
+# A set of tools for parsing the variational forms into symEngine expressions.
 =#
 module SymbolicParser
 export sp_parse, sp_term
 
-# These lists need to be expanded
-test_ops = [:grad, :div, :curl]; # operators that may be applied to the test function
-var_ops = [:Dt, :grad, :div, :curl]; # operators that may be applied to variables or coefficients
+import ..Femshop: JULIA, CPP, MATLAB, SQUARE, IRREGULAR, TREE, UNSTRUCTURED, CG, DG, HDG,
+        NODAL, MODAL, LEGENDRE, UNIFORM, GAUSS, LOBATTO, NONLINEAR_NEWTON,
+        NONLINEAR_SOMETHING, EULER_EXPLICIT, EULER_IMPLICIT, CRANK_NICHOLSON, RK4, LSRK4,
+        ABM4, OURS, PETSC, VTK, RAW_OUTPUT, CUSTOM_OUTPUT, DIRICHLET, NEUMANN, ROBIN,
+        MSH_V2, MSH_V4,
+        SCALAR, VECTOR, TENSOR, SYM_TENSOR,
+        LHS, RHS,
+        LINEMESH, QUADMESH, HEXMESH
+import ..Femshop: Femshop_config, Femshop_prob, Variable, Coefficient
+import ..Femshop: log_entry, printerr
+import ..Femshop: config, prob, variables, coefficients
 
-# A single term from the variational form.
-# Has an arity and an array of multiplied factors
-# example: where v is a test function symbol and this is from an equation for u with variable symbols [u,r]
-# 1*v               ->  arity=1, subexpressions = [1, nothing, v]
-# 3*u*v             ->  arity=2, subexpressions = [3, u, v]
-# grad(r)*grad(v)   ->  arity=1, subexpressions = [grad(r), nothing, grad(v)] (arity=1 because r is considered a coefficient in an equation for u)
-# surface(u*v)      ->  arity=2, subexpressions = [nothing, surface(u), v] (surface is a special symbol for surface integrals)
-struct sp_term
-    arity::Int               # usually 1 or 2 for linear and bilinear terms
-    factors::Array{Any,1}    # array [coefficient part, variable part,  test function part]
+using SymEngine
+
+include("symtype.jl");
+include("symoperator.jl");
+
+# Custom operator symbols that will be replaced with sym_*_op 
+ops = [:DX, :Dy, :Dz, :Dt, :grad, :div, :curl, :inner, :dot, :cross];
+function add_custom_op(s)
+    push!(ops, s); # add the Symbol s to the list
 end
 
-# include some utility functions
-include("parser_utils.jl");
+# a special operator for dealing with scalar multiplication when the scalar is in an array
+import Base.*
+function *(a::Array{Basic,1}, b::Array{Basic,1})
+    if size(a) == (1,)
+        result = copy(b);
+        for i=1:length(b)
+            result[i] = result[i] * a[i];
+        end
+        return result;
+    elseif size(b) == (1,)
+        result = copy(a);
+        for i=1:length(a)
+            result[i] = result[i] * b[i];
+        end
+        return result;
+    else
+        # This should be an error, but I will treat it as a dot product for lazy people
+        # Note, it will still be an error if dimensions are not right.
+        return transpose(a) * b;
+    end
+end
 
-# Parses a variational form into symbolic expressions in terms of operators 
-# implemented by Femshop solvers.
+# Parses a variational form expression into a SymEngine Basic expression 
 # Takes an Expr, variable symbol, and test function symbol
-# Returns a tuple of expressions (lhs, rhs) for the equation lhs = rhs
-# lhs contains terms with arity > 1 (bilinear+)
-# rhs contains terms with arity =0,1 (linear or functionals)
+# The symbols are only for determining lhs vs. rhs
+# Returns a tuple of SymEngine expressions (lhs, rhs) for the equation lhs = rhs
+# lhs contains terms including the unknown variable
+# rhs contains terms without it
 function sp_parse(ex, var, test)
-    terms = get_all_terms(expand(ex));
-    spterms = Array{sp_term,1}(undef,length(terms));
-    dtterms = []; # Will hold index of terms that are wrapped in Dt()
-    for i=1:length(terms)
-        # split the test, var and coef factors
-        # Note: The number and symbol cases shouldn't happen, but are included for completeness
-        if typeof(terms[i]) <: Number
-            spterms[i] = sp_term(0, [terms[i], nothing, nothing]);
-        elseif typeof(terms[i]) == Symbol
-            if terms[i] === test
-                spterms[i] = sp_term(1, [nothing, nothing, terms[i]]);
-            elseif terms[i] === var
-                spterms[i] = sp_term(2, [nothing, terms[i], nothing]);
-            else
-                spterms[i] = sp_term(0, [terms[i], nothing, nothing]);
+    lhs = nothing;
+    rhs = nothing;
+    #println("expr = "*string(ex));
+    
+    # Work with a copy of ex
+    symex = copy(ex);
+    
+    # Replace symbols for variables, coefficients, test functions, and special operators
+    symex = replace_symbols(symex, test);
+    #println("symex1 = "*string(symex));
+    
+    # Evaluate the expression to apply symbolic operators
+    symex = apply_ops(symex, test);
+    #println("symex2 = "*string(symex));
+    
+    # Expand the expression and separate terms
+    sterms = get_sym_terms(symex);
+    #println("sterms = "*string(sterms));
+    
+    # Each element has an lhs and rhs
+    lhs = copy(sterms); # Just copy to set up the container right
+    rhs = copy(sterms);
+    sz = size(symex);
+    
+    if length(sz) == 1 # vector or scalar
+        for i=1:sz[1]
+            lhs[i] = Array{Basic,1}(undef,0);
+            rhs[i] = Array{Basic,1}(undef,0);
+            for ti=1:length(sterms[i])
+                if has_unknown(sterms[i][ti], var)
+                    #println("lhs: "*string(sterms[i][ti]));
+                    push!(lhs[i], sterms[i][ti]);
+                else
+                    #println("rhs: "*string(sterms[i][ti]));
+                    # switch sign to put on RHS
+                    push!(rhs[i], -sterms[i][ti]);
+                end
             end
-        elseif typeof(terms[i]) == Expr
-            facs = get_all_factors(terms[i]);
-            tf = []; # test function factors
-            cf = []; # coefficient factors
-            vf = []; # variable factors
-            
-            # handle Dt factors Dt(a*u*v) -> a*Dt(u*v)
-            newfacs = copy(facs);
-            refactor = false;
-            for j=1:length(facs)
-                # get past possible negative sign
-                if typeof(facs[j]) == Expr && facs[j].args[1] === :-
-                    if typeof(facs[j].args[2]) == Expr && facs[j].args[2].args[1] === :Dt
-                        newfacs[j].args[2] = facs[j].args[2].args[2]; # wrap the whole term in Dt
-                        refactor = true;
+        end
+    elseif length(sz) == 2 # matrix
+        for j=1:sz[2]
+            for i=1:sz[1]
+                lhs[i,j] = Basic(0);
+                rhs[i,j] = Basic(0);
+                for ti=1:length(sterms[i,j])
+                    if has_unknown(sterms[i,j][ti], var)
+                        #println("lhs: "*string(sterms[i,j][ti]));
+                        push!(lhs[i,j], sterms[i,j][ti]);
+                    else
+                        #println("rhs: "*string(sterms[i,j][ti]));
+                        push!(rhs[i,j], sterms[i,j][ti]);
                     end
-                else
-                    if typeof(facs[j]) == Expr && facs[j].args[1] === :Dt
-                        newfacs[j] = facs[j]. args[2]; # wrap the whole term in Dt
-                        refactor = true;
+                end
+            end
+        end
+    elseif length(sz) == 3 # rank 3
+        for k=1:sz[3]
+            for j=1:sz[2]
+                for i=1:sz[1]
+                    lhs[i,j,k] = Basic(0);
+                    rhs[i,j,k] = Basic(0);
+                    for ti=1:length(sterms[i,j,k])
+                        if has_unknown(sterms[i,j,k][ti], var)
+                            #println("lhs: "*string(sterms[i,j,k][ti]));
+                            push!(lhs[i,j,k], sterms[i,j,k][ti]);
+                        else
+                            #println("rhs: "*string(sterms[i,j,k][ti]));
+                            push!(rhs[i,j,k], sterms[i,j,k][ti]);
+                        end
                     end
                 end
             end
-            if refactor
-                # Dt() is stripped off, but noted
-                facs = get_all_factors(assemble_term(newfacs));
-                push!(dtterms, i);
-            end
-            
-            for j=1:length(facs)
-                if is_test_op(facs[j], test)
-                    tf = [tf ; facs[j]];
-                elseif is_var_op(facs[j], var)
-                    vf = [vf ; facs[j]];
-                else
-                    cf = [cf ; facs[j]];
-                end
-            end
-            a = 0; # arity
-            mulex = :(a*b);
-            if length(tf) > 0
-                a = 1;
-                if length(tf) > 1
-                    mulex.args = [:* ; tf];
-                    tf = copy(mulex);
-                else
-                    tf = tf[1];
-                end
-            else
-                tf = nothing;
-            end
-            if length(vf) > 0
-                a = 2;
-                if length(vf) > 1
-                    mulex.args = [:* ; vf];
-                    vf = copy(mulex);
-                else
-                    vf = vf[1];
-                end
-            else
-                vf = nothing;
-            end
-            if length(cf) > 1
-                mulex.args = [:* ; cf];
-                cf = copy(mulex);
-            elseif length(cf) == 1
-                cf = cf[1];
-            else
-                cf = nothing;
-            end
-            
-            spterms[i] = sp_term(a, [cf, vf, tf]);
         end
     end
     
-    # Translate each term into expressions like p1*operator(p2)
-    lhsterms = [];
-    lhsdtterms = [];
-    rhsterms = [];
-    for i=1:length(spterms)
-        adddt = false
-        for j=1:length(dtterms)
-            if dtterms[j] == i
-                adddt = true;
+    #println(string(lhs));
+    #println(string(rhs));
+    return (lhs, rhs);
+end
+
+# Replaces variable, coefficient and operator symbols in the expression
+function replace_symbols(ex, test)
+    if typeof(ex) == Symbol
+        # variable?
+        for v in variables
+            if ex === v.symbol
+                return v.symvar.vals;
             end
         end
-        if spterms[i].arity > 1
-            if adddt
-                lhsdtterms = [lhsdtterms ; translate_term(spterms[i], var, test)];
-            else
-                lhsterms = [lhsterms ; translate_term(spterms[i], var, test)];
+        # coefficient?
+        for c in coefficients
+            if ex === c.symbol
+                return c.symvar.vals;
             end
-        else
-            rhsterms = [rhsterms ; distribute_negative(translate_term(spterms[i], var, test))];
         end
-    end
-    
-    if length(lhsterms) > 1
-        lhs = :(a+b);
-        lhs.args = [:+ ; lhsterms];
-    elseif length(lhsterms) == 1
-        lhs = lhsterms[1];
+        # operator?
+        for p in ops
+            if ex === p
+                return Symbol("sym_"*string(ex)*"_op");
+            end
+        end
+        # test function?
+        if ex === test
+            return :TESTFUNC
+        end
+        # none of them?
+        return ex;
+    elseif typeof(ex) == Expr && length(ex.args) > 0
+        for i=1:length(ex.args)
+            ex.args[i] = replace_symbols(ex.args[i], test); # recursively replace on args if ex
+        end
+        return ex;
     else
-        lhs = 0; # this should never happen
-    end
-    
-    if length(lhsdtterms) > 1
-        lhsdt = :(a+b);
-        lhsdt.args = [:+ ; lhsdtterms];
-    elseif length(lhsdtterms) == 1
-        lhsdt = lhsdtterms[1];
-    else
-        lhsdt = 0;
-    end
-    
-    if length(rhsterms) > 1
-        rhs = :(a+b);
-        rhs.args = [:+ ; rhsterms];
-    elseif length(rhsterms) == 1
-        rhs = rhsterms[1];
-    else
-        rhs = 0;
-    end
-    
-    if length(lhsdtterms) > 0
-        return ((lhsdt, lhs), rhs);
-    else
-        return (lhs, rhs);
+        return ex;
     end
 end
 
-# Idea:
-# (u,v) -> TEST * WEIGHT * TRIAL
-# (au,v) -> TEST * COEFWEIGHT * TRIAL
-# (grad(u),grad(v)) -> GRADTEST * WEIGHT * GRADTRIAL
-# (agrad(u),grad(v)) -> GRADTEST * COEFWEIGHT * GRADTRIAL
-# (grad(au),grad(v)) -> GRADTEST * WEIGHT * GRADTRIAL * COEF
-# (grad(u),v) -> TEST * W * GRADTRIAL
-# (u,grad(v)) -> GRADTEST * W * TRIAL
-# BUT not pattern matching,
-# 1. translate v->TEST, u->TRIAL, etc
-# 2. reorder: TEST on left, WEIGHT/COEF , TRIAL on right
-function translate_term(t, var, test)
-    facs = [];
-    term = nothing;
-    borl = :RHS;
-    if t.arity == 0
-        # If arity=0, there's nothing to translate.
-        return t.factors[1];
-    elseif t.arity == 2
-        borl = :LHS;
-    end
+# Eval to apply the sym_*_op ops to create a SymEngine expression
+function apply_ops(ex, test)
+    global TESTFUNC = symbols("TESTFUNC");
     
-    # if there's a negative, strip it off and put it around everything -a*b -> -(a*b)
-    negative = false;
-    vpart = t.factors[2];
-    if typeof(vpart) == Expr && vpart.args[1] === :-
-        negative = !negative;
-        vpart = t.factors[2].args[2];
+    try
+        return eval(ex);
+    catch e
+        printerr("Problem evaluating the symbolic expression: "*string(ex));
+        println(string(e));
+        return 0;
     end
-    tpart = t.factors[3];
-    if typeof(tpart) == Expr && tpart.args[1] === :-
-        negative = !negative;
-        tpart = t.factors[3].args[2];
-    end
-    cpart = t.factors[1];
-    if typeof(cpart) == Expr && cpart.args[1] === :-
-        negative = !negative;
-        cpart = cpart.args[2];
-    end
-    
-    test_factor = nothing;
-    trial_factor = nothing;
-    coef_factor = nothing;
-    if !(tpart === nothing) # There is a test function part
-        if typeof(tpart) == Symbol # (?,v)
-            test_factor = :TEST;
-        elseif typeof(tpart) == Expr && tpart.args[1] === :grad # (?, grad(v))
-            test_factor = :GRADTEST;
-        else
-            # other possibilities are not ready
-        end
-    else # There is no test function part?? This shouldn't happen
-        #
-    end
-        
-    if !(vpart === nothing) # There is a variable part
-        if typeof(vpart) == Symbol # (?u,?)
-            trial_factor = :TRIAL;
-        elseif typeof(vpart) == Expr && vpart.args[1] === :grad # (?grad(u),v) 
-            trial_factor = :GRADTRIAL;
-        else
-            # other possibilities are not ready
-        end
-    else # There is no variable part. RHS
-        
-    end
-    
-    if !(cpart === nothing) # There is a coefficient part
-        if typeof(cpart) <: Number
-            coef_factor = cpart;
-        elseif typeof(cpart) == Expr && cpart.args[1] === :grad # grad(c)
-            # still thinking
-        else
-            coef_factor = cpart;
-        end
-    else # There is no coefficient part.
-        
-    end
-    
-    # assemble the term, assumes test_factor is something
-    if coef_factor === nothing
-        if trial_factor === nothing
-            term = test_factor;
-        else
-            term = :(a*b);
-            term.args[2] = test_factor;
-            term.args[3] = trial_factor;
-        end
-    else
-        if trial_factor === nothing
-            term = :(a*b);
-            term.args[2] = test_factor;
-            term.args[3] = coef_factor;
-        else
-            term = :(a*b*c);
-            term.args[2] = test_factor;
-            term.args[3] = coef_factor;
-            term.args[4] = trial_factor;
-        end
-    end
-    
-    # negative sign
-    if negative
-        negex = :(-a);
-        negex.args[2] = term;
-        term = negex;
-    end
-    
-    return term;
 end
 
-# Translate a term into an expression using symbolic operators
-# example with test function v and variable u:
-# u*v  ->  mass(u)
-# grad(u)*v  ->  advection(u)
-# u*grad(v)  ->  advection_transpose(u)
-# grad(u)*grad(v)  ->  stiffness(u)
-function translate_term_olde(t, var, test)
-    facs = [];
-    term = nothing;
-    borl = :RHS;
-    if t.arity == 0
-        # If arity=0, there's nothing to translate.
-        return t.factors[1];
-    elseif t.arity == 2
-        borl = :LHS;
-    end
+function has_unknown(ex, var)
+    str = string(ex);
+    vs = "_"*string(var)*"_";
     
-    # if there's a negative, strip it off and put it around everything -a*b -> -(a*b)
-    negative = false;
-    vpart = t.factors[2];
-    if typeof(vpart) == Expr && vpart.args[1] === :-
-        negative = !negative;
-        vpart = t.factors[2].args[2];
-    end
-    tpart = t.factors[3];
-    if typeof(tpart) == Expr && tpart.args[1] === :-
-        negative = !negative;
-        tpart = t.factors[3].args[2];
-    end
-    cpart = t.factors[1];
-    if typeof(cpart) == Expr && cpart.args[1] === :-
-        negative = !negative;
-        cpart = cpart.args[2];
-    end
-    
-    # What parts are present? Split them into p1*op(p2)
-    p1 = nothing;
-    p2 = nothing;
-    op = nothing;
-    if !(tpart === nothing) # There is a test function part
-        if typeof(cpart) <: Number
-            p1 = cpart;
-            p2 = vpart;
-        else
-            p2 = assemble_term([cpart ; vpart]);
-            if p2 == 0
-                p2 = nothing;
-            else
-                (p1, p2) = extract_constant(p2);
-            end
-        end
-        if typeof(tpart) == Symbol
-            # (?,t)
-            if typeof(p2) == Expr && p2.args[1] === :grad
-                op = :advection_operator;
-                p2 = p2.args[2];
-            elseif !(p2 === nothing)
-                op = :mass_operator;
-            else
-                op = :test_int
-                p2 = tpart;
-            end
-        elseif typeof(tpart) == Expr && tpart.args[1] === :grad
-            # (?, grad(t))
-            if typeof(p2) == Expr && p2.args[1] === :grad
-                op = :stiffness_operator;
-                p2 = p2.args[2];
-            elseif !(p2 === nothing)
-                op = :advection_transpose_operator;
-            else
-                op = :test_int
-                p2 = tpart;
-            end
-        else
-            op = :unknown_operator;
-        end
-    else # There is no test function part?? This shouldn't happen
-        p1 = assemble_term([cpart, vpart]);
-    end
-    
-    if p1 === nothing
-        if op === nothing || p2 === nothing
-            return nothing;
-        end
-        term = :(a(b));
-        #term.args[1] = op;
-        #term.args[2] = p2;
-        #term.args = [op ; p2 ; :x ; :refel ; borl];
-        term.args = [op ; p2 ; :args];
-    else
-        if op === nothing || p2 === nothing
-            term = p1;
-        else
-            term = :(a*b(c));
-            term.args[2] = p1;
-            #term.args[3].args[1] = op;
-            #term.args[3].args[2] = p2;
-            #term.args[3].args = [op ; p2 ; :x ; :refel ; borl];
-            term.args[3].args = [op ; p2 ; :args];
-        end
-    end
-    
-    # negative sign
-    if negative
-        negex = :(-a);
-        negex.args[2] = term;
-        term = negex;
-    end
-    
-    return term;
+    return occursin(vs, str);
 end
 
-##### not ready ########
-
-# # Turns something like surface(B*u*v) into something like (operator_surface_int(B*flux[:,:,u.index]))
-# function replace_surface_terms(ex)
-#     if !(typeof(ex) == Expr)
-#         return ex;
-#     elseif ex.head === :call
-#         if ex.args[1] === :surface
-#             # The expr in args[2] should be something like (B*u*v) for variable u and trial function v
-#             st = surface_term(ex.args[2]);
-#             ex = :(operator_surface_int(a));
-#             ex.args[2] = st;
-#         else
-#             for i=2:length(ex.args)
-#                 ex.args[i] = replace_surface_terms(ex.args[i]);
-#             end
-#         end
-#     end
+# Separate terms for each element of ex.
+# Elements of the returned array are arrays of terms
+function get_sym_terms(ex)
+    # Recursively work on each term of the array
+    if typeof(ex) <: Array
+        sz = size(ex);
+        result = Array{Array,length(sz)}(undef, sz);
+        
+        if length(sz) == 1 # vector or scalar
+            for i=1:sz[1]
+                result[i] = get_sym_terms(ex[i]);
+            end
+        elseif length(sz) == 2 # matrix
+            for j=1:sz[2]
+                for i=1:sz[1]
+                    result[i,j] = get_sym_terms(ex[i,j]);
+                end
+            end
+        elseif length(sz) == 3 # rank 3
+            for k=1:sz[3]
+                for j=1:sz[2]
+                    for i=1:sz[1]
+                        result[i,j,k] = get_sym_terms(ex[i,j,k]);
+                    end
+                end
+            end
+        end
+        
+        return result;
+    end
     
-#     return ex;
-# end
+    # ex is a symbolic expression(not array of them)
+    # First expand it
+    newex = expand(ex);
+    #println("expanded = "*string(newex));
+    # Then separate the terms into an array
+    return get_all_terms(newex);
+end
 
-# # This gets the ex in surface(ex)
-# # remove the *v part
-# # turn var into flux[:,:,var.index]
-# function surface_term(ex)
-#     if typeof(ex) == Symbol
-#         # is it a var or a test function?
-#         for vi = 1:var_count
-#             if ex === variables[vi].symbol
-#                 return :(flux[:,:,$ex.index]);
-#             end
-#         end
-            
-#     elseif typeof(ex) == Expr && ex.head === :call
-#         # work recursively on all sub expressions
-#         for i=2:length(ex.args)
-#             ex.args[i] = surface_term(ex.args[i]);
-#         end
-#         # if one of the args is the test function, remove it
-#         # (a*b*v) -> (a*b) , (a*v) -> (a)
-#         for i=2:length(ex.args)
-#             ex.args[i] = surface_term(ex.args[i]);
-#             if ex.args[i] === test_function_symbol
-#                 # if (a*b*v)
-#                 if length(ex.args) > 3
-#                     newargs = copy(ex.args);
-#                     newind = 1;
-#                     for j=1:length(ex.args)
-#                         if j!=i
-#                             newargs[newind] = ex.args[j];
-#                             newind += 1;
-#                         end
-#                     end
-#                     ex.args = newargs;
-#                     return ex;
-#                 elseif i == 2
-#                     return ex.args[3];
-#                 else
-#                     return ex.args[2];
-#                 end
-#             end 
-#         end
-#     end
+function get_all_terms(ex)
+    if typeof(ex) == Basic
+        # convert to Expr, separate, convert to Basic
+        expr = Meta.parse(string(ex));
+        #println("Expr = "*string(expr));
+        #dump(expr);
+        terms = get_all_terms(expr);
+        #println("Exprterms = "*string(terms));
+        bterms = Array{Basic,1}(undef,size(terms));
+        for i=1:length(terms)
+            bterms[i] = Basic(terms[i]);
+        end
+        return bterms;
+    end
     
-#     return ex;
-# end
+    # At this point ex must be an Expr or symbol or number
+    if !(typeof(ex) == Expr)
+        return [ex];
+    end
+    terms = [];
+    if ex.head === :call
+        if ex.args[1] === :+
+            for i=2:length(ex.args)
+                terms = [terms; get_all_terms(ex.args[i])];
+            end
+        elseif ex.args[1] === :-
+            # apply -() to minused terms
+            # Remember that the result of this will only be added terms, no minuses
+            terms = get_all_terms(ex.args[2]);
+            if length(ex.args) < 3
+                for j=1:length(terms)
+                    terms[j] = apply_negative(terms[j]);
+                end
+            else
+                for i=3:length(ex.args)
+                    tmp = get_all_terms(ex.args[i]);
+                    for j=1:length(tmp)
+                        tmp[j] = apply_negative(tmp[j]);
+                    end
+                    append!(terms, tmp);
+                end
+            end
+        else
+            terms = [ex];
+        end
+    else
+        terms = [ex];
+    end
+    return terms;
+end
+
+function apply_negative(ex)
+    negex = :(-a);
+    if typeof(ex) == Symbol
+        negex.args[2] = ex;
+        return negex;
+    elseif typeof(ex) <: Number
+        return -ex;
+    elseif typeof(ex) == Expr
+        if ex.args[1] == :- && length(ex.args) == 2
+            return ex.args[2];
+        else
+            negex.args[2] = ex;
+            return negex;
+        end
+    end
+end
 
 end # module

@@ -32,7 +32,7 @@ init_femshop("coef");
 @coefficient(d, 0.1)
 @coefficient(f, "(-5*pi*pi*x*sin(pi*x)*sin(2*pi*y) + pi*cos(pi*x)*sin(2*pi*y)) + y*sin(pi*x)*sin(2*pi*y)")
 
-@weakForm(u, "-a*grad(u)*b*grad(v)*d + c*u*d*v*b - d*f*b*v")
+@weakForm(u, "-a*b*dot(grad(u), grad(v))*d + c*u*d*v*b - d*f*b*v")
 
 solve(u);
 
