@@ -2,7 +2,7 @@
 # A set of tools for parsing the variational forms into symEngine expressions.
 =#
 module SymbolicParser
-export sp_parse, sp_term
+export sp_parse, SymType, SymOperator, add_custom_op
 
 import ..Femshop: JULIA, CPP, MATLAB, SQUARE, IRREGULAR, TREE, UNSTRUCTURED, CG, DG, HDG,
         NODAL, MODAL, LEGENDRE, UNIFORM, GAUSS, LOBATTO, NONLINEAR_NEWTON,
@@ -14,38 +14,38 @@ import ..Femshop: JULIA, CPP, MATLAB, SQUARE, IRREGULAR, TREE, UNSTRUCTURED, CG,
         LINEMESH, QUADMESH, HEXMESH
 import ..Femshop: Femshop_config, Femshop_prob, Variable, Coefficient
 import ..Femshop: log_entry, printerr
-import ..Femshop: config, prob, variables, coefficients
+import ..Femshop: config, prob, variables, coefficients, test_functions
 
 using SymEngine
 
 include("symtype.jl");
 include("symoperator.jl");
 
-# Custom operator symbols that will be replaced with sym_*_op 
-ops = [:DX, :Dy, :Dz, :Dt, :grad, :div, :curl, :inner, :dot, :cross];
-function add_custom_op(s)
-    push!(ops, s); # add the Symbol s to the list
+# Predefined operator symbols that will be replaced with sym_*_op 
+op_names = [:dot, :inner, :cross, :grad, :div, :curl, :laplacian];
+# Build SymOperator objects for those
+ops = init_ops();
+
+# Custom operators that can be added by a user
+custom_op_names = [];
+custom_ops = [];
+
+function add_custom_op(s, handle)
+    push!(custom_op_names, s); # add the Symbol s to the list
+    push!(custom_ops, SymOperator(s, handle));
 end
 
 # a special operator for dealing with scalar multiplication when the scalar is in an array
 import Base.*
 function *(a::Array{Basic,1}, b::Array{Basic,1})
     if size(a) == (1,)
-        result = copy(b);
-        for i=1:length(b)
-            result[i] = result[i] * a[i];
-        end
-        return result;
+        return b.*a[1];
     elseif size(b) == (1,)
-        result = copy(a);
-        for i=1:length(a)
-            result[i] = result[i] * b[i];
-        end
-        return result;
+        return a.*b[1];
     else
         # This should be an error, but I will treat it as a dot product for lazy people
         # Note, it will still be an error if dimensions are not right.
-        return transpose(a) * b;
+        return [transpose(a) * b];
     end
 end
 
@@ -55,7 +55,7 @@ end
 # Returns a tuple of SymEngine expressions (lhs, rhs) for the equation lhs = rhs
 # lhs contains terms including the unknown variable
 # rhs contains terms without it
-function sp_parse(ex, var, test)
+function sp_parse(ex, var)
     lhs = nothing;
     rhs = nothing;
     #println("expr = "*string(ex));
@@ -64,11 +64,11 @@ function sp_parse(ex, var, test)
     symex = copy(ex);
     
     # Replace symbols for variables, coefficients, test functions, and special operators
-    symex = replace_symbols(symex, test);
+    symex = replace_symbols(symex);
     #println("symex1 = "*string(symex));
     
     # Evaluate the expression to apply symbolic operators
-    symex = apply_ops(symex, test);
+    symex = apply_ops(symex);
     #println("symex2 = "*string(symex));
     
     # Expand the expression and separate terms
@@ -76,8 +76,8 @@ function sp_parse(ex, var, test)
     #println("sterms = "*string(sterms));
     
     # Each element has an lhs and rhs
-    lhs = copy(sterms); # Just copy to set up the container right
-    rhs = copy(sterms);
+    lhs = similar(sterms); # set up the container right
+    rhs = similar(sterms);
     sz = size(symex);
     
     if length(sz) == 1 # vector or scalar
@@ -137,7 +137,7 @@ function sp_parse(ex, var, test)
 end
 
 # Replaces variable, coefficient and operator symbols in the expression
-function replace_symbols(ex, test)
+function replace_symbols(ex)
     if typeof(ex) == Symbol
         # variable?
         for v in variables
@@ -153,19 +153,26 @@ function replace_symbols(ex, test)
         end
         # operator?
         for p in ops
-            if ex === p
+            if ex === p.symbol
+                return Symbol("sym_"*string(ex)*"_op");
+            end
+        end
+        for p in custom_ops
+            if ex === p.symbol
                 return Symbol("sym_"*string(ex)*"_op");
             end
         end
         # test function?
-        if ex === test
-            return :TESTFUNC
+        for c in test_functions
+            if ex === c.symbol
+                return c.symvar.vals;
+            end
         end
         # none of them?
         return ex;
     elseif typeof(ex) == Expr && length(ex.args) > 0
         for i=1:length(ex.args)
-            ex.args[i] = replace_symbols(ex.args[i], test); # recursively replace on args if ex
+            ex.args[i] = replace_symbols(ex.args[i]); # recursively replace on args if ex
         end
         return ex;
     else
@@ -174,8 +181,7 @@ function replace_symbols(ex, test)
 end
 
 # Eval to apply the sym_*_op ops to create a SymEngine expression
-function apply_ops(ex, test)
-    global TESTFUNC = symbols("TESTFUNC");
+function apply_ops(ex)
     
     try
         return eval(ex);

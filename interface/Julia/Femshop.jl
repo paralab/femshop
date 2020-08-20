@@ -6,8 +6,8 @@ module Femshop
 
 # Public macros and functions
 export @language, @domain, @mesh, @solver, @stepper, @functionSpace, @trialFunction,
-        @testFunction, @nodes, @order, @boundary, @variable, @coefficient, @initial,
-        @timeInterval, @weakForm, @LHS, @RHS,
+        @testFunction, @nodes, @order, @boundary, @variable, @coefficient, @testSymbol, @initial,
+        @timeInterval, @weakForm, @LHS, @RHS, @customOperator,
         @outputMesh, @useLog, @finalize
 export init_femshop, set_language, dendro, set_solver, set_stepper, add_mesh, output_mesh, add_test_function, 
         add_initial_condition, add_boundary_condition, set_rhs, set_lhs, solve, finalize
@@ -41,10 +41,10 @@ refel = nothing;
 var_count = 0;
 variables = [];
 coefficients = [];
+test_functions = [];
 #generated functions
 genfunc_count = 0;
 genfunctions = [];
-test_function_symbol = nothing;
 #rhs
 linears = [];
 #lhs
@@ -73,9 +73,9 @@ function init_femshop(name="unnamedProject")
     global var_count = 0;
     global variables = [];
     global coefficients = [];
+    global test_functions = [];
     global genfunc_count = 0;
     global genfunctions = [];
-    global test_function_symbol = nothing;
     global linears = [];
     global bilinears = [];
     global time_stepper = nothing;
@@ -121,9 +121,13 @@ function output_mesh(file, format)
     log_entry("Wrote mesh data to file: "*file*".msh");
 end
 
-function add_test_function(v)
-    global test_function_symbol = v;
-    log_entry("Set test function symbol: "*string(v));
+function add_test_function(v, type)
+    varind = length(test_functions) + 1;
+    # make SymType
+    symvar = sym_var(string(v), type, config.dimension);
+    
+    push!(test_functions, Femshop.Coefficient(v, symvar, varind, type, []););
+    log_entry("Set test function symbol: "*string(v)*" of type: "*type);
 end
 
 function add_variable(var)
@@ -259,7 +263,14 @@ end
 
 function set_rhs(var, code="")
     if language == 0 || language == JULIA
-        global linears[var.index] = genfunctions[end];
+        global linears;
+        if typeof(var) <:Array
+            for i=1:length(var)
+                linears[var[i].index] = genfunctions[end];
+            end
+        else
+            linears[var.index] = genfunctions[end];
+        end
     else
         global linears[var.index] = code;
     end
@@ -267,7 +278,14 @@ end
 
 function set_lhs(var, code="")
     if language == 0 || language == JULIA
-        global bilinears[var.index] = genfunctions[end];
+        global bilinears;
+        if typeof(var) <:Array
+            for i=1:length(var)
+                bilinears[var[i].index] = genfunctions[end];
+            end
+        else
+            bilinears[var.index] = genfunctions[end];
+        end
     else
         global bilinears[var.index] = code;
     end
@@ -292,7 +310,17 @@ function solve(var)
     else
         if config.solver_type == CG
             init_cgsolver();
-            varind = var.index;
+            if typeof(var) <: Array
+                varnames = "["*string(var[1].symbol);
+                for vi=2:length(var)
+                    varnames = varnames*", "*string(var[i].symbol);
+                end
+                varnames = varnames*"]";
+                varind = var[1].index;
+            else
+                varnames = string(var.symbol);
+                varind = var.index;
+            end
             
             lhs = bilinears[varind];
             rhs = linears[varind];
@@ -302,10 +330,14 @@ function solve(var)
                 t = @elapsed(var.values = CGSolver.solve(var, lhs, rhs, time_stepper));
                 
             else
-                t = @elapsed(var.values = CGSolver.solve(var, lhs, rhs));
+                t = @elapsed(result = CGSolver.solve(var, lhs, rhs));
+                components = length(var.symvar.vals);
+                for compi=1:components
+                    var.values[:,compi] = result[compi:components:end];
+                end
             end
             
-            log_entry("Solved for "*string(var.symbol)*".(took "*string(t)*" seconds)");
+            log_entry("Solved for "*varnames*".(took "*string(t)*" seconds)");
         end
     end
     

@@ -43,11 +43,3 @@ function sym_var(name, type, dim)
     
     return sym_type;
 end
-
-# Applies a derivative prefix. wrt is the axis index
-# sym_deriv(u_12, 1) -> D1_u_12
-function sym_deriv(var, wrt)
-    prefix = "D"*string(wrt)*"_";
-    
-    return symbols(prefix*string(var));
-end

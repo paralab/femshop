@@ -21,7 +21,7 @@ init_femshop("coef");
 
 @variable(u)                        # same as @variable(u, SCALAR)
 
-@testFunction(v)                    # sets the symbol for a test function
+@testSymbol(v)                    # sets the symbol for a test function
 
 @boundary(u, 1, DIRICHLET, 0)
 

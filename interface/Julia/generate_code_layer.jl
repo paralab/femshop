@@ -34,6 +34,8 @@ function generate_code_layer_julia(symex, var, lorr)
     need_derivative = false;
     needed_coef = [];
     needed_coef_ind = [];
+    test_ind = [];
+    trial_ind = [];
     
     # symex is an array of arrays of symengine terms
     # turn each one into an Expr
@@ -50,12 +52,20 @@ function generate_code_layer_julia(symex, var, lorr)
     end
     
     # Process the terms turning them into the code layer
-    cindex = 0;
     for i=1:length(terms)
-        (codeterm, der, coe, coeind) = process_term_julia(terms[i], var, lorr);
+        (codeterm, der, coe, coeind, testi, trialj) = process_term_julia(terms[i], var, lorr);
+        if coeind == -1
+            # processing failed due to nonlinear term
+            printerr("term processing failed for: "*string(terms[i]));
+            return nothing;
+        end
         need_derivative = need_derivative || der;
         append!(needed_coef, coe);
         append!(needed_coef_ind, coeind);
+        # change indices into one number
+        
+        push!(test_ind, testi);
+        push!(trial_ind, trialj);
         terms[i] = codeterm;
     end
     
@@ -86,7 +96,7 @@ function generate_code_layer_julia(symex, var, lorr)
     for i=1:length(needed_coef)
         already = false;
         for j=1:length(unique_coef)
-            if unique_coef[j] === needed_coef[i]
+            if unique_coef[j] === needed_coef[i] && unique_coef_ind[j] == needed_coef_ind[i]
                 already = true;
             end
         end
@@ -162,14 +172,73 @@ function generate_code_layer_julia(symex, var, lorr)
     end
     
     # finally add the code expression
-    if length(terms) > 1
-        tmp = :(a+b);
-        tmp.args = [:+];
-        for i=1:length(terms)
-            push!(tmp.args, terms[i]);
+    # For multiple dofs per node it will be like:
+    # [A11  A12  A13 ...] where the indices are from test_ind and trial_ind (vector components)
+    # [A21  A22  A23 ...] Note: things will be rearranged when inserted into the global matrix/vector
+    # [...              ]
+    # [...              ]
+    #
+    # [b1 ] from test_ind
+    # [b2 ]
+    # [...]
+    
+    # Allocate if needed
+    dofsper = 1;
+    if typeof(var) <: Array
+        for vi=1:length(var)
+            dofsper += length(var[vi].symvar.vals); # The number of components for this variable
         end
-        terms[1] = tmp;
+    elseif !(var.type == SCALAR)
+        dofsper = length(var.symvar.vals);
     end
+    
+    if dofsper > 1
+        if lorr == RHS
+            push!(code.args, Expr(:(=), :full_vector, :(zeros(refel.Np*$dofsper)))); # allocate vector
+        else
+            push!(code.args, Expr(:(=), :full_matrix, :(zeros(refel.Np*$dofsper, refel.Np*$dofsper)))); # allocate matrix
+        end
+    end
+    
+    if length(terms) > 1
+        if typeof(var)==Variable # Only one variable
+            if var.type == SCALAR # Only one component
+                tmp = :(a+b);
+                tmp.args = [:+];
+                for i=1:length(terms)
+                    push!(tmp.args, terms[i]);
+                end
+                terms[1] = tmp;
+            else # More than one component
+                # add terms into full matrix according to testind/trialind
+                tmp = :(a+b);
+                tmp.args = [:+];
+                for i=1:length(terms)
+                    ti = test_ind[i][1]-1;
+                    #rows = :(($ti * refel.Np + 1):(($ti + 1)*refel.Np));
+                    tj = trial_ind[i][1]-1;
+                    #cols = :(($tj * refel.Np + 1):(($tj + 1)*refel.Np));
+                    
+                    if lorr == LHS
+                        push!(code.args, Expr(:(+=), :(full_matrix[($ti * refel.Np + 1):(($ti + 1)*refel.Np),($tj * refel.Np + 1):(($tj + 1)*refel.Np)]), terms[i]));
+                    else
+                        push!(code.args, Expr(:(+=), :(full_vector[($ti * refel.Np + 1):(($ti + 1)*refel.Np)]), terms[i]));
+                    end
+                    
+                end
+                if lorr == LHS
+                    terms[1] = :full_matrix;
+                else
+                    terms[1] = :full_vector;
+                end
+                
+            end
+        else #more than one variable
+            #TODO
+        end
+    end
+    
+    # At this point everything is packed into terms[1]
     push!(code.args, Expr(:return, terms[1]));
     return code;
 end
@@ -186,6 +255,8 @@ function process_term_julia(sterm, var, lorr)
     trial_part = nothing;
     coef_part = nothing;
     weight_part = :(refel.wg .* detJ);
+    test_component = 0;
+    trial_component = 0;
     
     # extract each of the factors.
     factors = separate_factors(term);
@@ -205,7 +276,8 @@ function process_term_julia(sterm, var, lorr)
     for i=1:length(factors)
         (index, v, mods) = extract_symbols(factors[i]);
         
-        if v === :TESTFUNC
+        if is_test_func(v)
+            test_component = index; # the vector index
             if length(mods) > 0
                 # TODO more than one derivative mod
                 need_derivative = true;
@@ -216,7 +288,13 @@ function process_term_julia(sterm, var, lorr)
                 # no derivative mods
                 test_part = :(refel.Q');
             end
-        elseif v === var
+        elseif is_unknown_var(v, var)
+            if !(trial_part === nothing)
+                # Two unknowns multiplied in this term. Nonlinear. abort.
+                printerr("Nonlinear term. Code layer incomplete.");
+                return (-1, -1, -1, -1, -1, -1);
+            end
+            trial_component = index;
             if length(mods) > 0
                 # TODO more than one derivative mod
                 need_derivative = true;
@@ -239,8 +317,9 @@ function process_term_julia(sterm, var, lorr)
     # If rhs, change var into var.values and treat as a coefficient
     if lorr == RHS && trial_part === :(refel.Q)
         tmpv = :(a.values[gbl]);
-        tmpv.args[1].args[1] = var;
+        tmpv.args[1].args[1] = var.symbol; #TODO, will not work for var=array
         push!(coef_facs, tmpv);
+        push!(coef_inds, trial_component);
     end
     
     # If there's no trial part, need to do this
@@ -291,7 +370,7 @@ function process_term_julia(sterm, var, lorr)
         term = negex;
     end
     
-    return (term, need_derivative, needed_coef, needed_coef_ind);
+    return (term, need_derivative, needed_coef, needed_coef_ind, test_component, trial_component);
 end
 
 ###############################################################################################################
@@ -665,6 +744,27 @@ function get_coef_index(c)
     return ind;
 end
 
+function is_test_func(v)
+    for t in test_functions
+        if t.symbol === v
+            return true;
+        end
+    end
+    return false;
+end
+
+function is_unknown_var(v, vars)
+    if typeof(vars) == Variable
+        return v===vars.symbol;
+    end
+    for t in vars
+        if t.symbol === v
+            return true;
+        end
+    end
+    return false;
+end
+
 # Extract meaning from the symbolic object name
 function extract_symbols(ex)
     str = string(ex);
@@ -676,11 +776,20 @@ function extract_symbols(ex)
     e = l; # end of variable name
     b = l; # beginning of variable name
     
-    if occursin("TESTFUNC", str)
+    if occursin("TEST", str)
         # index = [];
-        var = :TESTFUNC;
-        b = b-8;
-        e = b;
+        var = :TEST;
+        for i=l:-1:0
+            if e==l
+                if str[i] == '_'
+                    e = i-1;
+                else
+                    index = [parse(Int, str[i]); index] # The indices on the variable
+                end
+            end
+        end
+        e = e-5;
+        b = e;
     else
         for i=l:-1:0
             if e==l

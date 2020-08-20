@@ -101,11 +101,26 @@ end
 function assemble(var, bilinear, linear, t=0.0, dt=0.0)
     Np = refel.Np;
     nel = mesh_data.nel;
-    Nn = size(grid_data.allnodes)[1];
+    N1 = size(grid_data.allnodes)[1];
+    if typeof(var) <: Tuple
+        # multiple variables being solved for simultaneously
+        dofs_per_node = 0;
+        var_to_dofs = [];
+        for vi=1:length(var)
+            tmp = dofs_per_node;
+            dofs_per_node += length(var[vi].symvar.vals);
+            push!(var_to_dofs, (tmp+1):dofs_per_node);
+        end
+    else
+        # one variable
+        dofs_per_node = length(var.symvar.vals);
+    end
+    Nn = dofs_per_node * N1;
     
     b = zeros(Nn);
     A = spzeros(Nn, Nn);
     
+    # The elemental assembly loop
     for e=1:nel;
         nv = mesh_data.nv[e];
         gis = zeros(Int, nv);
@@ -117,18 +132,50 @@ function assemble(var, bilinear, linear, t=0.0, dt=0.0)
         glb = loc2glb[e,:];                 # global indices of this element's nodes for extracting values from var arrays
         xe = grid_data.allnodes[glb[:],:];  # coordinates of this element's nodes for evaluating coefficient functions
         
-        args = (var, xe, glb, refel, RHS, t, dt);
-        linchunk = linear.func(args);  # get the elemental linear part
-        b[glb] .+= linchunk;
-        
-        args = (var, xe, glb, refel, LHS, t, dt);
-        bilinchunk = bilinear.func(args); # the elemental bilinear part
-        A[glb, glb] .+= bilinchunk;         # This will be very inefficient for sparse A
+        # The linear part. Compute the elemental linear part for each dof
+        rhsargs = (var, xe, glb, refel, RHS, t, dt);
+        lhsargs = (var, xe, glb, refel, LHS, t, dt);
+        if dofs_per_node == 1
+            linchunk = linear.func(rhsargs);  # get the elemental linear part
+            b[glb] .+= linchunk;
+            
+            bilinchunk = bilinear.func(lhsargs); # the elemental bilinear part
+            A[glb, glb] .+= bilinchunk;         # This will be very inefficient for sparse A
+        elseif typeof(var) == Variable
+            # only one variable, but more than one dof
+            linchunk = linear.func(rhsargs);
+            insert_linear!(b, linchunk, glb, 1:dofs_per_node, dofs_per_node);
+            
+            bilinchunk = bilinear.func(lhsargs);
+            insert_bilinear!(A, bilinchunk, glb, 1:dofs_per_node, dofs_per_node);
+        else
+            # more than one variable
+            # for vi=1:length(var)
+            #     linchunk = linear[vi].func(rhsargs);
+            #     insert_linear!(b, linchunk, glb, var_to_dofs[vi], dofs_per_node);
+                
+            #     bilinchunk = bilinear[vi].func(lhsargs);
+            #     insert_bilinear!(A, bilinchunk, glb, var_to_dofs[vi], dofs_per_node);
+            # end
+            linchunk = linear.func(rhsargs);
+            insert_linear!(b, linchunk, glb, 1:dofs_per_node, dofs_per_node);
+            
+            bilinchunk = bilinear.func(lhsargs);
+            insert_bilinear!(A, bilinchunk, glb, 1:dofs_per_node, dofs_per_node);
+        end
     end
     
     # Just for testing. This should really be a loop over BIDs with corresponding calls
-    (A, b) = dirichlet_bc(A, b, prob.bc_func[var.index, 1], grid_data.bdry[1,:], t);
-
+    if dofs_per_node > 1
+        for d=1:dofs_per_node
+            #rows = ((d-1)*length(glb)+1):(d*length(glb));
+            rowoffset = (d-1)*Np;
+            (A, b) = dirichlet_bc(A, b, prob.bc_func[var.index, 1][d], grid_data.bdry[1,:], t, d, dofs_per_node);
+        end
+    else
+        (A, b) = dirichlet_bc(A, b, prob.bc_func[var.index, 1], grid_data.bdry[1,:], t);
+    end
+    
     return (A, b);
 end
 
@@ -153,6 +200,31 @@ function assemble_rhs_only(var, linear, t=0.0, dt=0.0)
     b = dirichlet_bc_rhs_only(b, prob.bc_func[var.index, 1], grid_data.bdry[1,:], t);
 
     return b;
+end
+
+# Inset the single dof into the greater construct
+function insert_linear!(b, bel, glb, dof, Ndofs)
+    # group nodal dofs
+    for d=1:length(dof)
+        ind = glb.*Ndofs .- (Ndofs-dof[d]);
+        ind2 = ((d-1)*length(glb)+1):(d*length(glb));
+        
+        b[ind] = b[ind] + bel[ind2];
+    end
+end
+
+function insert_bilinear!(a, ael, glb, dof, Ndofs)
+    # group nodal dofs
+    for di=1:length(dof)
+        indi = glb.*Ndofs .- (Ndofs-dof[di]);
+        indi2 = ((di-1)*length(glb)+1):(di*length(glb));
+        for dj=1:length(dof)
+            indj = glb.*Ndofs .- (Ndofs-dof[dj]);
+            indj2 = ((dj-1)*length(glb)+1):(dj*length(glb));
+            
+            a[indi, indj] = a[indi, indj] + ael[indi2, indj2];
+        end
+    end
 end
 
 end #module

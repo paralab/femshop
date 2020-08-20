@@ -123,6 +123,16 @@ macro stepper(s, cfl)
     end)
 end
 
+macro customOperator(s, handle)
+    symb = string(s);
+    return esc(quote
+        varind = Femshop.var_count + 1;
+        $s = Symbol($symb);
+        add_custom_op($s, $handle);
+        log_entry("Added custom operator: "*string($s));
+    end)
+end
+
 # ============= end config , begin prob ==============
 
 macro mesh(m)
@@ -213,22 +223,34 @@ macro initial(var, ic)
     end)
 end
 
-macro testFunction(var)
+macro testSymbol(var) return esc(:(@testSymbol($var, SCALAR))); end
+macro testSymbol(var, type)
     varsym = string(var);
     return esc(quote
-        $var = Symbol($varsym);
-        add_test_function($var);
+        global $var = Symbol($varsym);
+        add_test_function($var, $type);
     end)
 end
 
 macro weakForm(var, ex)
     return esc(quote
         using LinearAlgebra
-        log_entry("Making weak form for variable: "*string($var.symbol));
-        log_entry("Weak form, input: "*string($ex));
+        
         wfex = Meta.parse($ex);
-        args = "args";
-        (lhs_expr, rhs_expr) = sp_parse(wfex, $var.symbol, Femshop.test_function_symbol);
+        if typeof($var) <: Array
+            # multiple simultaneous variables
+            wfvars = [];
+            for vi=1:length($var)
+                push!(wfvars, $var[vi].symbol);
+            end
+        else
+            wfvars = $var.symbol;
+        end
+        
+        log_entry("Making weak form for variable(s): "*string(wfvars));
+        log_entry("Weak form, input: "*string($ex));
+        
+        (lhs_expr, rhs_expr) = sp_parse(wfex, wfvars);
         
         if typeof(lhs_expr) <: Tuple && length(lhs_expr) == 2 # has time derivative
             log_entry("Weak form, symbolic layer: Dt("*string(lhs_expr[1])*") + "*string(lhs_expr[2])*" = "*string(rhs_expr));
@@ -282,6 +304,7 @@ macro weakForm(var, ex)
             rhs_code = generate_code_layer(rhs_expr, $var.symbol, RHS);
             Femshop.log_entry("Weak form, code layer: LHS = "*string(lhs_code)*" \n  RHS = "*string(rhs_code));
             if Femshop.language == JULIA
+                args = "args";
                 @makeFunction(args, string(lhs_code));
                 set_lhs($var);
                 
@@ -300,11 +323,12 @@ macro weakForm(var, ex)
             log_entry("Weak form, symbolic layer: "*string(lhs_expr)*" = "*string(rhs_expr));
             
             # change symbolic layer into code layer
-            lhs_code = generate_code_layer(lhs_expr, $var.symbol, LHS);
-            rhs_code = generate_code_layer(rhs_expr, $var.symbol, RHS);
+            lhs_code = generate_code_layer(lhs_expr, $var, LHS);
+            rhs_code = generate_code_layer(rhs_expr, $var, RHS);
             Femshop.log_entry("Weak form, code layer: LHS = "*string(lhs_code)*" \n  RHS = "*string(rhs_code));
             
             if Femshop.language == JULIA
+                args = "args";
                 @makeFunction(args, string(lhs_code));
                 set_lhs($var);
                 
