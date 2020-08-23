@@ -15,7 +15,7 @@ void set_grid_funs(std::function<double(double)> gx2x, std::function<double(doub
     gridzToz = gz2z;
 }
 void genfunction_0(double x, double y, double z, double* var){
-    var[0] = sin(3 * M_PI * gridxTox(x));
+    var[0] = 0;
 }
 void genfunction_1(double x, double y, double z, double* var){
     var[0] = -14 * M_PI * M_PI * sin(3 * M_PI * gridxTox(x)) * sin(2 * M_PI * gridyToy(y)) * sin(M_PI * gridzToz(z));

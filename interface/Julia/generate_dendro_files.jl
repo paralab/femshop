@@ -291,6 +291,10 @@ function dendro_main_file()
     bilinheaderfile = open(genDir*"/bilinear_skel.h", "w");
     dendro_linear_skeleton(linfile, linheaderfile);
     dendro_bilinear_skeleton(bilinfile, bilinheaderfile);
+    close(linfile);
+    close(bilinfile);
+    close(linheaderfile);
+    close(bilinheaderfile);
     
     # Just write the whole skeleton
     content = """

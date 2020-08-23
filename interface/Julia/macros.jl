@@ -314,13 +314,41 @@ macro weakForm(var, ex)
                 # Don't need to generate any functions
                 set_lhs($var, lhs_code);
                 set_rhs($var, rhs_code);
-            else
-                
+            elseif Femshop.language == MATLAB
+                # Don't need to generate any functions
+                set_lhs($var, lhs_code);
+                set_rhs($var, rhs_code);
             end
             
             
         else  # No time derivatives
-            log_entry("Weak form, symbolic layer: "*string(lhs_expr)*" = "*string(rhs_expr));
+            # make a string for the expression
+            if length(lhs_expr) > 1
+                lhsstring = "";
+                rhsstring = "";
+                for i=1:length(lhs_expr)
+                    global lhsstring = lhsstring*"lhs"*string(i)*" = "*string(lhs_expr[i][1]);
+                    global rhsstring = rhsstring*"rhs"*string(i)*" = "*string(rhs_expr[i][1]);
+                    for j=2:length(lhs_expr[i])
+                        global lhsstring = lhsstring*" + "*string(lhs_expr[i][j]);
+                    end
+                    for j=2:length(rhs_expr[i])
+                        global rhsstring = rhsstring*" + "*string(rhs_expr[i][j]);
+                    end
+                    lhsstring = lhsstring*"\n";
+                    rhsstring = rhsstring*"\n";
+                end
+            else
+                lhsstring = "lhs = "*string(lhs_expr[1][1]);
+                rhsstring = "rhs = "*string(rhs_expr[1][1]);
+                for j=2:length(lhs_expr[1])
+                    global lhsstring = lhsstring*" + "*string(lhs_expr[1][j]);
+                end
+                for j=2:length(rhs_expr[1])
+                    global rhsstring = rhsstring*" + "*string(rhs_expr[1][j]);
+                end
+            end
+            log_entry("Weak form, symbolic layer:\n"*string(lhsstring)*"\n"*string(rhsstring));
             
             # change symbolic layer into code layer
             lhs_code = generate_code_layer(lhs_expr, $var, LHS);
@@ -338,8 +366,10 @@ macro weakForm(var, ex)
                 # Don't need to generate any functions
                 set_lhs($var, lhs_code);
                 set_rhs($var, rhs_code);
-            else
-                
+            elseif Femshop.language == MATLAB
+                # Don't need to generate any functions
+                set_lhs($var, lhs_code);
+                set_rhs($var, rhs_code);
             end
         end
     end)

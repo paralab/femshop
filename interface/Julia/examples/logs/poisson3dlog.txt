@@ -1,0 +1,80 @@
+######################################
+# Femshop Log for: poisson3d
+######################################
+
+1.	Building simple hex mesh with nx*nx*nx elements, nx=10
+2.	Added mesh with 1331 vertices and 1000 elements.
+3.	Full grid has 89373 nodes.
+4.	Grid building took 4.2767225 seconds
+5.	Added variable: u of type: scalar
+6.	Set test function symbol: v of type: scalar
+7.	Boundary condition: var=u bid=1 type=Dirichlet val=0
+8.	Generated function: genfunction_0
+9.	Added coefficient f : -3*pi*pi*sin(pi*x)*sin(pi*y)*sin(pi*z)
+10.	Making weak form for variable(s): u
+11.	Weak form, input: -dot(grad(u), grad(v)) - f*v
+12.	Weak form, symbolic layer:
+lhs = -D1__u_1*D1__v_1 + -D2__u_1*D2__v_1 + -D3__u_1*D3__v_1
+rhs = _v_1*_f_1
+13.	Weak form, code layer: LHS = begin
+    var = args[1]
+    x = args[2]
+    gbl = args[3]
+    refel = args[4]
+    borl = args[5]
+    time = args[6]
+    (detJ, J) = geometric_factors(refel, x)
+    R1matrix = [diagm(J.rx) diagm(J.sx) diagm(J.tx)]
+    Q1matrix = [refel.Qr; refel.Qs; refel.Qt]
+    R2matrix = [diagm(J.ry) diagm(J.sy) diagm(J.ty)]
+    Q2matrix = [refel.Qr; refel.Qs; refel.Qt]
+    R3matrix = [diagm(J.rz) diagm(J.sz) diagm(J.tz)]
+    Q3matrix = [refel.Qr; refel.Qs; refel.Qt]
+    return -(transpose(R1matrix * Q1matrix) * diagm(refel.wg .* detJ) * (R1matrix * Q1matrix)) + -(transpose(R2matrix * Q2matrix) * diagm(refel.wg .* detJ) * (R2matrix * Q2matrix)) + -(transpose(R3matrix * Q3matrix) * diagm(refel.wg .* detJ) * (R3matrix * Q3matrix))
+end 
+  RHS = begin
+    var = args[1]
+    x = args[2]
+    gbl = args[3]
+    refel = args[4]
+    borl = args[5]
+    time = args[6]
+    (detJ, J) = geometric_factors(refel, x)
+    coef_0_1 = zeros(refel.Np)
+    for coefi = 1:refel.Np
+        coef_0_1[coefi] = (f.value[1]).func(x[coefi, 1], x[coefi, 2], x[coefi, 3], time)
+    end
+    return (refel.Q)' * (diagm(refel.wg .* detJ) * (refel.Q * coef_0_1))
+end
+14.	Generated function: genfunction_1
+15.	Generated function: genfunction_2
+16.	Assembly took 124.455562199 seconds
+17.	Linear solve took 2.0666993 seconds
+18.	Solved for u.(took 126.5311966 seconds)
+19.	Dumping configuration:
+20.		dimension = 3
+21.		geometry = square
+22.		mesh_type = unstructured
+23.		solver_type = CG
+24.		trial_function = Legendre
+25.		test_function = Legendre
+26.		elemental_nodes = Lobatto
+27.		quadrature = Gauss
+28.		p_adaptive = false
+29.		basis_order_min = 3
+30.		basis_order_max = 3
+31.		linear = true
+32.		t_adaptive = false
+33.		stepper = Euler-implicit
+34.		linalg_matrixfree = false
+35.		linalg_backend = ours
+36.		output_format = vtk
+37.	Dumping problem:
+38.		bc_type = ["Dirichlet"]
+39.		bid = [1]
+40.		bc_func = Any[0]
+41.		time_dependent = false
+42.		end_time = 0.0
+43.		initial = Any[]
+44.		lhs_time_deriv = Bool[]
+45.	Completed. Closing Log.

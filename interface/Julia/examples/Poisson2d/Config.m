@@ -20,3 +20,4 @@ config.stepper = 'Euler-implicit';
 config.linalg_matrixfree = false;
 config.linalg_backend = 'ours';
 config.output_format = 'vtk';
+order = config.basis_order_min;

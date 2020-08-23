@@ -48,7 +48,7 @@ genfiles = nothing;
 
 include("generate_code_layer.jl");
 include("generate_matlab_utils.jl");
-include("generate_matlab_files.jl");
+include("generate_homg_files.jl");
 include("generate_cpp_utils.jl");
 include("generate_dendro_files.jl");
 

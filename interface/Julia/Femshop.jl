@@ -258,7 +258,7 @@ function add_boundary_condition(var, bid, type, ex, nfuns)
     prob.bc_type[var.index, bid] = type;
     prob.bid[var.index, bid] = bid;
     
-    log_entry("Boundary condition: var="*string(var.symbol)*" bid="*string(bid)*" type="*type*" val="*string(prob.bc_func[var.index, bid]));
+    log_entry("Boundary condition: var="*string(var.symbol)*" bid="*string(bid)*" type="*type*" val="*string(ex));
 end
 
 function set_rhs(var, code="")

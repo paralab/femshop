@@ -26,13 +26,13 @@ dendro(max_depth=6, wavelet_tol = 0.1, partition_tol = 0.3, solve_tol = 1e-6, ma
 
 @variable(u)                        # same as @variable(u, SCALAR)
 
-@testFunction(v)                    # sets the symbol for a test function
+@testSymbol(v)                    # sets the symbol for a test function
 
-@boundary(u, 1, DIRICHLET, "sin(3*pi*x)")
+@boundary(u, 1, DIRICHLET, "0")
 
 # Write the weak form 
 @coefficient(f, "-14*pi*pi*sin(3*pi*x)*sin(2*pi*y)*sin(pi*z)")
-@weakForm(u, "-grad(u)*grad(v) - f*v")
+@weakForm(u, "-dot(grad(u),grad(v)) - f*v")
 
 solve(u);
 

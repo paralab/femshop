@@ -2,7 +2,7 @@
 # A set of tools for parsing the variational forms into symEngine expressions.
 =#
 module SymbolicParser
-export sp_parse, SymType, SymOperator, add_custom_op
+export sp_parse, add_custom_op
 
 import ..Femshop: JULIA, CPP, MATLAB, SQUARE, IRREGULAR, TREE, UNSTRUCTURED, CG, DG, HDG,
         NODAL, MODAL, LEGENDRE, UNIFORM, GAUSS, LOBATTO, NONLINEAR_NEWTON,

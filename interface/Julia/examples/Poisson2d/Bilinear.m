@@ -3,9 +3,33 @@
 %{
 Bilinear term
 %}
-args.left = true;
-args.mesh = mesh;
-args.config = config;
-LHS = -(stiffness_operator(u, args));
+mesh.set_order(order);
+refel = homg.refel ( mesh.dim, order );
+dof = prod(mesh.nelems*order + 1);
+ne  = prod(mesh.nelems);
+NP = (order+1)^mesh.dim;
+NPNP = NP * NP;
+I = zeros(ne * NPNP, 1);
+J = zeros(ne * NPNP, 1);
+val = zeros(ne * NPNP, 1);
+
+% loop over elements
+for e=1:ne
+    pts = mesh.element_nodes(e, refel);
+    [detJ, Jac]  = mesh.geometric_factors(refel, pts);
+    idx = mesh.get_node_indices (e, order);
+    ind1 = repmat(idx,NP,1);
+    ind2 = reshape(repmat(idx',NP,1),NPNP,1);
+    st = (e-1)*NPNP+1;
+    en = e*NPNP;
+    I(st:en) = ind1;
+    J(st:en) = ind2;
+
+elMat = ([diag(Jac.rx) diag(Jac.sx)] * [refel.Qx; refel.Qy])' * diag(-refel.W .* detJ) * [diag(Jac.rx) diag(Jac.sx)] * [refel.Qx; refel.Qy] + ([diag(Jac.ry) diag(Jac.sy)] * [refel.Qx; refel.Qy])' * diag(-refel.W .* detJ) * [diag(Jac.ry) diag(Jac.sy)] * [refel.Qx; refel.Qy];
+
+
+    val(st:en) = elMat(:);
+end
+LHS = sparse(I,J,val,dof,dof);
 LHS(bdry,:) = 0;
 LHS((size(LHS,1)+1)*(bdry-1)+1) = 1;

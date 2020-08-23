@@ -25,13 +25,13 @@ init_femshop("poisson2dmatlab");
 
 @variable(u)                        # same as @variable(u, SCALAR)
 
-@testFunction(v)                    # sets the symbol for a test function
+@testSymbol(v)                    # sets the symbol for a test function
 
 @boundary(u, 1, DIRICHLET, "sin(3*pi*x)")
 
 # Write the weak form 
 @coefficient(f, "-2*pi*pi*sin(pi*x)*sin(pi*y)")
-@weakForm(u, "-grad(u)*grad(v) - f*v")
+@weakForm(u, "-dot(grad(u),grad(v)) - f*v")
 
 solve(u);
 
