@@ -42,36 +42,71 @@ function generate_code_layer_julia(symex, var, lorr)
     test_ind = [];
     trial_ind = [];
     
-    # symex is an array of arrays of symengine terms
-    # turn each one into an Expr
-    terms = [];
-    sz = size(symex);
-    if length(sz) == 1 # scalar or vector
-        for i=1:length(symex)
-            for ti=1:length(symex[i])
-                push!(terms, Meta.parse(string(symex[i][ti])));
-            end
+    # For multi variables
+    multivar = typeof(var) <:Array;
+    varcount = 1;
+    if multivar
+        varcount = length(var);
+        offset_ind = zeros(Int, varcount);
+        tmp = length(var[1].symvar.vals);
+        for i=2:length(var)
+            offset_ind[i] = tmp;
+            tmp = tmp + length(var[i].symvar.vals);
         end
-    elseif length(sz) == 2 # matrix
-        #TODO
+    end
+    
+    # symex is an array of arrays of symengine terms, or array of arrays of arrays for multivar
+    # turn each one into an Expr for translation purposes
+    terms = [];
+    if multivar
+        for vi=1:varcount
+            push!(terms, terms_to_expr(symex[vi]));
+        end
+    else
+        terms = terms_to_expr(symex);
     end
     
     # Process the terms turning them into the code layer
-    for i=1:length(terms)
-        (codeterm, der, coe, coeind, testi, trialj) = process_term_julia(terms[i], var, lorr);
-        if coeind == -1
-            # processing failed due to nonlinear term
-            printerr("term processing failed for: "*string(terms[i]));
-            return nothing;
+    if multivar
+        for vi=1:varcount
+            subtest_ind = [];
+            subtrial_ind = [];
+            for i=1:length(terms[vi])
+                (codeterm, der, coe, coeind, testi, trialj) = process_term_julia(terms[vi][i], var, lorr, offset_ind);
+                if coeind == -1
+                    # processing failed due to nonlinear term
+                    printerr("term processing failed for: "*string(terms[vi][i])*" , possible nonlinear term?");
+                    return nothing;
+                end
+                need_derivative = need_derivative || der;
+                append!(needed_coef, coe);
+                append!(needed_coef_ind, coeind);
+                # change indices into one number
+                
+                push!(subtest_ind, testi);
+                push!(subtrial_ind, trialj);
+                terms[vi][i] = codeterm;
+            end
+            push!(test_ind, subtest_ind);
+            push!(trial_ind, subtrial_ind);
         end
-        need_derivative = need_derivative || der;
-        append!(needed_coef, coe);
-        append!(needed_coef_ind, coeind);
-        # change indices into one number
-        
-        push!(test_ind, testi);
-        push!(trial_ind, trialj);
-        terms[i] = codeterm;
+    else
+        for i=1:length(terms)
+            (codeterm, der, coe, coeind, testi, trialj) = process_term_julia(terms[i], var, lorr);
+            if coeind == -1
+                # processing failed due to nonlinear term
+                printerr("term processing failed for: "*string(terms[i])*" , possible nonlinear term?");
+                return nothing;
+            end
+            need_derivative = need_derivative || der;
+            append!(needed_coef, coe);
+            append!(needed_coef_ind, coeind);
+            # change indices into one number
+            
+            push!(test_ind, testi);
+            push!(trial_ind, trialj);
+            terms[i] = codeterm;
+        end
     end
     
     # If derivatives are needed, prepare the appropriate matrices
@@ -163,7 +198,13 @@ function generate_code_layer_julia(symex, var, lorr)
                     push!(cloopin.args, Expr(:(=), tmpv, tmpb)); # add it to the loop
                 elseif ctype == 3
                     # variable values -> coef_n = variable.values
-                    tmpb = :(Femshop.variables[$cval].values[gbl]); #TODO this only works for scalars!
+                    if variables[cval].type == SCALAR
+                        tmpb = :(Femshop.variables[$cval].values[gbl]); 
+                    else
+                        compo = needed_coef_ind[i];
+                        tmpb = :(Femshop.variables[$cval].values[gbl, $compo]);
+                    end
+                    
                     push!(code.args, Expr(:(=), tmpc, tmpb));
                 end
             end
@@ -188,69 +229,98 @@ function generate_code_layer_julia(symex, var, lorr)
     # [...]
     
     # Allocate if needed
-    dofsper = 1;
+    dofsper = 0;
     if typeof(var) <: Array
         for vi=1:length(var)
-            dofsper += length(var[vi].symvar.vals); # The number of components for this variable
+            dofsper = dofsper + length(var[vi].symvar.vals); # The number of components for this variable
         end
-    elseif !(var.type == SCALAR)
+    else
         dofsper = length(var.symvar.vals);
     end
     
     if dofsper > 1
         if lorr == RHS
-            push!(code.args, Expr(:(=), :full_vector, :(zeros(refel.Np*$dofsper)))); # allocate vector
+            push!(code.args, Expr(:(=), :element_vector, :(zeros(refel.Np*$dofsper)))); # allocate vector
         else
-            push!(code.args, Expr(:(=), :full_matrix, :(zeros(refel.Np*$dofsper, refel.Np*$dofsper)))); # allocate matrix
+            push!(code.args, Expr(:(=), :element_matrix, :(zeros(refel.Np*$dofsper, refel.Np*$dofsper)))); # allocate matrix
         end
     end
     
-    if length(terms) > 1
-        if typeof(var)==Variable # Only one variable
+    result = nothing; # Will hold the returned expression
+    if typeof(var) <: Array # multivar
+        for vi=1:length(var)
+            # add terms into full matrix according to testind/trialind
+            for i=1:length(terms[vi])
+                ti = test_ind[vi][i][1]-1 + offset_ind[vi];
+                tj = trial_ind[vi][i][1]-1;
+                
+                sti = :($ti*refel.Np + 1);
+                eni = :(($ti + 1)*refel.Np);
+                stj = :($tj*refel.Np + 1);
+                enj = :(($tj + 1)*refel.Np);
+                #submat = Symbol("element_matrix_"*string(var[vi].symbol));
+                #subvec = Symbol("element_vector_"*string(var[vi].symbol));
+                
+                if lorr == LHS
+                    push!(code.args, Expr(:(+=), :(element_matrix[$sti:$eni, $stj:$enj]), terms[vi][i]));
+                else
+                    push!(code.args, Expr(:(+=), :(element_vector[$sti:$eni]), terms[vi][i]));
+                end
+            end
+        end
+        if lorr == LHS
+            result = :element_matrix;
+        else
+            result = :element_vector;
+        end
+    else
+        if length(terms) > 1
             if var.type == SCALAR # Only one component
                 tmp = :(a+b);
                 tmp.args = [:+];
                 for i=1:length(terms)
                     push!(tmp.args, terms[i]);
                 end
-                terms[1] = tmp;
+                result = tmp;
             else # More than one component
                 # add terms into full matrix according to testind/trialind
                 tmp = :(a+b);
                 tmp.args = [:+];
                 for i=1:length(terms)
                     ti = test_ind[i][1]-1;
-                    #rows = :(($ti * refel.Np + 1):(($ti + 1)*refel.Np));
                     tj = trial_ind[i][1]-1;
-                    #cols = :(($tj * refel.Np + 1):(($tj + 1)*refel.Np));
+                    
+                    st = :($ti*refel.Np + 1);
+                    en = :(($ti + 1)*refel.Np);
                     
                     if lorr == LHS
-                        push!(code.args, Expr(:(+=), :(full_matrix[($ti * refel.Np + 1):(($ti + 1)*refel.Np),($tj * refel.Np + 1):(($tj + 1)*refel.Np)]), terms[i]));
+                        push!(code.args, Expr(:(+=), :(element_matrix[$st:$en, $st:$en]), terms[i]));
                     else
-                        push!(code.args, Expr(:(+=), :(full_vector[($ti * refel.Np + 1):(($ti + 1)*refel.Np)]), terms[i]));
+                        push!(code.args, Expr(:(+=), :(element_vector[$st:$en]), terms[i]));
                     end
                     
                 end
                 if lorr == LHS
-                    terms[1] = :full_matrix;
+                    result = :element_matrix;
                 else
-                    terms[1] = :full_vector;
+                    result = :element_vector;
                 end
                 
             end
-        else #more than one variable
-            #TODO
+        else# one term (one variable)
+            result = terms[1];
         end
     end
     
+    
     # At this point everything is packed into terms[1]
-    push!(code.args, Expr(:return, terms[1]));
+    push!(code.args, Expr(:return, result));
     return code;
 end
 
 # Changes the symbolic layer term into a code layer term
 # also records derivative and coefficient needs
-function process_term_julia(sterm, var, lorr)
+function process_term_julia(sterm, var, lorr, offset_ind=0)
     term = copy(sterm);
     need_derivative = false;
     needed_coef = [];
@@ -279,44 +349,58 @@ function process_term_julia(sterm, var, lorr)
     coef_facs = [];
     coef_inds = [];
     for i=1:length(factors)
-        (index, v, mods) = extract_symbols(factors[i]);
-        
-        if is_test_func(v)
-            test_component = index; # the vector index
-            if length(mods) > 0
-                # TODO more than one derivative mod
-                need_derivative = true;
-                dmatr = Symbol("R"*mods[1][2]*"matrix");
-                dmatq = Symbol("Q"*mods[1][2]*"matrix");
-                test_part = :(transpose($dmatr * $dmatq));
-            else
-                # no derivative mods
-                test_part = :(refel.Q');
-            end
-        elseif is_unknown_var(v, var)
-            if !(trial_part === nothing)
-                # Two unknowns multiplied in this term. Nonlinear. abort.
-                printerr("Nonlinear term. Code layer incomplete.");
-                return (-1, -1, -1, -1, -1, -1);
-            end
-            trial_component = index;
-            if length(mods) > 0
-                # TODO more than one derivative mod
-                need_derivative = true;
-                dmatr = Symbol("R"*mods[1][2]*"matrix");
-                dmatq = Symbol("Q"*mods[1][2]*"matrix");
-                trial_part = :($dmatr * $dmatq);
-            else
-                # no derivative mods
-                trial_part = :(refel.Q);
-            end
+        if typeof(factors[i]) <: Number
+            push!(coef_facs, factors[i]);
+            push!(coef_inds, -1);
         else
-            if length(index) == 1
-                ind = index[1];
+            (index, v, mods) = extract_symbols(factors[i]);
+            
+            if is_test_func(v)
+                test_component = index; # the vector index
+                if length(mods) > 0
+                    # TODO more than one derivative mod
+                    need_derivative = true;
+                    dmatr = Symbol("R"*mods[1][2]*"matrix");
+                    dmatq = Symbol("Q"*mods[1][2]*"matrix");
+                    test_part = :(transpose($dmatr * $dmatq));
+                else
+                    # no derivative mods
+                    test_part = :(refel.Q');
+                end
+            elseif is_unknown_var(v, var)
+                if !(trial_part === nothing)
+                    # Two unknowns multiplied in this term. Nonlinear. abort.
+                    printerr("Nonlinear term. Code layer incomplete.");
+                    return (-1, -1, -1, -1, -1, -1);
+                end
+                trial_component = index;
+                #offset component for multivar
+                if typeof(var) <:Array
+                    for vi=1:length(var)
+                        if v === var[vi].symbol
+                            trial_component = trial_component .+ offset_ind[vi];
+                        end
+                    end
+                end
+                if length(mods) > 0
+                    # TODO more than one derivative mod
+                    need_derivative = true;
+                    dmatr = Symbol("R"*mods[1][2]*"matrix");
+                    dmatq = Symbol("Q"*mods[1][2]*"matrix");
+                    trial_part = :($dmatr * $dmatq);
+                else
+                    # no derivative mods
+                    trial_part = :(refel.Q);
+                end
+            else
+                if length(index) == 1
+                    ind = index[1];
+                end
+                push!(coef_facs, v);
+                push!(coef_inds, ind);
             end
-            push!(coef_facs, v);
-            push!(coef_inds, ind);
         end
+        
     end
     
     # If rhs, change var into var.values and treat as a coefficient
@@ -394,6 +478,23 @@ function separate_terms(ex)
                 append!(terms, separate_terms(ex.args[i]));
             end
         end
+    end
+    
+    return terms;
+end
+
+# Parses symengine terms into julia expressions
+function terms_to_expr(symex)
+    terms = [];
+    sz = size(symex);
+    if length(sz) == 1 # scalar or vector
+        for i=1:length(symex)
+            for ti=1:length(symex[i])
+                push!(terms, Meta.parse(string(symex[i][ti])));
+            end
+        end
+    elseif length(sz) == 2 # matrix
+        #TODO
     end
     
     return terms;

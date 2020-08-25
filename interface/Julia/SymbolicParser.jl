@@ -1,4 +1,4 @@
-#=
+#= 
 # A set of tools for parsing the variational forms into symEngine expressions.
 =#
 module SymbolicParser
@@ -58,7 +58,17 @@ end
 function sp_parse(ex, var)
     lhs = nothing;
     rhs = nothing;
+    varcount = 1;
     #println("expr = "*string(ex));
+    
+    # Check that there are as many vars as exs
+    if typeof(var) <: Array
+        if !(typeof(ex) <:Array && length(var) == length(ex))
+            printerr("Error: Need same # of unknowns and equations");
+            return (nothing,nothing);
+        end
+        varcount = length(var);
+    end
     
     # Work with a copy of ex
     symex = copy(ex);
@@ -76,63 +86,24 @@ function sp_parse(ex, var)
     #println("sterms = "*string(sterms));
     
     # Each element has an lhs and rhs
-    lhs = similar(sterms); # set up the container right
-    rhs = similar(sterms);
-    sz = size(symex);
-    
-    if length(sz) == 1 # vector or scalar
-        for i=1:sz[1]
-            lhs[i] = Array{Basic,1}(undef,0);
-            rhs[i] = Array{Basic,1}(undef,0);
-            for ti=1:length(sterms[i])
-                if has_unknown(sterms[i][ti], var)
-                    #println("lhs: "*string(sterms[i][ti]));
-                    push!(lhs[i], sterms[i][ti]);
-                else
-                    #println("rhs: "*string(sterms[i][ti]));
-                    # switch sign to put on RHS
-                    push!(rhs[i], -sterms[i][ti]);
-                end
-            end
+    lhs = copy(sterms); # set up the container right
+    rhs = copy(sterms);
+    if varcount > 1
+        for i=1:length(symex)
+            sz = size(symex[i]);
+            #println("sz="*string(sz));
+            #println("ln="*string(length(sterms[i][1])))
+            (lhs[i],rhs[i]) = split_left_right(sterms[i],sz,var);
+            #println("lhs"*string(i)*" = "*string(lhs[i]));
+            #println("rhs"*string(i)*" = "*string(rhs[i]));
         end
-    elseif length(sz) == 2 # matrix
-        for j=1:sz[2]
-            for i=1:sz[1]
-                lhs[i,j] = Basic(0);
-                rhs[i,j] = Basic(0);
-                for ti=1:length(sterms[i,j])
-                    if has_unknown(sterms[i,j][ti], var)
-                        #println("lhs: "*string(sterms[i,j][ti]));
-                        push!(lhs[i,j], sterms[i,j][ti]);
-                    else
-                        #println("rhs: "*string(sterms[i,j][ti]));
-                        push!(rhs[i,j], sterms[i,j][ti]);
-                    end
-                end
-            end
-        end
-    elseif length(sz) == 3 # rank 3
-        for k=1:sz[3]
-            for j=1:sz[2]
-                for i=1:sz[1]
-                    lhs[i,j,k] = Basic(0);
-                    rhs[i,j,k] = Basic(0);
-                    for ti=1:length(sterms[i,j,k])
-                        if has_unknown(sterms[i,j,k][ti], var)
-                            #println("lhs: "*string(sterms[i,j,k][ti]));
-                            push!(lhs[i,j,k], sterms[i,j,k][ti]);
-                        else
-                            #println("rhs: "*string(sterms[i,j,k][ti]));
-                            push!(rhs[i,j,k], sterms[i,j,k][ti]);
-                        end
-                    end
-                end
-            end
-        end
+    else
+        sz = size(symex);
+        (lhs,rhs) = split_left_right(sterms,sz,var);
     end
     
-    #println(string(lhs));
-    #println(string(rhs));
+    #println("LHS = "*string(lhs));
+    #println("RHS = "*string(rhs));
     return (lhs, rhs);
 end
 
@@ -175,6 +146,12 @@ function replace_symbols(ex)
             ex.args[i] = replace_symbols(ex.args[i]); # recursively replace on args if ex
         end
         return ex;
+    elseif typeof(ex) <:Array
+        result = [];
+        for i=1:length(ex)
+            push!(result, replace_symbols(ex[i]));
+        end
+        return result;
     else
         return ex;
     end
@@ -184,7 +161,15 @@ end
 function apply_ops(ex)
     
     try
-        return eval(ex);
+        if typeof(ex) <:Array
+            result = [];
+            for i=1:length(ex)
+                push!(result, eval(ex[i]));
+            end
+            return result;
+        else
+            return eval(ex);
+        end
     catch e
         printerr("Problem evaluating the symbolic expression: "*string(ex));
         println(string(e));
@@ -194,9 +179,20 @@ end
 
 function has_unknown(ex, var)
     str = string(ex);
-    vs = "_"*string(var)*"_";
+    result = false;
+    if typeof(var) <: Array
+        for i=1:length(var)
+            vs = "_"*string(var[i])*"_";
+            if occursin(vs, str)
+                result = true;
+            end
+        end
+    else
+        vs = "_"*string(var)*"_";
+        result = occursin(vs, str);
+    end
     
-    return occursin(vs, str);
+    return result;
 end
 
 # Separate terms for each element of ex.
@@ -287,6 +283,62 @@ function get_all_terms(ex)
         terms = [ex];
     end
     return terms;
+end
+
+function split_left_right(sterms,sz,var)
+    lhs = copy(sterms); # set up the container right
+    rhs = copy(sterms);
+    if length(sz) == 1 # vector or scalar
+        for i=1:sz[1]
+            lhs[i] = Array{Basic,1}(undef,0);
+            rhs[i] = Array{Basic,1}(undef,0);
+            for ti=1:length(sterms[i])
+                if has_unknown(sterms[i][ti], var)
+                    #println("lhs: "*string(sterms[i][ti]));
+                    push!(lhs[i], sterms[i][ti]);
+                else
+                    #println("rhs: "*string(sterms[i][ti]));
+                    # switch sign to put on RHS
+                    push!(rhs[i], -sterms[i][ti]);
+                end
+            end
+        end
+    elseif length(sz) == 2 # matrix
+        for j=1:sz[2]
+            for i=1:sz[1]
+                lhs[i,j] = Basic(0);
+                rhs[i,j] = Basic(0);
+                for ti=1:length(sterms[i,j])
+                    if has_unknown(sterms[i,j][ti], var)
+                        #println("lhs: "*string(sterms[i,j][ti]));
+                        push!(lhs[i,j], sterms[i,j][ti]);
+                    else
+                        #println("rhs: "*string(sterms[i,j][ti]));
+                        push!(rhs[i,j], -sterms[i,j][ti]);
+                    end
+                end
+            end
+        end
+    elseif length(sz) == 3 # rank 3
+        for k=1:sz[3]
+            for j=1:sz[2]
+                for i=1:sz[1]
+                    lhs[i,j,k] = Basic(0);
+                    rhs[i,j,k] = Basic(0);
+                    for ti=1:length(sterms[i,j,k])
+                        if has_unknown(sterms[i,j,k][ti], var)
+                            #println("lhs: "*string(sterms[i,j,k][ti]));
+                            push!(lhs[i,j,k], sterms[i,j,k][ti]);
+                        else
+                            #println("rhs: "*string(sterms[i,j,k][ti]));
+                            push!(rhs[i,j,k], -sterms[i,j,k][ti]);
+                        end
+                    end
+                end
+            end
+        end
+    end
+    return (lhs,rhs);
 end
 
 function apply_negative(ex)

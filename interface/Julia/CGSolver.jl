@@ -102,7 +102,8 @@ function assemble(var, bilinear, linear, t=0.0, dt=0.0)
     Np = refel.Np;
     nel = mesh_data.nel;
     N1 = size(grid_data.allnodes)[1];
-    if typeof(var) <: Tuple
+    multivar = typeof(var) <: Array;
+    if multivar
         # multiple variables being solved for simultaneously
         dofs_per_node = 0;
         var_to_dofs = [];
@@ -149,14 +150,6 @@ function assemble(var, bilinear, linear, t=0.0, dt=0.0)
             bilinchunk = bilinear.func(lhsargs);
             insert_bilinear!(A, bilinchunk, glb, 1:dofs_per_node, dofs_per_node);
         else
-            # more than one variable
-            # for vi=1:length(var)
-            #     linchunk = linear[vi].func(rhsargs);
-            #     insert_linear!(b, linchunk, glb, var_to_dofs[vi], dofs_per_node);
-                
-            #     bilinchunk = bilinear[vi].func(lhsargs);
-            #     insert_bilinear!(A, bilinchunk, glb, var_to_dofs[vi], dofs_per_node);
-            # end
             linchunk = linear.func(rhsargs);
             insert_linear!(b, linchunk, glb, 1:dofs_per_node, dofs_per_node);
             
@@ -167,10 +160,20 @@ function assemble(var, bilinear, linear, t=0.0, dt=0.0)
     
     # Just for testing. This should really be a loop over BIDs with corresponding calls
     if dofs_per_node > 1
-        for d=1:dofs_per_node
-            #rows = ((d-1)*length(glb)+1):(d*length(glb));
-            rowoffset = (d-1)*Np;
-            (A, b) = dirichlet_bc(A, b, prob.bc_func[var.index, 1][d], grid_data.bdry[1,:], t, d, dofs_per_node);
+        if multivar
+            rowoffset = 0;
+            for vi=1:length(var)
+                for compo=1:length(var[vi].symvar.vals)
+                    rowoffset = rowoffset + 1;
+                    (A, b) = dirichlet_bc(A, b, prob.bc_func[var[vi].index, 1][compo], grid_data.bdry[1,:], t, rowoffset, dofs_per_node);
+                end
+            end
+        else
+            for d=1:dofs_per_node
+                #rows = ((d-1)*length(glb)+1):(d*length(glb));
+                rowoffset = (d-1)*Np;
+                (A, b) = dirichlet_bc(A, b, prob.bc_func[var.index, 1][d], grid_data.bdry[1,:], t, d, dofs_per_node);
+            end
         end
     else
         (A, b) = dirichlet_bc(A, b, prob.bc_func[var.index, 1], grid_data.bdry[1,:], t);

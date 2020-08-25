@@ -31,6 +31,7 @@ macro useLog(name, dir)
 end
 
 # These set the configuration states
+macro domain(dims) return :(@domain($dims, SQUARE, GRID)) end
 macro domain(dims, geometry, mesh)
     return esc(quote
         Femshop.config.dimension = $dims;
@@ -236,14 +237,19 @@ macro weakForm(var, ex)
     return esc(quote
         using LinearAlgebra
         
-        wfex = Meta.parse($ex);
         if typeof($var) <: Array
             # multiple simultaneous variables
             wfvars = [];
+            wfex = [];
+            if !(length($var) == length($ex))
+                printerr("Error in weak form: # of unknowns must equal # of equations. (example: @weakform([a,b,c], [f1,f2,f3]))");
+            end
             for vi=1:length($var)
                 push!(wfvars, $var[vi].symbol);
+                push!(wfex, Meta.parse(($ex)[vi]));
             end
         else
+            wfex = Meta.parse($ex);
             wfvars = $var.symbol;
         end
         

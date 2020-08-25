@@ -313,7 +313,7 @@ function solve(var)
             if typeof(var) <: Array
                 varnames = "["*string(var[1].symbol);
                 for vi=2:length(var)
-                    varnames = varnames*", "*string(var[i].symbol);
+                    varnames = varnames*", "*string(var[vi].symbol);
                 end
                 varnames = varnames*"]";
                 varind = var[1].index;
@@ -330,10 +330,27 @@ function solve(var)
                 t = @elapsed(var.values = CGSolver.solve(var, lhs, rhs, time_stepper));
                 
             else
+                # solve it!
                 t = @elapsed(result = CGSolver.solve(var, lhs, rhs));
-                components = length(var.symvar.vals);
-                for compi=1:components
-                    var.values[:,compi] = result[compi:components:end];
+                # place the values in the variable value arrays
+                if typeof(var) <: Array
+                    tmp = 0;
+                    totalcomponents = 0;
+                    for vi=1:length(var)
+                        totalcomponents = totalcomponents + length(var[vi].symvar.vals);
+                    end
+                    for vi=1:length(var)
+                        components = length(var[vi].symvar.vals);
+                        for compi=1:components
+                            var[vi].values[:,compi] = result[(compi+tmp):totalcomponents:end];
+                            tmp = tmp + 1;
+                        end
+                    end
+                else
+                    components = length(var.symvar.vals);
+                    for compi=1:components
+                        var.values[:,compi] = result[compi:components:end];
+                    end
                 end
             end
             
