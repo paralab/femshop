@@ -9,9 +9,10 @@ struct SymOperator
 end
 
 # Initialize predefined operators
-# op_names = [:dot, :inner, :cross, :grad, :div, :curl, :laplacian];
+# op_names = [:Dt, :dot, :inner, :cross, :grad, :div, :curl, :laplacian];
 function init_ops()
     ops = [];
+    push!(ops, SymOperator(:Dt, sym_Dt_op));
     push!(ops, SymOperator(:dot, sym_dot_op));
     push!(ops, SymOperator(:inner, sym_inner_op));
     push!(ops, SymOperator(:cross, sym_cross_op));
@@ -67,6 +68,24 @@ end
 #########################################################################
 # derivative ops
 #########################################################################
+
+# Multiplies the expression by TIMEDERIV
+# Dt(a*b+c)  ->  TIMEDERIV*(a*b+c)
+function sym_Dt_op(ex)
+    newex = copy(ex);
+    TIMEDERIV = symbols("TIMEDERIV");
+    if typeof(ex) <: Array
+        for i=1:length(ex)
+            newex[i] = sym_Dt_op(newex[i]);
+        end
+    elseif typeof(ex) == Basic
+        return TIMEDERIV*ex;
+    elseif typeof(ex) <: Number
+        newex = 0;
+    end
+    
+    return newex;
+end
 
 # Applies a derivative prefix. wrt is the axis index
 # sym_deriv(u_12, 1) -> D1_u_12

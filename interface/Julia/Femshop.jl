@@ -9,14 +9,12 @@ export @language, @domain, @mesh, @solver, @stepper, @functionSpace, @trialFunct
         @testFunction, @nodes, @order, @boundary, @variable, @coefficient, @testSymbol, @initial,
         @timeInterval, @weakForm, @LHS, @RHS, @customOperator,
         @outputMesh, @useLog, @finalize
-export init_femshop, set_language, dendro, set_solver, set_stepper, add_mesh, output_mesh, add_test_function, 
+export init_femshop, set_language, dendro, set_solver, set_stepper, reformat_for_stepper, add_mesh, output_mesh, add_test_function, 
         add_initial_condition, add_boundary_condition, set_rhs, set_lhs, solve, finalize
 export sp_parse
 export generate_code_layer
 export Variable, add_variable
 export Coefficient, add_coefficient
-
-export mass_operator, stiffness_operator
 
 ### Module's global variables ###
 # config

@@ -404,7 +404,7 @@ function process_term_julia(sterm, var, lorr, offset_ind=0)
     end
     
     # If rhs, change var into var.values and treat as a coefficient
-    if lorr == RHS && trial_part === :(refel.Q)
+    if lorr == RHS && trial_part == :(refel.Q)
         tmpv = :(a.values[gbl]);
         tmpv.args[1].args[1] = var.symbol; #TODO, will not work for var=array
         push!(coef_facs, tmpv);
@@ -615,6 +615,11 @@ function extract_symbols(ex)
     l = lastindex(str);
     e = l; # end of variable name
     b = l; # beginning of variable name
+    
+    # dt is a special symbol that will be assigned a number value in the generated function.
+    if str == "dt"
+        return([0], ex, []);
+    end
     
     if occursin("TEST", str)
         # index = [];

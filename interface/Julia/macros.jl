@@ -260,124 +260,65 @@ macro weakForm(var, ex)
         
         if typeof(lhs_expr) <: Tuple && length(lhs_expr) == 2 # has time derivative
             log_entry("Weak form, symbolic layer: Dt("*string(lhs_expr[1])*") + "*string(lhs_expr[2])*" = "*string(rhs_expr));
-            # build the expressions depending on type of time stepper
-            # explicit -> dtlhs         :   (rhs - lhs)
-            # implicit -> dtlhs + lhs   :   rhs
-            # CN       -> dtlhs + 0.5*lhs : (rhs-0.5*lhs)
-            if Femshop.config.stepper == EULER_IMPLICIT
-                plusex = :(a+b);
-                timesdt = :(dt.*a);
-                timesdt.args[3] = lhs_expr[2];
-                plusex.args[2] = lhs_expr[1];
-                plusex.args[3] = timesdt;
-                newlhs = copy(plusex);
-                
-                timesdt.args[3] = rhs_expr;
-                plusex.args[2] = lhs_expr[1];
-                plusex.args[3] = timesdt;
-                newrhs = plusex;
-                
-            elseif Femshop.config.stepper == CRANK_NICHOLSON
-                # newlhs = :(a+b);
-                # timesdt = :((dt*0.5).*a);
-                # timesdt.args[3] = lhs_expr[2];
-                # newlhs.args[2] = lhs_expr[1];
-                # newlhs.args[3] = copy(timesdt);
-                
-                # newrhs = :(a-b);
-                # newrhs.args[2] = rhs_expr;
-                # newrhs.args[3] = lhs_expr[2];
-                # timesdt.args[3] = newrhs;
-                # newrhs = timesdt;
-                
-            else # explicit steppers
-                newlhs = lhs_expr[1];
-                
-                minusex = :(a-b);
-                plusex = :(a+b);
-                timesdtex = :(dt.*a);
-                minusex.args[2] = rhs_expr;
-                minusex.args[3] = lhs_expr[2];
-                timesdtex.args[3] = minusex;
-                plusex.args[2] = lhs_expr[1];
-                plusex.args[3] = timesdtex;
-                newrhs = plusex;
-            end
             
-            Femshop.log_entry("Weak form, modified for time stepping: "*string(newlhs)*" = "*string(newrhs));
+            (newlhs, newrhs) = reformat_for_stepper(lhs_expr, rhs_expr, Femshop.config.stepper);
             
-            lhs_code = generate_code_layer(lhs_expr, $var.symbol, LHS);
-            rhs_code = generate_code_layer(rhs_expr, $var.symbol, RHS);
-            Femshop.log_entry("Weak form, code layer: LHS = "*string(lhs_code)*" \n  RHS = "*string(rhs_code));
-            if Femshop.language == JULIA
-                args = "args";
-                @makeFunction(args, string(lhs_code));
-                set_lhs($var);
-                
-                @makeFunction(args, string(rhs_code));
-                set_rhs($var);
-            elseif Femshop.language == CPP
-                # Don't need to generate any functions
-                set_lhs($var, lhs_code);
-                set_rhs($var, rhs_code);
-            elseif Femshop.language == MATLAB
-                # Don't need to generate any functions
-                set_lhs($var, lhs_code);
-                set_rhs($var, rhs_code);
-            end
+            log_entry("Weak form, modified for time stepping: "*string(newlhs)*" = "*string(newrhs));
             
-            
-        else  # No time derivatives
-            # make a string for the expression
-            if length(lhs_expr) > 1
-                lhsstring = "";
-                rhsstring = "";
-                for i=1:length(lhs_expr)
-                    global lhsstring = lhsstring*"lhs"*string(i)*" = "*string(lhs_expr[i][1]);
-                    global rhsstring = rhsstring*"rhs"*string(i)*" = "*string(rhs_expr[i][1]);
-                    for j=2:length(lhs_expr[i])
-                        global lhsstring = lhsstring*" + "*string(lhs_expr[i][j]);
-                    end
-                    for j=2:length(rhs_expr[i])
-                        global rhsstring = rhsstring*" + "*string(rhs_expr[i][j]);
-                    end
-                    lhsstring = lhsstring*"\n";
-                    rhsstring = rhsstring*"\n";
+            lhs_expr = newlhs;
+            rhs_expr = newrhs;
+        end
+        
+        # make a string for the expression
+        if length(lhs_expr) > 1
+            lhsstring = "";
+            rhsstring = "";
+            for i=1:length(lhs_expr)
+                global lhsstring = lhsstring*"lhs"*string(i)*" = "*string(lhs_expr[i][1]);
+                global rhsstring = rhsstring*"rhs"*string(i)*" = "*string(rhs_expr[i][1]);
+                for j=2:length(lhs_expr[i])
+                    global lhsstring = lhsstring*" + "*string(lhs_expr[i][j]);
                 end
-            else
-                lhsstring = "lhs = "*string(lhs_expr[1][1]);
-                rhsstring = "rhs = "*string(rhs_expr[1][1]);
-                for j=2:length(lhs_expr[1])
-                    global lhsstring = lhsstring*" + "*string(lhs_expr[1][j]);
+                for j=2:length(rhs_expr[i])
+                    global rhsstring = rhsstring*" + "*string(rhs_expr[i][j]);
                 end
-                for j=2:length(rhs_expr[1])
-                    global rhsstring = rhsstring*" + "*string(rhs_expr[1][j]);
-                end
+                lhsstring = lhsstring*"\n";
+                rhsstring = rhsstring*"\n";
             end
-            log_entry("Weak form, symbolic layer:\n"*string(lhsstring)*"\n"*string(rhsstring));
-            
-            # change symbolic layer into code layer
-            lhs_code = generate_code_layer(lhs_expr, $var, LHS);
-            rhs_code = generate_code_layer(rhs_expr, $var, RHS);
-            Femshop.log_entry("Weak form, code layer: LHS = "*string(lhs_code)*" \n  RHS = "*string(rhs_code));
-            
-            if Femshop.language == JULIA
-                args = "args";
-                @makeFunction(args, string(lhs_code));
-                set_lhs($var);
-                
-                @makeFunction(args, string(rhs_code));
-                set_rhs($var);
-            elseif Femshop.language == CPP
-                # Don't need to generate any functions
-                set_lhs($var, lhs_code);
-                set_rhs($var, rhs_code);
-            elseif Femshop.language == MATLAB
-                # Don't need to generate any functions
-                set_lhs($var, lhs_code);
-                set_rhs($var, rhs_code);
+        else
+            lhsstring = "lhs = "*string(lhs_expr[1][1]);
+            rhsstring = "rhs = "*string(rhs_expr[1][1]);
+            for j=2:length(lhs_expr[1])
+                global lhsstring = lhsstring*" + "*string(lhs_expr[1][j]);
+            end
+            for j=2:length(rhs_expr[1])
+                global rhsstring = rhsstring*" + "*string(rhs_expr[1][j]);
             end
         end
+        log_entry("Weak form, symbolic layer:\n"*string(lhsstring)*"\n"*string(rhsstring));
+        
+        # change symbolic layer into code layer
+        lhs_code = generate_code_layer(lhs_expr, $var, LHS);
+        rhs_code = generate_code_layer(rhs_expr, $var, RHS);
+        Femshop.log_entry("Weak form, code layer: LHS = "*string(lhs_code)*" \n  RHS = "*string(rhs_code));
+        
+        if Femshop.language == JULIA
+            args = "args";
+            @makeFunction(args, string(lhs_code));
+            set_lhs($var);
+            
+            @makeFunction(args, string(rhs_code));
+            set_rhs($var);
+        elseif Femshop.language == CPP
+            # Don't need to generate any functions
+            set_lhs($var, lhs_code);
+            set_rhs($var, rhs_code);
+        elseif Femshop.language == MATLAB
+            # Don't need to generate any functions
+            set_lhs($var, lhs_code);
+            set_rhs($var, rhs_code);
+        end
+        
     end)
 end
 
