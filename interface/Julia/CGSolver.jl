@@ -36,17 +36,32 @@ function init_cgsolver()
     for vind=1:length(variables)
         if vind <= length(prob.initial)
             if prob.initial[vind] != nothing
-                variables[vind].values = zeros(size(grid_data.allnodes)[1]);
+                variables[vind].values = zeros(size(variables[vind].values));
                 # Set initial condition
-                for ni=1:size(grid_data.allnodes)[1]
-                    if dim == 1
-                        variables[vind].values[ni] = prob.initial[vind].func(grid_data.allnodes[ni],0,0,0);
-                    elseif dim == 2
-                        variables[vind].values[ni] = prob.initial[vind].func(grid_data.allnodes[ni,1],grid_data.allnodes[ni,2],0,0);
-                    elseif dim == 3
-                        variables[vind].values[ni] = prob.initial[vind].func(grid_data.allnodes[ni,1],grid_data.allnodes[ni,2],grid_data.allnodes[ni,3],0);
+                if typeof(prob.initial[vind]) <: Array
+                    for ci=1:length(prob.initial[vind])
+                        for ni=1:size(grid_data.allnodes)[1]
+                            if dim == 1
+                                variables[vind].values[ni,ci] = prob.initial[vind][ci].func(grid_data.allnodes[ni],0,0,0);
+                            elseif dim == 2
+                                variables[vind].values[ni,ci] = prob.initial[vind][ci].func(grid_data.allnodes[ni,1],grid_data.allnodes[ni,2],0,0);
+                            elseif dim == 3
+                                variables[vind].values[ni,ci] = prob.initial[vind][ci].func(grid_data.allnodes[ni,1],grid_data.allnodes[ni,2],grid_data.allnodes[ni,3],0);
+                            end
+                        end
+                    end
+                else
+                    for ni=1:size(grid_data.allnodes)[1]
+                        if dim == 1
+                            variables[vind].values[ni] = prob.initial[vind].func(grid_data.allnodes[ni],0,0,0);
+                        elseif dim == 2
+                            variables[vind].values[ni] = prob.initial[vind].func(grid_data.allnodes[ni,1],grid_data.allnodes[ni,2],0,0);
+                        elseif dim == 3
+                            variables[vind].values[ni] = prob.initial[vind].func(grid_data.allnodes[ni,1],grid_data.allnodes[ni,2],grid_data.allnodes[ni,3],0);
+                        end
                     end
                 end
+                
                 variables[vind].ready = true;
                 log_entry("Built initial conditions for: "*string(variables[vind].symbol));
             end
@@ -72,17 +87,39 @@ function solve(var, bilinear, linear, stepper=nothing)
         
         log_entry("Beginning "*string(stepper.Nsteps)*" time steps.");
         t = 0;
+        sol = [];
         start_t = Base.Libc.time();
         for i=1:stepper.Nsteps
             b = assemble_rhs_only(var, linear, t, stepper.dt);
-            var.values = A\b;
+            sol = A\b;
+            # place the values in the variable value arrays
+            if typeof(var) <: Array
+                tmp = 0;
+                totalcomponents = 0;
+                for vi=1:length(var)
+                    totalcomponents = totalcomponents + length(var[vi].symvar.vals);
+                end
+                for vi=1:length(var)
+                    components = length(var[vi].symvar.vals);
+                    for compi=1:components
+                        var[vi].values[:,compi] = sol[(compi+tmp):totalcomponents:end];
+                        tmp = tmp + 1;
+                    end
+                end
+            else
+                components = length(var.symvar.vals);
+                for compi=1:components
+                    var.values[:,compi] = sol[compi:components:end];
+                end
+            end
+            
             t += stepper.dt;
         end
         end_t = Base.Libc.time();
         
         log_entry("Solve took "*string(end_t-start_t)*" seconds");
         #display(sol);
-        return var.values;
+        return sol;
         
     else
         assemble_t = @elapsed((A, b) = assemble(var, bilinear, linear));
@@ -186,7 +223,22 @@ end
 function assemble_rhs_only(var, linear, t=0.0, dt=0.0)
     Np = refel.Np;
     nel = mesh_data.nel;
-    Nn = size(grid_data.allnodes)[1];
+    N1 = size(grid_data.allnodes)[1];
+    multivar = typeof(var) <: Array;
+    if multivar
+        # multiple variables being solved for simultaneously
+        dofs_per_node = 0;
+        var_to_dofs = [];
+        for vi=1:length(var)
+            tmp = dofs_per_node;
+            dofs_per_node += length(var[vi].symvar.vals);
+            push!(var_to_dofs, (tmp+1):dofs_per_node);
+        end
+    else
+        # one variable
+        dofs_per_node = length(var.symvar.vals);
+    end
+    Nn = dofs_per_node * N1;
     
     b = zeros(Nn);
     
@@ -194,13 +246,46 @@ function assemble_rhs_only(var, linear, t=0.0, dt=0.0)
         glb = loc2glb[e,:];                 # global indices of this element's nodes for extracting values from var arrays
         xe = grid_data.allnodes[glb[:],:];  # coordinates of this element's nodes for evaluating coefficient functions
         
-        args = (var, xe, glb, refel, RHS, t, dt);
-        linchunk = linear.func(args);  # get the elemental linear part
-        b[glb] .+= linchunk;
+        rhsargs = (var, xe, glb, refel, RHS, t, dt);
+        
+        #linchunk = linear.func(args);  # get the elemental linear part
+        if dofs_per_node == 1
+            linchunk = linear.func(rhsargs);  # get the elemental linear part
+            b[glb] .+= linchunk;
+            
+        elseif typeof(var) == Variable
+            # only one variable, but more than one dof
+            linchunk = linear.func(rhsargs);
+            insert_linear!(b, linchunk, glb, 1:dofs_per_node, dofs_per_node);
+            
+        else
+            linchunk = linear.func(rhsargs);
+            insert_linear!(b, linchunk, glb, 1:dofs_per_node, dofs_per_node);
+            
+        end
     end
     
     # Just for testing. This should really be a loop over BIDs with corresponding calls
-    b = dirichlet_bc_rhs_only(b, prob.bc_func[var.index, 1], grid_data.bdry[1,:], t);
+    #b = dirichlet_bc_rhs_only(b, prob.bc_func[var.index, 1], grid_data.bdry[1,:], t);
+    if dofs_per_node > 1
+        if multivar
+            rowoffset = 0;
+            for vi=1:length(var)
+                for compo=1:length(var[vi].symvar.vals)
+                    rowoffset = rowoffset + 1;
+                    b = dirichlet_bc_rhs_only(b, prob.bc_func[var[vi].index, 1][compo], grid_data.bdry[1,:], t, rowoffset, dofs_per_node);
+                end
+            end
+        else
+            for d=1:dofs_per_node
+                #rows = ((d-1)*length(glb)+1):(d*length(glb));
+                rowoffset = (d-1)*Np;
+                b = dirichlet_bc_rhs_only(b, prob.bc_func[var.index, 1][d], grid_data.bdry[1,:], t, d, dofs_per_node);
+            end
+        end
+    else
+        b = dirichlet_bc_rhs_only(b, prob.bc_func[var.index, 1], grid_data.bdry[1,:], t);
+    end
 
     return b;
 end

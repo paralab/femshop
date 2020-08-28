@@ -325,11 +325,12 @@ function solve(var)
             
             if prob.time_dependent
                 global time_stepper = init_stepper(grid_data.allnodes, time_stepper);
-                t = @elapsed(var.values = CGSolver.solve(var, lhs, rhs, time_stepper));
-                
+                t = @elapsed(result = CGSolver.solve(var, lhs, rhs, time_stepper));
+                # result is already stored in variables
             else
                 # solve it!
                 t = @elapsed(result = CGSolver.solve(var, lhs, rhs));
+                
                 # place the values in the variable value arrays
                 if typeof(var) <: Array
                     tmp = 0;

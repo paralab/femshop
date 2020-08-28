@@ -375,10 +375,12 @@ function process_term_julia(sterm, var, lorr, offset_ind=0)
                 end
                 trial_component = index;
                 #offset component for multivar
+                trial_var = var;
                 if typeof(var) <:Array
                     for vi=1:length(var)
                         if v === var[vi].symbol
                             trial_component = trial_component .+ offset_ind[vi];
+                            trial_var = var[vi];
                         end
                     end
                 end
@@ -390,7 +392,19 @@ function process_term_julia(sterm, var, lorr, offset_ind=0)
                     trial_part = :($dmatr * $dmatq);
                 else
                     # no derivative mods
-                    trial_part = :(refel.Q);
+                    if lorr == RHS # If rhs, change var into var.values and treat as a coefficient
+                        if length(trial_var.symvar.vals) > 1
+                            # need a component index in there
+                            tmpv = :(a.values[gbl,$trial_component]);
+                        else
+                            tmpv = :(a.values[gbl]);
+                        end
+                        tmpv.args[1].args[1] = trial_var.symbol;
+                        push!(coef_facs, tmpv);
+                        push!(coef_inds, trial_component);
+                    else
+                        trial_part = :(refel.Q);
+                    end
                 end
             else
                 if length(index) == 1
@@ -401,14 +415,6 @@ function process_term_julia(sterm, var, lorr, offset_ind=0)
             end
         end
         
-    end
-    
-    # If rhs, change var into var.values and treat as a coefficient
-    if lorr == RHS && trial_part == :(refel.Q)
-        tmpv = :(a.values[gbl]);
-        tmpv.args[1].args[1] = var.symbol; #TODO, will not work for var=array
-        push!(coef_facs, tmpv);
-        push!(coef_inds, trial_component);
     end
     
     # If there's no trial part, need to do this
