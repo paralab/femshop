@@ -97,6 +97,36 @@ function solve(var, bilinear, linear, stepper=nothing)
     end
 end
 
+function nonlinear_solve(var, bilinear, linear, stepper=nothing)
+    if prob.time_dependent && !(stepper === nothing)
+        #TODO time dependent coefficients
+        
+        log_entry("Beginning "*string(stepper.Nsteps)*" time steps.");
+        t = 0;
+        start_t = Base.Libc.time();
+        for i=1:stepper.Nsteps
+			nonlinear(var.value)
+            t += stepper.dt;
+        end
+        end_t = Base.Libc.time();
+        
+        log_entry("Solve took "*string(end_t-start_t)*" seconds");
+        #display(sol);
+        return var.values;
+        
+    else
+        assemble_t = @elapsed((A, b) = assemble(var, bilinear, linear));
+        sol_t = @elapsed(sol = A\b);
+        
+        log_entry("Assembly took "*string(assemble_t)*" seconds");
+        log_entry("Linear solve took "*string(sol_t)*" seconds");
+        #display(A);
+        #display(b);
+        #display(sol);
+        return sol;
+    end
+end
+
 # assembles the A and b in Au=b
 function assemble(var, bilinear, linear, t=0.0, dt=0.0)
     Np = refel.Np;
