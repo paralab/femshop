@@ -18,11 +18,11 @@ init_femshop("heat2d");
 @stepper(EULER_IMPLICIT)            # time stepper (optional second arg is CFL#)
 
 # Specify the problem
-@mesh(QUADMESH, 10)                   # .msh file or generate our own
+@mesh(QUADMESH, 15)                   # .msh file or generate our own
 
 @variable(u)                        # same as @variable(u, SCALAR)
 
-@testFunction(v)                    # sets the symbol for a test function
+@testSymbol(v)                    # sets the symbol for a test function
 
 T = 1;
 @timeInterval(T)                    # (start, end) using this sets problem to time dependent
@@ -32,14 +32,14 @@ T = 1;
 
 # Write the weak form 
 @coefficient(f, "sin(6*pi*x)*sin(6*pi*y)")
-@weakForm(u, "Dt(u*v) + 0.01 * grad(u)*grad(v) - f*v")
+@weakForm(u, "Dt(u*v) + 0.01 * dot(grad(u),grad(v)) - f*v")
 
 solve(u);
 
 # solution is stored in the variable's "values"
-using Plots
-pyplot();
-display(plot(Femshop.grid_data.allnodes[:,1], Femshop.grid_data.allnodes[:,2], u.values, st = :surface))
+#using Plots
+#pyplot();
+#display(plot(Femshop.grid_data.allnodes[:,1], Femshop.grid_data.allnodes[:,2], u.values, st = :surface))
 
 # check
 log_dump_config(Femshop.config);

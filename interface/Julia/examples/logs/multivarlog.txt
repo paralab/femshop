@@ -1,0 +1,93 @@
+######################################
+# Femshop Log for: multivar
+######################################
+
+1.	Building simple line mesh with nx elements, nx=30
+2.	Added mesh with 31 vertices and 30 elements.
+3.	Full grid has 91 nodes.
+4.	Grid building took 0.0015729 seconds
+5.	Added variable: u of type: scalar
+6.	Added variable: q of type: scalar
+7.	Set test function symbol: v of type: scalar
+8.	Boundary condition: var=u bid=1 type=Dirichlet val=0
+9.	Boundary condition: var=q bid=1 type=Dirichlet val=0
+10.	Generated function: genfunction_0
+11.	Added coefficient f : -4*pi*pi*sin(2*pi*x)
+12.	Generated function: genfunction_1
+13.	Added coefficient g : -9*pi*pi*sin(3*pi*x) + 0.5*sin(2*pi*x)
+14.	Making weak form for variable(s): Any[:u, :q]
+15.	Weak form, input: ["-dot(grad(u), grad(v)) - f*v", "-dot(grad(q), grad(v)) + 0.5*u*v - g*v"]
+16.	Weak form, symbolic layer:
+lhs1 = SymEngine.Basic[-D1__u_1*D1__v_1]
+lhs2 = SymEngine.Basic[-D1__v_1*D1__q_1, 0.5*_v_1*_u_1]
+
+rhs1 = SymEngine.Basic[_v_1*_f_1]
+rhs2 = SymEngine.Basic[_v_1*_g_1]
+
+17.	Weak form, code layer: LHS = begin
+    var = args[1]
+    x = args[2]
+    gbl = args[3]
+    refel = args[4]
+    borl = args[5]
+    time = args[6]
+    (detJ, J) = geometric_factors(refel, x)
+    R1matrix = diagm(J.rx)
+    Q1matrix = refel.Qr
+    element_matrix = zeros(refel.Np * 2, refel.Np * 2)
+    element_matrix[0 * refel.Np + 1:(0 + 1) * refel.Np, 0 * refel.Np + 1:(0 + 1) * refel.Np] += -(transpose(R1matrix * Q1matrix) * diagm(refel.wg .* detJ) * (R1matrix * Q1matrix))
+    element_matrix[1 * refel.Np + 1:(1 + 1) * refel.Np, 1 * refel.Np + 1:(1 + 1) * refel.Np] += -(transpose(R1matrix * Q1matrix) * diagm(refel.wg .* detJ) * (R1matrix * Q1matrix))
+    element_matrix[1 * refel.Np + 1:(1 + 1) * refel.Np, 0 * refel.Np + 1:(0 + 1) * refel.Np] += (refel.Q)' * (diagm((refel.wg .* detJ) .* 0.5) * refel.Q)
+    return element_matrix
+end 
+  RHS = begin
+    var = args[1]
+    x = args[2]
+    gbl = args[3]
+    refel = args[4]
+    borl = args[5]
+    time = args[6]
+    (detJ, J) = geometric_factors(refel, x)
+    coef_0_1 = zeros(refel.Np)
+    coef_1_1 = zeros(refel.Np)
+    for coefi = 1:refel.Np
+        coef_0_1[coefi] = (f.value[1]).func(x[coefi], 0, 0, time)
+        coef_1_1[coefi] = (g.value[1]).func(x[coefi], 0, 0, time)
+    end
+    element_vector = zeros(refel.Np * 2)
+    element_vector[0 * refel.Np + 1:(0 + 1) * refel.Np] += (refel.Q)' * (diagm(refel.wg .* detJ) * (refel.Q * coef_0_1))
+    element_vector[1 * refel.Np + 1:(1 + 1) * refel.Np] += (refel.Q)' * (diagm(refel.wg .* detJ) * (refel.Q * coef_1_1))
+    return element_vector
+end
+18.	Generated function: genfunction_2
+19.	Generated function: genfunction_3
+20.	Assembly took 0.0621084 seconds
+21.	Linear solve took 0.000216101 seconds
+22.	Solved for [u, q].(took 0.069871899 seconds)
+23.	Dumping configuration:
+24.		dimension = 1
+25.		geometry = square
+26.		mesh_type = grid
+27.		solver_type = CG
+28.		trial_function = Legendre
+29.		test_function = Legendre
+30.		elemental_nodes = Lobatto
+31.		quadrature = Gauss
+32.		p_adaptive = false
+33.		basis_order_min = 3
+34.		basis_order_max = 3
+35.		linear = true
+36.		t_adaptive = false
+37.		stepper = Euler-implicit
+38.		linalg_matrixfree = false
+39.		linalg_backend = ours
+40.		output_format = vtk
+41.	Dumping problem:
+42.		bc_type = ["Dirichlet"; "Dirichlet"]
+43.		bid = [1; 1]
+44.		bc_func = Any[0; 0]
+45.		time_dependent = false
+46.		end_time = 0.0
+47.		initial = Any[]
+48.		lhs_time_deriv = Bool[]
+49.	Completed. Closing Log.

@@ -1,4 +1,4 @@
-#=
+#= 
 # A set of tools for parsing the variational forms into symEngine expressions.
 =#
 module SymbolicParser
@@ -58,7 +58,18 @@ end
 function sp_parse(ex, var)
     lhs = nothing;
     rhs = nothing;
+    varcount = 1;
+    timederiv = false;
     #println("expr = "*string(ex));
+    
+    # Check that there are as many vars as exs
+    if typeof(var) <: Array
+        if !(typeof(ex) <:Array && length(var) == length(ex))
+            printerr("Error: Need same # of unknowns and equations");
+            return (nothing,nothing);
+        end
+        varcount = length(var);
+    end
     
     # Work with a copy of ex
     symex = copy(ex);
@@ -75,65 +86,43 @@ function sp_parse(ex, var)
     sterms = get_sym_terms(symex);
     #println("sterms = "*string(sterms));
     
-    # Each element has an lhs and rhs
-    lhs = similar(sterms); # set up the container right
-    rhs = similar(sterms);
-    sz = size(symex);
+    # Check for time derivatives
+    timederiv = check_for_dt(sterms);
     
-    if length(sz) == 1 # vector or scalar
-        for i=1:sz[1]
-            lhs[i] = Array{Basic,1}(undef,0);
-            rhs[i] = Array{Basic,1}(undef,0);
-            for ti=1:length(sterms[i])
-                if has_unknown(sterms[i][ti], var)
-                    #println("lhs: "*string(sterms[i][ti]));
-                    push!(lhs[i], sterms[i][ti]);
-                else
-                    #println("rhs: "*string(sterms[i][ti]));
-                    # switch sign to put on RHS
-                    push!(rhs[i], -sterms[i][ti]);
-                end
-            end
+    # Each element has an lhs and rhs
+    lhs = copy(sterms); # set up the container right
+    rhs = copy(sterms);
+    if varcount > 1
+        for i=1:length(symex)
+            sz = size(symex[i]);
+            (lhs[i],rhs[i]) = split_left_right(sterms[i],sz,var);
         end
-    elseif length(sz) == 2 # matrix
-        for j=1:sz[2]
-            for i=1:sz[1]
-                lhs[i,j] = Basic(0);
-                rhs[i,j] = Basic(0);
-                for ti=1:length(sterms[i,j])
-                    if has_unknown(sterms[i,j][ti], var)
-                        #println("lhs: "*string(sterms[i,j][ti]));
-                        push!(lhs[i,j], sterms[i,j][ti]);
-                    else
-                        #println("rhs: "*string(sterms[i,j][ti]));
-                        push!(rhs[i,j], sterms[i,j][ti]);
-                    end
-                end
+    else
+        sz = size(symex);
+        (lhs,rhs) = split_left_right(sterms,sz,var);
+    end
+    
+    # If there was a time derivative, separate those terms as well
+    if timederiv
+        dtlhs = copy(lhs);
+        if varcount > 1
+            for i=1:length(symex)
+                sz = size(symex[i]);
+                (dtlhs[i],lhs[i]) = split_dt(lhs[i],sz);
             end
-        end
-    elseif length(sz) == 3 # rank 3
-        for k=1:sz[3]
-            for j=1:sz[2]
-                for i=1:sz[1]
-                    lhs[i,j,k] = Basic(0);
-                    rhs[i,j,k] = Basic(0);
-                    for ti=1:length(sterms[i,j,k])
-                        if has_unknown(sterms[i,j,k][ti], var)
-                            #println("lhs: "*string(sterms[i,j,k][ti]));
-                            push!(lhs[i,j,k], sterms[i,j,k][ti]);
-                        else
-                            #println("rhs: "*string(sterms[i,j,k][ti]));
-                            push!(rhs[i,j,k], sterms[i,j,k][ti]);
-                        end
-                    end
-                end
-            end
+        else
+            sz = size(symex);
+            (dtlhs,lhs) = split_dt(lhs,sz);
         end
     end
     
-    #println(string(lhs));
-    #println(string(rhs));
-    return (lhs, rhs);
+    #println("LHS = "*string(lhs));
+    #println("RHS = "*string(rhs));
+    if timederiv
+        return ((dtlhs,lhs), rhs);
+    else
+        return (lhs, rhs);
+    end
 end
 
 # Replaces variable, coefficient and operator symbols in the expression
@@ -175,6 +164,12 @@ function replace_symbols(ex)
             ex.args[i] = replace_symbols(ex.args[i]); # recursively replace on args if ex
         end
         return ex;
+    elseif typeof(ex) <:Array
+        result = [];
+        for i=1:length(ex)
+            push!(result, replace_symbols(ex[i]));
+        end
+        return result;
     else
         return ex;
     end
@@ -184,7 +179,15 @@ end
 function apply_ops(ex)
     
     try
-        return eval(ex);
+        if typeof(ex) <:Array
+            result = [];
+            for i=1:length(ex)
+                push!(result, eval(ex[i]));
+            end
+            return result;
+        else
+            return eval(ex);
+        end
     catch e
         printerr("Problem evaluating the symbolic expression: "*string(ex));
         println(string(e));
@@ -194,9 +197,20 @@ end
 
 function has_unknown(ex, var)
     str = string(ex);
-    vs = "_"*string(var)*"_";
+    result = false;
+    if typeof(var) <: Array
+        for i=1:length(var)
+            vs = "_"*string(var[i])*"_";
+            if occursin(vs, str)
+                result = true;
+            end
+        end
+    else
+        vs = "_"*string(var)*"_";
+        result = occursin(vs, str);
+    end
     
-    return occursin(vs, str);
+    return result;
 end
 
 # Separate terms for each element of ex.
@@ -246,9 +260,11 @@ function get_all_terms(ex)
         #dump(expr);
         terms = get_all_terms(expr);
         #println("Exprterms = "*string(terms));
-        bterms = Array{Basic,1}(undef,size(terms));
+        bterms = Array{Basic,1}(undef,0);
         for i=1:length(terms)
-            bterms[i] = Basic(terms[i]);
+            if !(terms[i] == 0)
+                push!(bterms, Basic(terms[i]));
+            end
         end
         return bterms;
     end
@@ -287,6 +303,134 @@ function get_all_terms(ex)
         terms = [ex];
     end
     return terms;
+end
+
+function check_for_dt(terms)
+    result = false;
+    if typeof(terms) <: Array
+        for i=1:length(terms)
+            result = result || check_for_dt(terms[i]);
+        end
+    else
+        result = occursin("TIMEDERIV", string(terms));
+    end
+    return result;
+end
+
+function split_left_right(sterms,sz,var)
+    lhs = copy(sterms); # set up the container right
+    rhs = copy(sterms);
+    if length(sz) == 1 # vector or scalar
+        for i=1:sz[1]
+            lhs[i] = Array{Basic,1}(undef,0);
+            rhs[i] = Array{Basic,1}(undef,0);
+            for ti=1:length(sterms[i])
+                if has_unknown(sterms[i][ti], var)
+                    #println("lhs: "*string(sterms[i][ti]));
+                    push!(lhs[i], sterms[i][ti]);
+                else
+                    #println("rhs: "*string(sterms[i][ti]));
+                    # switch sign to put on RHS
+                    push!(rhs[i], -sterms[i][ti]);
+                end
+            end
+        end
+    elseif length(sz) == 2 # matrix
+        for j=1:sz[2]
+            for i=1:sz[1]
+                lhs[i,j] = Basic(0);
+                rhs[i,j] = Basic(0);
+                for ti=1:length(sterms[i,j])
+                    if has_unknown(sterms[i,j][ti], var)
+                        #println("lhs: "*string(sterms[i,j][ti]));
+                        push!(lhs[i,j], sterms[i,j][ti]);
+                    else
+                        #println("rhs: "*string(sterms[i,j][ti]));
+                        push!(rhs[i,j], -sterms[i,j][ti]);
+                    end
+                end
+            end
+        end
+    elseif length(sz) == 3 # rank 3
+        for k=1:sz[3]
+            for j=1:sz[2]
+                for i=1:sz[1]
+                    lhs[i,j,k] = Basic(0);
+                    rhs[i,j,k] = Basic(0);
+                    for ti=1:length(sterms[i,j,k])
+                        if has_unknown(sterms[i,j,k][ti], var)
+                            #println("lhs: "*string(sterms[i,j,k][ti]));
+                            push!(lhs[i,j,k], sterms[i,j,k][ti]);
+                        else
+                            #println("rhs: "*string(sterms[i,j,k][ti]));
+                            push!(rhs[i,j,k], -sterms[i,j,k][ti]);
+                        end
+                    end
+                end
+            end
+        end
+    end
+    return (lhs,rhs);
+end
+
+function split_dt(terms, sz)
+    hasdt = copy(terms); # set up the container right
+    nodt = copy(terms);
+    TIMEDERIV = symbols("TIMEDERIV"); # will be removed from terms
+    if length(sz) == 1 # vector or scalar
+        for i=1:sz[1]
+            hasdt[i] = Array{Basic,1}(undef,0);
+            nodt[i] = Array{Basic,1}(undef,0);
+            for ti=1:length(terms[i])
+                if check_for_dt(terms[i][ti])
+                    #println("hasdt: "*string(terms[i][ti]));
+                    terms[i][ti] = subs(terms[i][ti], TIMEDERIV=>1);
+                    push!(hasdt[i], terms[i][ti]);
+                else
+                    #println("nodt: "*string(terms[i][ti]));
+                    push!(nodt[i], terms[i][ti]);
+                end
+            end
+        end
+    elseif length(sz) == 2 # matrix
+        for j=1:sz[2]
+            for i=1:sz[1]
+                hasdt[i,j] = Basic(0);
+                nodt[i,j] = Basic(0);
+                for ti=1:length(terms[i,j])
+                    if check_for_dt(terms[i,j][ti])
+                        #println("hasdt: "*string(terms[i,j][ti]));
+                        terms[i,j][ti] = subs(terms[i,j][ti], TIMEDERIV=>1);
+                        push!(hasdt[i,j], terms[i,j][ti]);
+                    else
+                        #println("nodt: "*string(terms[i,j][ti]));
+                        push!(nodt[i,j], terms[i,j][ti]);
+                    end
+                end
+            end
+        end
+    elseif length(sz) == 3 # rank 3
+        for k=1:sz[3]
+            for j=1:sz[2]
+                for i=1:sz[1]
+                    hasdt[i,j,k] = Basic(0);
+                    nodt[i,j,k] = Basic(0);
+                    for ti=1:length(terms[i,j,k])
+                        if check_for_dt(terms[i,j,k][ti])
+                            #println("hasdt: "*string(terms[i,j,k][ti]));
+                            terms[i,j,k][ti] = subs(terms[i,j,k][ti], TIMEDERIV=>1);
+                            push!(hasdt[i,j,k], terms[i,j,k][ti]);
+                        else
+                            #println("nodt: "*string(terms[i,j,k][ti]));
+                            push!(nodt[i,j,k], terms[i,j,k][ti]);
+                        end
+                    end
+                end
+            end
+        end
+    end
+    
+    return (hasdt, nodt);
 end
 
 function apply_negative(ex)

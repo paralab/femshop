@@ -82,8 +82,12 @@ function dirichlet_bc(A, b, val, bdryind, t=0, dofind = 1, totaldofs = 1)
     return (A, b);
 end
 
-function dirichlet_bc_rhs_only(b, val, bdry, t=0)
+function dirichlet_bc_rhs_only(b, val, bdryind, t=0, dofind = 1, totaldofs = 1)
     N = length(b);
+    bdry = copy(bdryind);
+    if totaldofs > 1
+        bdry = (bdry .- 1) .* totaldofs .+ dofind;
+    end
     
     if typeof(val) <: Number
         for i=1:length(bdry)

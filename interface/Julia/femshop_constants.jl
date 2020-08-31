@@ -2,7 +2,7 @@
 Define some constants
 Use string values to make printing/interpretation easier
 =#
-export JULIA, CPP, MATLAB, SQUARE, IRREGULAR, TREE, UNSTRUCTURED, CG, DG, HDG,
+export JULIA, CPP, MATLAB, SQUARE, IRREGULAR, GRID, TREE, UNSTRUCTURED, CG, DG, HDG,
         NODAL, MODAL, LEGENDRE, UNIFORM, GAUSS, LOBATTO, NONLINEAR_NEWTON,
         NONLINEAR_SOMETHING, EULER_EXPLICIT, EULER_IMPLICIT, CRANK_NICHOLSON, RK4, LSRK4,
         ABM4, OURS, PETSC, VTK, RAW_OUTPUT, CUSTOM_OUTPUT, DIRICHLET, NEUMANN, ROBIN,
@@ -21,6 +21,7 @@ const SQUARE = "square";
 const IRREGULAR = "irregular";
 
 # Domain decomposition
+const GRID = "grid";
 const TREE = "tree";
 const UNSTRUCTURED = "unstructured";
 

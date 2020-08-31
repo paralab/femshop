@@ -25,7 +25,7 @@ ord = 2;
 
 @variable(u)                        # same as @variable(u, SCALAR)
 
-@testFunction(v)                    # sets the symbol for a test function
+@testSymbol(v)                    # sets the symbol for a test function
 
 T = 1;
 @timeInterval(T)                    # (start, end) using this sets problem to time dependent
@@ -35,17 +35,17 @@ T = 1;
 
 # Write the weak form 
 @coefficient(f, "-0.1*sin(pi*x)*sin(pi*y)*sin(pi*z)")
-@weakForm(u, "Dt(u*v) + 0.01 * grad(u)*grad(v) - f*v")
+@weakForm(u, "Dt(u*v) + 0.01 * dot(grad(u),grad(v)) - f*v")
 
 solve(u);
 
 # solution is stored in the variable's "values"
-using Plots
-pyplot();
-N = n*ord+1;
-half = Int(round(N/2));
-range = (N*N*half+1):(N*N*(half+1));
-display(plot(Femshop.grid_data.allnodes[range,1], Femshop.grid_data.allnodes[range,2], u.values[range], st=:surface))
+#using Plots
+#pyplot();
+#N = n*ord+1;
+#half = Int(round(N/2));
+#range = (N*N*half+1):(N*N*(half+1));
+#display(plot(Femshop.grid_data.allnodes[range,1], Femshop.grid_data.allnodes[range,2], u.values[range], st=:surface))
 
 # check
 log_dump_config(Femshop.config);

@@ -9,14 +9,12 @@ export @language, @domain, @mesh, @solver, @stepper, @functionSpace, @trialFunct
         @testFunction, @nodes, @order, @boundary, @variable, @coefficient, @testSymbol, @initial,
         @timeInterval, @weakForm, @LHS, @RHS, @customOperator,
         @outputMesh, @useLog, @finalize
-export init_femshop, set_language, dendro, set_solver, set_stepper, add_mesh, output_mesh, add_test_function, 
+export init_femshop, set_language, dendro, set_solver, set_stepper, reformat_for_stepper, add_mesh, output_mesh, add_test_function, 
         add_initial_condition, add_boundary_condition, set_rhs, set_lhs, solve, finalize
 export sp_parse
 export generate_code_layer
 export Variable, add_variable
 export Coefficient, add_coefficient
-
-export mass_operator, stiffness_operator
 
 ### Module's global variables ###
 # config
@@ -313,7 +311,7 @@ function solve(var)
             if typeof(var) <: Array
                 varnames = "["*string(var[1].symbol);
                 for vi=2:length(var)
-                    varnames = varnames*", "*string(var[i].symbol);
+                    varnames = varnames*", "*string(var[vi].symbol);
                 end
                 varnames = varnames*"]";
                 varind = var[1].index;
@@ -327,13 +325,31 @@ function solve(var)
             
             if prob.time_dependent
                 global time_stepper = init_stepper(grid_data.allnodes, time_stepper);
-                t = @elapsed(var.values = CGSolver.solve(var, lhs, rhs, time_stepper));
-                
+                t = @elapsed(result = CGSolver.solve(var, lhs, rhs, time_stepper));
+                # result is already stored in variables
             else
+                # solve it!
                 t = @elapsed(result = CGSolver.solve(var, lhs, rhs));
-                components = length(var.symvar.vals);
-                for compi=1:components
-                    var.values[:,compi] = result[compi:components:end];
+                
+                # place the values in the variable value arrays
+                if typeof(var) <: Array
+                    tmp = 0;
+                    totalcomponents = 0;
+                    for vi=1:length(var)
+                        totalcomponents = totalcomponents + length(var[vi].symvar.vals);
+                    end
+                    for vi=1:length(var)
+                        components = length(var[vi].symvar.vals);
+                        for compi=1:components
+                            var[vi].values[:,compi] = result[(compi+tmp):totalcomponents:end];
+                            tmp = tmp + 1;
+                        end
+                    end
+                else
+                    components = length(var.symvar.vals);
+                    for compi=1:components
+                        var.values[:,compi] = result[compi:components:end];
+                    end
                 end
             end
             
