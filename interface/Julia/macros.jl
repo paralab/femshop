@@ -124,6 +124,13 @@ macro stepper(s, cfl)
     end)
 end
 
+macro matrixFree() return esc(:(@matrixFree(1000, 1e-6))) end
+macro matrixFree(max, tol)
+    return esc(quote
+        set_matrix_free($max, $tol);
+    end)
+end
+
 macro customOperator(s, handle)
     symb = string(s);
     return esc(quote
@@ -302,7 +309,7 @@ macro weakForm(var, ex)
         rhs_code = generate_code_layer(rhs_expr, $var, RHS);
         Femshop.log_entry("Weak form, code layer: LHS = "*string(lhs_code)*" \n  RHS = "*string(rhs_code));
         
-        if Femshop.language == JULIA
+        if Femshop.language == JULIA || Femshop.language == 0
             args = "args";
             @makeFunction(args, string(lhs_code));
             set_lhs($var);

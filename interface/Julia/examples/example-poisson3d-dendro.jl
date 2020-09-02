@@ -16,13 +16,10 @@ init_femshop("poisson3ddendro");
 dendro(max_depth=6, wavelet_tol = 0.1, partition_tol = 0.3, solve_tol = 1e-6, max_iters = 100);
 
 # Set up the configuration (order doesn't matter)
-@domain(3, SQUARE, UNSTRUCTURED)    # dimension, geometry, decomposition
+@domain(3)
 @solver(CG)                         # DG, CG, etc.
 @functionSpace(LEGENDRE, 2)         # function, order (or use testFunction and trialFunction)
 @nodes(LOBATTO)                     # elemental node arrangement
-
-# Specify the problem
-@mesh(QUADMESH, 30)                   # .msh file or generate our own
 
 @variable(u)                        # same as @variable(u, SCALAR)
 

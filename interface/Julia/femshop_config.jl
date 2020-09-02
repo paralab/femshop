@@ -29,6 +29,8 @@ mutable struct Femshop_config
     t_adaptive::Bool        # Do adaptive t_refinement?
     stepper::String         # Euler-explicit/implicit, RK4, LSRK4, etc. Type of time stepper to use
     linalg_matrixfree::Bool # Use matrix free methods?
+    linalg_matfree_max::Int # max iters for matrix free
+    linalg_matfree_tol::Float64 # tolerance for matrix free
     linalg_backend::String  # ours, petsc, ?? (What to use for linear algebra)
     output_format::String   # VTK, raw, custom (format for storing solutions)
     
@@ -49,6 +51,8 @@ mutable struct Femshop_config
         false,
         EULER_IMPLICIT,
         false,
+        1,
+        1.0,
         OURS,
         VTK
     );
