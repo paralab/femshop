@@ -78,15 +78,36 @@ function init_codegenerator(lang, dir, name, header)
     global genFileName = name;
     global headerText = header;
     
-    m = open(genDir*"/"*name*genFileExtension, "w");
-    c = open(genDir*"/Config"*genFileExtension, "w");
-    p = open(genDir*"/Problem"*genFileExtension, "w");
-    n = open(genDir*"/Mesh"*genFileExtension, "w");
-    g = open(genDir*"/Genfunction"*genFileExtension, "w");
-    b = open(genDir*"/Bilinear"*genFileExtension, "w");
-    l = open(genDir*"/Linear"*genFileExtension, "w");
-    s = open(genDir*"/Stepper"*genFileExtension, "w");
-    o = open(genDir*"/Output"*genFileExtension, "w");
+    if language == CPP
+        src_dir = genDir*"/src";
+        inc_dir = genDir*"/include";
+        if !isdir(src_dir)
+            mkdir(src_dir);
+        end
+        if !isdir(inc_dir)
+            mkdir(inc_dir);
+        end
+        m = open(src_dir*"/"*name*genFileExtension, "w");
+        c = open(src_dir*"/Config"*genFileExtension, "w");
+        p = open(src_dir*"/Problem"*genFileExtension, "w");
+        n = open(src_dir*"/Mesh"*genFileExtension, "w");
+        g = open(src_dir*"/Genfunction"*genFileExtension, "w");
+        b = open(src_dir*"/Bilinear"*genFileExtension, "w");
+        l = open(src_dir*"/Linear"*genFileExtension, "w");
+        s = open(src_dir*"/Stepper"*genFileExtension, "w");
+        o = open(src_dir*"/Output"*genFileExtension, "w");
+    elseif language == MATLAB
+        m = open(genDir*"/"*name*genFileExtension, "w");
+        c = open(genDir*"/Config"*genFileExtension, "w");
+        p = open(genDir*"/Problem"*genFileExtension, "w");
+        n = open(genDir*"/Mesh"*genFileExtension, "w");
+        g = open(genDir*"/Genfunction"*genFileExtension, "w");
+        b = open(genDir*"/Bilinear"*genFileExtension, "w");
+        l = open(genDir*"/Linear"*genFileExtension, "w");
+        s = open(genDir*"/Stepper"*genFileExtension, "w");
+        o = open(genDir*"/Output"*genFileExtension, "w");
+    end
+    
     
     global genfiles = Genfiles(m,c,p,n,g,b,l,s,o);
     

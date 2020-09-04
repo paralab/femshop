@@ -168,7 +168,7 @@ void set_grid_funs(std::function<double(double)> gx2x, std::function<double(doub
     end
     
     # Also write the header file
-    headerfile = open(genDir*"/Genfunction.h", "w");
+    headerfile = open(genDir*"/include/Genfunction.h", "w");
     content = 
 """#ifndef DENDRO_5_0_GENFUNCTIONS_H
 #define DENDRO_5_0_GENFUNCTIONS_H
@@ -241,39 +241,11 @@ end
 function dendro_bilinear_file(bl)
     file = genfiles.bilinear;
     
-    # argsym = :TEMPORARYARGS;
-    
-    # # swap the args for elemental operators
-    # ex = swap_op_args(argsym, bl.expr);
-    
-    # # Translate toperators to dendro ops
-    # ex = translate_to_dendro(ex);
-    
-    # # Turn it into a string
-    # str = string(ex);
-    # str = replace(str, r"([\d)])([(A-Za-z])" => s"\1*\2"); # explicitly multiply with "*"
-    # str = replace(str, "TEMPORARYARGS"=>"in, out, refEl, Jx, Jy, Jz, imV1, imV2, Qx, Qy, Qz");
-    # #println("bilinear gets: "*str);
-    
     print(file, bl);
 end
 
 function dendro_linear_file(l)
     file = genfiles.linear;
-    
-    # argsym = :TEMPORARYARGS;
-    
-    # # swap the args for elemental operators
-    # ex = swap_op_args(argsym, l.expr);
-    
-    # # Translate toperators to dendro ops
-    # ex = translate_to_dendro(ex);
-    
-    # # Turn it into a string
-    # str = string(ex);
-    # str = replace(str, r"([\d)])([(A-Za-z])" => s"\1*\2"); # explicitly multiply with "*"
-    # str = replace(str, "TEMPORARYARGS"=>"in, out, refEl, Jx, Jy, Jz, imV1, imV2, Qx, Qy, Qz");
-    # #println("linear gets: "*str);
     
     print(file, l);
 end
@@ -285,16 +257,23 @@ end
 function dendro_main_file()
     file = genfiles.main;
     # also write the two skeleton files linear_skel.cpp and bilinear_skel.cpp and their headers
-    linfile = open(genDir*"/linear_skel.cpp", "w");
-    bilinfile = open(genDir*"/bilinear_skel.cpp", "w");
-    linheaderfile = open(genDir*"/linear_skel.h", "w");
-    bilinheaderfile = open(genDir*"/bilinear_skel.h", "w");
+    linfile = open(genDir*"/src/linear_skel.cpp", "w");
+    bilinfile = open(genDir*"/src/bilinear_skel.cpp", "w");
+    linheaderfile = open(genDir*"/include/linear_skel.h", "w");
+    bilinheaderfile = open(genDir*"/include/bilinear_skel.h", "w");
     dendro_linear_skeleton(linfile, linheaderfile);
     dendro_bilinear_skeleton(bilinfile, bilinheaderfile);
     close(linfile);
     close(bilinfile);
     close(linheaderfile);
     close(bilinheaderfile);
+    # And write a cmakelists file and README with simple instructions for compiling
+    cmakefile = open(genDir*"/CMakeLists.txt", "w");
+    readmefile = open(genDir*"/README.txt", "w");
+    dendro_cmake_file(cmakefile);
+    dendro_readme_file(readmefile);
+    close(cmakefile);
+    close(readmefile);
     
     # Just write the whole skeleton
     content = """
@@ -624,12 +603,10 @@ function dendro_bilinear_skeleton(file, headerfile)
         Qx=new double[nPe];
         Qy=new double[nPe];
         Qz=new double[nPe];
-
     }
 
     FemshopDendroSkeleton::LHSMat::~LHSMat()
     {
-
         delete [] imV1;
         delete [] imV2;
 
@@ -643,13 +620,10 @@ function dendro_bilinear_skeleton(file, headerfile)
         Qx=NULL;
         Qy=NULL;
         Qz=NULL;
-
-
     }
 
     void FemshopDendroSkeleton::LHSMat::elementalMatVec(const VECType* in,VECType* out, double*coords,double scale)
     {
-
         const RefElement* refEl=m_uiOctDA->getReferenceElement();
 
         const double * Q1d=refEl->getQ1d();
@@ -791,7 +765,6 @@ function dendro_bilinear_skeleton(file, headerfile)
                 p[i]=r0[i];
             }
 
-
             if (normb == 0.0)
                 normb = 1;
 
@@ -817,10 +790,8 @@ function dendro_bilinear_skeleton(file, headerfile)
 
             if(status!=0)
             {
-
                 for(unsigned int i=1;i<=max_iter;i++)
                 {
-
                     matVec(p,Ap);
 
                     alpha=(dot(r0,r0,local_dof,activeComm)/dot(p,Ap,local_dof,activeComm));
@@ -860,15 +831,11 @@ function dendro_bilinear_skeleton(file, headerfile)
 
                     //if(!activeRank) std::cout<<"<r_1,r_1> : "<<dot(r1+nodeLocalBegin,r1+nodeLocalBegin,local_dof,activeComm)<<" <r_0,r_0>: "<<dot(r0+nodeLocalBegin,r0+nodeLocalBegin,local_dof,activeComm)<<" beta "<<beta<<std::endl;
 
-
-
                     for(unsigned int e=0;e<local_dof;e++)
                     {
                         p[e]=r1[e]+beta*p[e];
                         r0[e]=r1[e];
                     }
-
-
                 }
 
                 if(status!=0)
@@ -883,16 +850,9 @@ function dendro_bilinear_skeleton(file, headerfile)
                     m_uiOctDA->destroyVector(r0);
                     m_uiOctDA->destroyVector(r1);
                     status=1;
-
                 }
-
-
-
             }
-
-
         }
-
 
         // bcast act as a barrier for active and inactive meshes.
         par::Mpi_Bcast(&tol,1,0,globalComm);
@@ -955,4 +915,65 @@ function dendro_bilinear_skeleton(file, headerfile)
     #endif //DENDRO_5_0_BILINEAR_SKEL_H
     """
     print(headerfile, content);
+end
+
+function dendro_cmake_file(file)
+    content = """
+cmake_minimum_required(VERSION 2.8)
+project("""*genFileName*""")
+
+set("""*genFileName*"""_INC include/linear_skel.h
+            include/bilinear_skel.h
+            include/Genfunction.h
+        )
+
+set("""*genFileName*"""_SRC src/linear_skel.cpp
+            src/bilinear_skel.cpp
+            src/Genfunction.cpp
+        )
+
+set(SOURCE_FILES src/"""*genFileName*""".cpp \${"""*genFileName*"""_INC} \${"""*genFileName*"""_SRC})
+add_executable("""*genFileName*""" \${SOURCE_FILES})
+target_include_directories("""*genFileName*""" PRIVATE \${CMAKE_CURRENT_SOURCE_DIR}/include)
+target_include_directories("""*genFileName*""" PRIVATE \${CMAKE_SOURCE_DIR}/include)
+target_include_directories("""*genFileName*""" PRIVATE \${CMAKE_SOURCE_DIR}/include/test)
+target_include_directories("""*genFileName*""" PRIVATE \${CMAKE_SOURCE_DIR}/examples/include)
+target_include_directories("""*genFileName*""" PRIVATE \${CMAKE_SOURCE_DIR}/FEM/include)
+target_include_directories("""*genFileName*""" PRIVATE \${CMAKE_SOURCE_DIR}/ODE/include)
+target_include_directories("""*genFileName*""" PRIVATE \${CMAKE_SOURCE_DIR}/LinAlg/include)
+target_include_directories("""*genFileName*""" PRIVATE \${CMAKE_SOURCE_DIR}/IO/vtk/include)
+target_include_directories("""*genFileName*""" PRIVATE \${CMAKE_SOURCE_DIR}/IO/zlib/inc)
+target_include_directories("""*genFileName*""" PRIVATE \${MPI_INCLUDE_PATH})
+target_include_directories("""*genFileName*""" PRIVATE \${GSL_INCLUDE_DIRS})
+if(WITH_CUDA)
+    target_include_directories("""*genFileName*""" PRIVATE \${CUDA_INCLUDE_DIRS})
+endif()
+target_link_libraries("""*genFileName*""" dendro5 \${LAPACK_LIBRARIES} \${MPI_LIBRARIES} m)
+
+""";
+    print(file, content);
+end
+
+function dendro_readme_file(file)
+    content = """
+Basic instructions for compiling this generated code with dendro.
+    1. Place this generated directory in the Dendro directory.
+    
+    2. Append the following line to the Dendro CMakeLists.txt file:
+        add_subdirectory("""*uppercasefirst(genFileName)*""")
+    
+    3. Remake Dendro as usual. For example, to build to the directory "build",
+       enter the Dendro directory and do the following.
+        a. If it doesn't exist, make the build directory: "mkdir build"
+        b. "cd build"
+        c. "ccmake .."
+        d. "make"
+        e. "cd """*uppercasefirst(genFileName)*""" "
+    
+    4. Run the executable with "./"""*genFileName*""" "
+    
+    *Note: The directory will have an upper case first letter. 
+           The executable will match the name passed to @language().
+"""
+    print(file, content);
 end

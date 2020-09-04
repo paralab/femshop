@@ -9,12 +9,10 @@ FemshopDendroSkeleton::LHSMat::LHSMat(ot::DA* da,unsigned int dof) : feMatrix(da
     Qx=new double[nPe];
     Qy=new double[nPe];
     Qz=new double[nPe];
-
 }
 
 FemshopDendroSkeleton::LHSMat::~LHSMat()
 {
-
     delete [] imV1;
     delete [] imV2;
 
@@ -28,13 +26,10 @@ FemshopDendroSkeleton::LHSMat::~LHSMat()
     Qx=NULL;
     Qy=NULL;
     Qz=NULL;
-
-
 }
 
 void FemshopDendroSkeleton::LHSMat::elementalMatVec(const VECType* in,VECType* out, double*coords,double scale)
 {
-
     const RefElement* refEl=m_uiOctDA->getReferenceElement();
 
     const double * Q1d=refEl->getQ1d();
@@ -176,7 +171,6 @@ int FemshopDendroSkeleton::LHSMat::cgSolve(double * x ,double * b,int max_iter, 
             p[i]=r0[i];
         }
 
-
         if (normb == 0.0)
             normb = 1;
 
@@ -202,10 +196,8 @@ int FemshopDendroSkeleton::LHSMat::cgSolve(double * x ,double * b,int max_iter, 
 
         if(status!=0)
         {
-
             for(unsigned int i=1;i<=max_iter;i++)
             {
-
                 matVec(p,Ap);
 
                 alpha=(dot(r0,r0,local_dof,activeComm)/dot(p,Ap,local_dof,activeComm));
@@ -245,15 +237,11 @@ int FemshopDendroSkeleton::LHSMat::cgSolve(double * x ,double * b,int max_iter, 
 
                 //if(!activeRank) std::cout<<"<r_1,r_1> : "<<dot(r1+nodeLocalBegin,r1+nodeLocalBegin,local_dof,activeComm)<<" <r_0,r_0>: "<<dot(r0+nodeLocalBegin,r0+nodeLocalBegin,local_dof,activeComm)<<" beta "<<beta<<std::endl;
 
-
-
                 for(unsigned int e=0;e<local_dof;e++)
                 {
                     p[e]=r1[e]+beta*p[e];
                     r0[e]=r1[e];
                 }
-
-
             }
 
             if(status!=0)
@@ -268,16 +256,9 @@ int FemshopDendroSkeleton::LHSMat::cgSolve(double * x ,double * b,int max_iter, 
                 m_uiOctDA->destroyVector(r0);
                 m_uiOctDA->destroyVector(r1);
                 status=1;
-
             }
-
-
-
         }
-
-
     }
-
 
     // bcast act as a barrier for active and inactive meshes.
     par::Mpi_Bcast(&tol,1,0,globalComm);

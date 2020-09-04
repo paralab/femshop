@@ -5,11 +5,12 @@ We can reorganize things and make submodules as desired.
 module Femshop
 
 # Public macros and functions
-export @language, @domain, @mesh, @solver, @stepper, @functionSpace, @trialFunction,
+export @language, @domain, @mesh, @solver, @stepper, @functionSpace, @trialFunction, @matrixFree,
         @testFunction, @nodes, @order, @boundary, @variable, @coefficient, @testSymbol, @initial,
         @timeInterval, @weakForm, @LHS, @RHS, @customOperator,
         @outputMesh, @useLog, @finalize
-export init_femshop, set_language, dendro, set_solver, set_stepper, reformat_for_stepper, add_mesh, output_mesh, add_test_function,
+export init_femshop, set_language, dendro, set_solver, set_stepper, set_matrix_free, reformat_for_stepper, 
+        add_mesh, output_mesh, add_test_function, 
         add_initial_condition, add_boundary_condition, set_rhs, set_lhs, solve, finalize
 export sp_parse
 export generate_code_layer
@@ -57,6 +58,8 @@ config = Femshop_config(); # These need to be initialized here
 prob = Femshop_prob();
 
 function init_femshop(name="unnamedProject")
+    global config = Femshop_config();
+    global prob = Femshop_prob();
     global project_name = name;
     global language = JULIA;
     global gen_files = nothing;
@@ -100,6 +103,12 @@ function set_stepper(type, cfl)
     log_entry("Set time stepper to "*type);
 end
 
+function set_matrix_free(max, tol)
+    config.linalg_matrixfree = true;
+    config.linalg_matfree_max = max;
+    config.linalg_matfree_tol = tol;
+end
+
 function add_mesh(mesh)
     if typeof(mesh) <: Tuple
         global mesh_data = mesh[1];
@@ -130,18 +139,19 @@ end
 
 function add_variable(var)
     global var_count += 1;
-    # adjust values arrays
-    N = size(grid_data.allnodes)[1];
-    if var.type == SCALAR
-        var.values = zeros(N);
-    elseif var.type == VECTOR
-        var.values = zeros(N, config.dimension);
-    elseif var.type == TENSOR
-        var.values = zeros(N, config.dimension*config.dimension);
-    elseif var.type == SYM_TENSOR
-        var.values = zeros(N, Int((config.dimension*(config.dimension+1))/2));
+    if language == JULIA || language == 0
+        # adjust values arrays
+        N = size(grid_data.allnodes)[1];
+        if var.type == SCALAR
+            var.values = zeros(N);
+        elseif var.type == VECTOR
+            var.values = zeros(N, config.dimension);
+        elseif var.type == TENSOR
+            var.values = zeros(N, config.dimension*config.dimension);
+        elseif var.type == SYM_TENSOR
+            var.values = zeros(N, Int((config.dimension*(config.dimension+1))/2));
+        end
     end
-
     # make SymType
     symvar = sym_var(string(var.symbol), var.type, config.dimension);
     var.symvar = symvar;
