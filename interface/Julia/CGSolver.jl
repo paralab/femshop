@@ -3,7 +3,7 @@
 =#
 module CGSolver
 
-export init_cgsolver, solve
+export init_cgsolver, solve, nonlinear_solve
 
 import ..Femshop: JULIA, CPP, MATLAB, SQUARE, IRREGULAR, TREE, UNSTRUCTURED, CG, DG, HDG,
             NODAL, MODAL, LEGENDRE, UNIFORM, GAUSS, LOBATTO, NONLINEAR_NEWTON,
@@ -21,6 +21,7 @@ using LinearAlgebra, SparseArrays
 
 #include("cg_operators.jl");
 include("cg_boundary.jl");
+include("nonlinear.jl")
 #include("elemental_matrix.jl");
 
 function init_cgsolver()
@@ -61,7 +62,7 @@ function init_cgsolver()
                         end
                     end
                 end
-                
+
                 variables[vind].ready = true;
                 log_entry("Built initial conditions for: "*string(variables[vind].symbol));
             end
@@ -73,10 +74,10 @@ function setup1D()
     # This may be unnecessary. I'll keep this for now in case I need it.
 end
 function setup2D()
-    
+
 end
 function setup3D()
-    
+
 end
 
 function solve(var, bilinear, linear, stepper=nothing)
@@ -84,7 +85,7 @@ function solve(var, bilinear, linear, stepper=nothing)
         #TODO time dependent coefficients
         assemble_t = @elapsed((A, b) = assemble(var, bilinear, linear, 0, stepper.dt));
         log_entry("Assembly took "*string(assemble_t)*" seconds");
-        
+
         log_entry("Beginning "*string(stepper.Nsteps)*" time steps.");
         t = 0;
         sol = [];
@@ -112,19 +113,25 @@ function solve(var, bilinear, linear, stepper=nothing)
                     var.values[:,compi] = sol[compi:components:end];
                 end
             end
-            
+
             t += stepper.dt;
         end
         end_t = Base.Libc.time();
-        
+
         log_entry("Solve took "*string(end_t-start_t)*" seconds");
         #display(sol);
+		outfile = "linear_sol.txt"
+		open(outfile, "w") do f
+  			for ii in sol
+    			println(f, ii)
+  			end
+		end # the file f is automatically closed after this block finishes
         return sol;
-        
+
     else
         assemble_t = @elapsed((A, b) = assemble(var, bilinear, linear));
         sol_t = @elapsed(sol = A\b);
-        
+
         log_entry("Assembly took "*string(assemble_t)*" seconds");
         log_entry("Linear solve took "*string(sol_t)*" seconds");
         #display(A);
@@ -137,24 +144,34 @@ end
 function nonlinear_solve(var, bilinear, linear, stepper=nothing)
     if prob.time_dependent && !(stepper === nothing)
         #TODO time dependent coefficients
-        
+
         log_entry("Beginning "*string(stepper.Nsteps)*" time steps.");
         t = 0;
         start_t = Base.Libc.time();
+		nl = nonlinear(10, 1e-12, 1e-12);
         for i=1:stepper.Nsteps
-			nonlinear(var.value)
+			init_nonlinear(nl, var, bilinear, linear);
+			f = assemble;
+			newton(nl, f, f);
+			var = nl.var;
             t += stepper.dt;
         end
         end_t = Base.Libc.time();
-        
+
         log_entry("Solve took "*string(end_t-start_t)*" seconds");
         #display(sol);
-        return var.values;
-        
+		outfile = "nonlinear_sol.txt"
+		open(outfile, "w") do f
+  			for ii in nl.var.values
+    			println(f, ii)
+  			end
+		end # the file f is automatically closed after this block finishes
+        return nl.var.values;
+
     else
         assemble_t = @elapsed((A, b) = assemble(var, bilinear, linear));
         sol_t = @elapsed(sol = A\b);
-        
+
         log_entry("Assembly took "*string(assemble_t)*" seconds");
         log_entry("Linear solve took "*string(sol_t)*" seconds");
         #display(A);
@@ -184,10 +201,10 @@ function assemble(var, bilinear, linear, t=0.0, dt=0.0)
         dofs_per_node = length(var.symvar.vals);
     end
     Nn = dofs_per_node * N1;
-    
+
     b = zeros(Nn);
     A = spzeros(Nn, Nn);
-    
+
     # The elemental assembly loop
     for e=1:nel;
         nv = mesh_data.nv[e];
@@ -195,36 +212,36 @@ function assemble(var, bilinear, linear, t=0.0, dt=0.0)
         for vi=1:nv
             gis[vi] = mesh_data.invind[mesh_data.elements[e,vi]]; # mesh indices of element's vertices
         end
-        
+
         vx = mesh_data.nodes[gis,:];        # coordinates of element's vertices
         glb = loc2glb[e,:];                 # global indices of this element's nodes for extracting values from var arrays
         xe = grid_data.allnodes[glb[:],:];  # coordinates of this element's nodes for evaluating coefficient functions
-        
+
         # The linear part. Compute the elemental linear part for each dof
         rhsargs = (var, xe, glb, refel, RHS, t, dt);
         lhsargs = (var, xe, glb, refel, LHS, t, dt);
         if dofs_per_node == 1
             linchunk = linear.func(rhsargs);  # get the elemental linear part
             b[glb] .+= linchunk;
-            
+
             bilinchunk = bilinear.func(lhsargs); # the elemental bilinear part
             A[glb, glb] .+= bilinchunk;         # This will be very inefficient for sparse A
         elseif typeof(var) == Variable
             # only one variable, but more than one dof
             linchunk = linear.func(rhsargs);
             insert_linear!(b, linchunk, glb, 1:dofs_per_node, dofs_per_node);
-            
+
             bilinchunk = bilinear.func(lhsargs);
             insert_bilinear!(A, bilinchunk, glb, 1:dofs_per_node, dofs_per_node);
         else
             linchunk = linear.func(rhsargs);
             insert_linear!(b, linchunk, glb, 1:dofs_per_node, dofs_per_node);
-            
+
             bilinchunk = bilinear.func(lhsargs);
             insert_bilinear!(A, bilinchunk, glb, 1:dofs_per_node, dofs_per_node);
         end
     end
-    
+
     # Just for testing. This should really be a loop over BIDs with corresponding calls
     if dofs_per_node > 1
         if multivar
@@ -245,7 +262,7 @@ function assemble(var, bilinear, linear, t=0.0, dt=0.0)
     else
         (A, b) = dirichlet_bc(A, b, prob.bc_func[var.index, 1], grid_data.bdry[1,:], t);
     end
-    
+
     return (A, b);
 end
 
@@ -269,32 +286,32 @@ function assemble_rhs_only(var, linear, t=0.0, dt=0.0)
         dofs_per_node = length(var.symvar.vals);
     end
     Nn = dofs_per_node * N1;
-    
+
     b = zeros(Nn);
-    
+
     for e=1:nel;
         glb = loc2glb[e,:];                 # global indices of this element's nodes for extracting values from var arrays
         xe = grid_data.allnodes[glb[:],:];  # coordinates of this element's nodes for evaluating coefficient functions
-        
+
         rhsargs = (var, xe, glb, refel, RHS, t, dt);
-        
+
         #linchunk = linear.func(args);  # get the elemental linear part
         if dofs_per_node == 1
             linchunk = linear.func(rhsargs);  # get the elemental linear part
             b[glb] .+= linchunk;
-            
+
         elseif typeof(var) == Variable
             # only one variable, but more than one dof
             linchunk = linear.func(rhsargs);
             insert_linear!(b, linchunk, glb, 1:dofs_per_node, dofs_per_node);
-            
+
         else
             linchunk = linear.func(rhsargs);
             insert_linear!(b, linchunk, glb, 1:dofs_per_node, dofs_per_node);
-            
+
         end
     end
-    
+
     # Just for testing. This should really be a loop over BIDs with corresponding calls
     #b = dirichlet_bc_rhs_only(b, prob.bc_func[var.index, 1], grid_data.bdry[1,:], t);
     if dofs_per_node > 1
@@ -326,7 +343,7 @@ function insert_linear!(b, bel, glb, dof, Ndofs)
     for d=1:length(dof)
         ind = glb.*Ndofs .- (Ndofs-dof[d]);
         ind2 = ((d-1)*length(glb)+1):(d*length(glb));
-        
+
         b[ind] = b[ind] + bel[ind2];
     end
 end
@@ -339,7 +356,7 @@ function insert_bilinear!(a, ael, glb, dof, Ndofs)
         for dj=1:length(dof)
             indj = glb.*Ndofs .- (Ndofs-dof[dj]);
             indj2 = ((dj-1)*length(glb)+1):(dj*length(glb));
-            
+
             a[indi, indj] = a[indi, indj] + ael[indi2, indj2];
         end
     end

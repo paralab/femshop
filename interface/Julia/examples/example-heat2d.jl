@@ -26,13 +26,16 @@ init_femshop("heat2d");
 
 T = 1;
 @timeInterval(T)                    # (start, end) using this sets problem to time dependent
-@initial(u, "abs(x-0.5)+abs(y-0.5) < 0.2 ? 1 : 0")  # initial condition needed if time dependent
+#@initial(u, "abs(x-0.5)+abs(y-0.5) < 0.2 ? 1 : 0")  # initial condition needed if time dependent
+@initial(u, "1")  # initial condition needed if time dependent
 
 @boundary(u, 1, DIRICHLET, 0)
 
-# Write the weak form 
-@coefficient(f, "sin(6*pi*x)*sin(6*pi*y)")
-@weakForm(u, "Dt(u*v) + 0.01 * dot(grad(u),grad(v)) - f*v")
+# Write the weak form
+#@coefficient(f, "sin(6*pi*x)*sin(6*pi*y)")
+@coefficient(f, "8*pi*pi*sin(2*pi*x)*sin(2*pi*y)")
+#@weakForm(u, "Dt(u*v) + 0.01 * dot(grad(u),grad(v)) - f*v")
+@weakForm(u, "dot(grad(u),grad(v)) - f*v")
 
 solve(u);
 

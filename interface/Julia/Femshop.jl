@@ -9,7 +9,7 @@ export @language, @domain, @mesh, @solver, @stepper, @functionSpace, @trialFunct
         @testFunction, @nodes, @order, @boundary, @variable, @coefficient, @testSymbol, @initial,
         @timeInterval, @weakForm, @LHS, @RHS, @customOperator,
         @outputMesh, @useLog, @finalize
-export init_femshop, set_language, dendro, set_solver, set_stepper, reformat_for_stepper, add_mesh, output_mesh, add_test_function, 
+export init_femshop, set_language, dendro, set_solver, set_stepper, reformat_for_stepper, add_mesh, output_mesh, add_test_function,
         add_initial_condition, add_boundary_condition, set_rhs, set_lhs, solve, finalize
 export sp_parse
 export generate_code_layer
@@ -109,7 +109,7 @@ function add_mesh(mesh)
     else
         global mesh_data = mesh;
     end
-    
+
     log_entry("Added mesh with "*string(mesh_data.nx)*" vertices and "*string(mesh_data.nel)*" elements.");
     log_entry("Full grid has "*string(length(grid_data.allnodes))*" nodes.");
 end
@@ -123,7 +123,7 @@ function add_test_function(v, type)
     varind = length(test_functions) + 1;
     # make SymType
     symvar = sym_var(string(v), type, config.dimension);
-    
+
     push!(test_functions, Femshop.Coefficient(v, symvar, varind, type, []););
     log_entry("Set test function symbol: "*string(v)*" of type: "*type);
 end
@@ -141,16 +141,16 @@ function add_variable(var)
     elseif var.type == SYM_TENSOR
         var.values = zeros(N, Int((config.dimension*(config.dimension+1))/2));
     end
-    
+
     # make SymType
     symvar = sym_var(string(var.symbol), var.type, config.dimension);
     var.symvar = symvar;
-    
+
     global variables = [variables; var];
-    
+
     global linears = [linears; nothing];
     global bilinears = [bilinears; nothing];
-    
+
     log_entry("Added variable: "*string(var.symbol)*" of type: "*var.type);
 end
 
@@ -162,7 +162,7 @@ function add_coefficient(c, type, val, nfuns)
         if length(vals) == 1 && !(typeof(vals) <: Array)
             vals = [val];
         end
-            
+
     else # genfunction values
         if typeof(val) <: Array
             ind = length(genfunctions) - nfuns + 1;
@@ -178,14 +178,14 @@ function add_coefficient(c, type, val, nfuns)
             push!(vals, genfunctions[end]);
         end
     end
-    
+
     symvar = sym_var(string(c), type, config.dimension);
-    
+
     index = length(coefficients);
     push!(coefficients, Coefficient(c, symvar, index, type, vals));
-    
+
     log_entry("Added coefficient "*string(c)*" : "*string(val));
-    
+
     return coefficients[end];
 end
 
@@ -213,7 +213,7 @@ function add_initial_condition(varindex, ex, nfuns)
             prob.initial[varindex] = ex;
         end
     end
-    
+
     log_entry("Initial condition for "*string(variables[varindex].symbol)*" : "*string(prob.initial[varindex]));
     # hold off on initializing till solve or generate is determined.
 end
@@ -255,7 +255,7 @@ function add_boundary_condition(var, bid, type, ex, nfuns)
     end
     prob.bc_type[var.index, bid] = type;
     prob.bid[var.index, bid] = bid;
-    
+
     log_entry("Boundary condition: var="*string(var.symbol)*" bid="*string(bid)*" type="*type*" val="*string(ex));
 end
 
@@ -300,7 +300,7 @@ function solve(var)
         end
         generate_prob();
         generate_mesh();
-        generate_genfunction(); 
+        generate_genfunction();
         generate_bilinear(bilinears[1]);
         generate_linear(linears[1]);
         #generate_stepper();
@@ -319,18 +319,19 @@ function solve(var)
                 varnames = string(var.symbol);
                 varind = var.index;
             end
-            
+
             lhs = bilinears[varind];
             rhs = linears[varind];
-            
+
             if prob.time_dependent
                 global time_stepper = init_stepper(grid_data.allnodes, time_stepper);
-                t = @elapsed(result = CGSolver.solve(var, lhs, rhs, time_stepper));
+                t = @elapsed(result = CGSolver.nonlinear_solve(var, lhs, rhs, time_stepper));
+                #t = @elapsed(result = CGSolver.solve(var, lhs, rhs, time_stepper));
                 # result is already stored in variables
             else
                 # solve it!
                 t = @elapsed(result = CGSolver.solve(var, lhs, rhs));
-                
+
                 # place the values in the variable value arrays
                 if typeof(var) <: Array
                     tmp = 0;
@@ -352,11 +353,11 @@ function solve(var)
                     end
                 end
             end
-            
+
             log_entry("Solved for "*varnames*".(took "*string(t)*" seconds)");
         end
     end
-    
+
 end
 
 function finalize()
