@@ -39,6 +39,7 @@ function generate_code_layer_julia(symex, var, lorr)
     need_derivative = false;
     needed_coef = [];
     needed_coef_ind = [];
+    needed_coef_deriv = [];
     test_ind = [];
     trial_ind = [];
     
@@ -72,7 +73,7 @@ function generate_code_layer_julia(symex, var, lorr)
             subtest_ind = [];
             subtrial_ind = [];
             for i=1:length(terms[vi])
-                (codeterm, der, coe, coeind, testi, trialj) = process_term_julia(terms[vi][i], var, lorr, offset_ind);
+                (codeterm, der, coe, coeind, coederiv, testi, trialj) = process_term_julia(terms[vi][i], var, lorr, offset_ind);
                 if coeind == -1
                     # processing failed due to nonlinear term
                     printerr("term processing failed for: "*string(terms[vi][i])*" , possible nonlinear term?");
@@ -81,6 +82,7 @@ function generate_code_layer_julia(symex, var, lorr)
                 need_derivative = need_derivative || der;
                 append!(needed_coef, coe);
                 append!(needed_coef_ind, coeind);
+                append!(needed_coef_deriv, coederiv);
                 # change indices into one number
                 
                 push!(subtest_ind, testi);
@@ -92,7 +94,7 @@ function generate_code_layer_julia(symex, var, lorr)
         end
     else
         for i=1:length(terms)
-            (codeterm, der, coe, coeind, testi, trialj) = process_term_julia(terms[i], var, lorr);
+            (codeterm, der, coe, coeind, coederiv, testi, trialj) = process_term_julia(terms[i], var, lorr);
             if coeind == -1
                 # processing failed due to nonlinear term
                 printerr("term processing failed for: "*string(terms[i])*" , possible nonlinear term?");
@@ -101,6 +103,7 @@ function generate_code_layer_julia(symex, var, lorr)
             need_derivative = need_derivative || der;
             append!(needed_coef, coe);
             append!(needed_coef_ind, coeind);
+            append!(needed_coef_deriv, coederiv);
             # change indices into one number
             
             push!(test_ind, testi);
@@ -133,20 +136,23 @@ function generate_code_layer_julia(symex, var, lorr)
     # # First remove duplicates
     unique_coef = [];
     unique_coef_ind = [];
+    unique_coef_deriv = [];
     for i=1:length(needed_coef)
         already = false;
         for j=1:length(unique_coef)
-            if unique_coef[j] === needed_coef[i] && unique_coef_ind[j] == needed_coef_ind[i]
+            if unique_coef[j] === needed_coef[i] && unique_coef_ind[j] == needed_coef_ind[i] && unique_coef_deriv[j] == needed_coef_deriv[i]
                 already = true;
             end
         end
         if !already
             push!(unique_coef, needed_coef[i]);
             push!(unique_coef_ind, needed_coef_ind[i]);
+            push!(unique_coef_deriv, needed_coef_deriv[i]);
         end
     end
     needed_coef = unique_coef;
     needed_coef_ind = unique_coef_ind;
+    needed_coef_deriv = unique_coef_deriv;
     
     # For constant coefficients, this generates something like:
     ######################################
@@ -173,12 +179,16 @@ function generate_code_layer_julia(symex, var, lorr)
         for i=1:length(needed_coef)
             if !(typeof(needed_coef[i]) <: Number || needed_coef[i] === :dt)
                 cind = get_coef_index(needed_coef[i]);
-                if cind < 0
-                    # probably a variable
-                    cind = string(needed_coef[i]);
+                if cind >= 0
+                    tag = string(cind);
+                else
+                    tag = string(needed_coef[i]);
                 end
-                tmps = "coef_"*string(cind)*"_"*string(needed_coef_ind[i]);
+                #derivatives of coefficients
+                tag = needed_coef_deriv[i][2] * tag;
+                tmps = "coef_"*tag*"_"*string(needed_coef_ind[i]);
                 tmpc = Symbol(tmps);
+                
                 (ctype, cval) = get_coef_val(needed_coef[i], needed_coef_ind[i]);
                 if ctype == 1
                     # constant coefficient -> coef_n = cval
@@ -199,23 +209,52 @@ function generate_code_layer_julia(symex, var, lorr)
                 elseif ctype == 3
                     # variable values -> coef_n = variable.values
                     if variables[cval].type == SCALAR
-                        tmpb = :(Femshop.variables[$cval].values[gbl]); 
+                        tmpb = :(copy(Femshop.variables[$cval].values[gbl])); 
                     else
                         compo = needed_coef_ind[i];
-                        tmpb = :(Femshop.variables[$cval].values[gbl, $compo]);
+                        tmpb = :(copy(Femshop.variables[$cval].values[gbl, $compo]));
                     end
                     
                     push!(code.args, Expr(:(=), tmpc, tmpb));
                 end
-            end
-        end
+                
+            end# number?
+        end# coef loop
         
+        # Write the loop that computes coefficient values
         if length(cloopin.args) > 0
             cloop.args[2] = cloopin;
             push!(code.args, cloop); # add loop to code
         end
         
-    end
+        # Apply derivatives after the initializing loop
+        # Will look like: coef_i_j = Rnmatrix * Qnmatrix * coef_i_j
+        for i=1:length(needed_coef_deriv)
+            if length(needed_coef_deriv[i][2]) > 0 && !(typeof(needed_coef[i]) <: Number || needed_coef[i] === :dt)
+                cind = get_coef_index(needed_coef[i]);
+                
+                if cind >= 0
+                    tag = string(cind);
+                else
+                    tag = string(needed_coef[i]);
+                end
+                #derivatives of coefficients
+                tag = needed_coef_deriv[i][2] * tag;
+                tmps = "coef_"*tag*"_"*string(needed_coef_ind[i]);
+                tmpc = Symbol(tmps);
+                
+                dmatr = Symbol("R"*needed_coef_deriv[i][3]*"matrix");
+                dmatq = Symbol("Q"*needed_coef_deriv[i][3]*"matrix");
+                tmpb= :(length($tmpc) == 1 ? 0 : $dmatr * $dmatq * $tmpc);
+                
+                push!(code.args, Expr(:(=), tmpc, tmpb));
+            else
+                # derivatives of constant coefficients should be zero
+                # TODO
+            end
+        end
+        
+    end# needed_coef loop
     
     # finally add the code expression
     # For multiple dofs per node it will be like:
@@ -325,6 +364,7 @@ function process_term_julia(sterm, var, lorr, offset_ind=0)
     need_derivative = false;
     needed_coef = [];
     needed_coef_ind = [];
+    needed_coef_deriv = [];
     
     test_part = nothing;
     trial_part = nothing;
@@ -406,16 +446,26 @@ function process_term_julia(sterm, var, lorr, offset_ind=0)
                         trial_part = :(refel.Q);
                     end
                 end
-            else
+            else # coefficients
                 if length(index) == 1
                     ind = index[1];
                 end
+                # Check for derivative mods
+                if length(mods) > 0 && typeof(v) == Symbol && !(v ===:dt)
+                    need_derivative = true;
+                    
+                    push!(needed_coef_deriv, [v, mods[1], mods[1][2]]);
+                    
+                else
+                    push!(needed_coef_deriv, [v, "", ""]);
+                end
+                
                 push!(coef_facs, v);
                 push!(coef_inds, ind);
             end
         end
         
-    end
+    end # factors loop
     
     # If there's no trial part, need to do this
     if trial_part === nothing
@@ -432,12 +482,14 @@ function process_term_julia(sterm, var, lorr, offset_ind=0)
                 push!(needed_coef_ind, coef_inds[j]);
                 ind = get_coef_index(coef_facs[j]);
                 if ind >= 0
-                    tmps = "coef_"*string(ind)*"_"*string(coef_inds[j]);
-                    tmp = Symbol(tmps);
+                    tag = string(ind);
                 else
-                    tmps = "coef_"*string(tmp)*"_"*string(coef_inds[j]);
-                    tmp = Symbol(tmps);
+                    tag = string(tmp);
                 end
+                #derivatives of coefficients
+                tag = needed_coef_deriv[length(needed_coef)][2] * tag;
+                tmps = "coef_"*tag*"_"*string(coef_inds[j]);
+                tmp = Symbol(tmps);
             end
             if j>1
                 coef_part = :($coef_part .* $tmp);
@@ -465,7 +517,7 @@ function process_term_julia(sterm, var, lorr, offset_ind=0)
         term = negex;
     end
     
-    return (term, need_derivative, needed_coef, needed_coef_ind, test_component, trial_component);
+    return (term, need_derivative, needed_coef, needed_coef_ind, needed_coef_deriv, test_component, trial_component);
 end
 
 ###############################################################################################################
@@ -516,6 +568,17 @@ function separate_factors(ex)
             factors = [];
             for i=2:length(ex.args)
                 append!(factors, separate_factors(ex.args[i]));
+            end
+            
+        elseif ex.args[1] === :^ || ex.args[1] === :.^
+            factors = [];
+            power = ex.args[3];
+            if !(typeof(power) <: Int)
+                printerr("non-integer power in "*string(ex)*" , expect errors");
+                return [0];
+            end
+            for i=1:power
+                append!(factors, separate_factors(ex.args[2]));
             end
             
         elseif ex.args[1] === :- && length(ex.args) == 2
