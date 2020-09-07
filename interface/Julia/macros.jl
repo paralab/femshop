@@ -145,8 +145,8 @@ end
 
 macro mesh(m)
     return esc(quote
-        if $m == LINEMESH || $m == QUADMESH
-            @mesh($m, 5)
+        if $m == LINEMESH || $m == QUADMESH || $m == HEXMESH
+            @mesh($m, 5, 1)
         else
             # open the file and read the mesh data
             mfile = open($m, "r");
@@ -157,19 +157,20 @@ macro mesh(m)
         
     end)
 end
-macro mesh(m, N)
+macro mesh(m,N) return esc(quote @mesh($m,$N,1); end) end
+macro mesh(m, N, bids)
     return esc(quote
         if $m == LINEMESH
             log_entry("Building simple line mesh with nx elements, nx="*string($N));
-            meshtime = @elapsed(add_mesh(simple_line_mesh($N+1)));
+            meshtime = @elapsed(add_mesh(simple_line_mesh($N+1, $bids)));
             log_entry("Grid building took "*string(meshtime)*" seconds");
         elseif $m == QUADMESH
             log_entry("Building simple quad mesh with nx*nx elements, nx="*string($N));
-            meshtime = @elapsed(add_mesh(simple_quad_mesh($N+1)));
+            meshtime = @elapsed(add_mesh(simple_quad_mesh($N+1, $bids)));
             log_entry("Grid building took "*string(meshtime)*" seconds");
         elseif $m == HEXMESH
             log_entry("Building simple hex mesh with nx*nx*nx elements, nx="*string($N));
-            meshtime = @elapsed(add_mesh(simple_hex_mesh($N+1)));
+            meshtime = @elapsed(add_mesh(simple_hex_mesh($N+1, $bids)));
             log_entry("Grid building took "*string(meshtime)*" seconds");
         end
     end)

@@ -199,25 +199,32 @@ function assemble(var, bilinear, linear, t=0.0, dt=0.0)
         end
     end
     
-    # Just for testing. This should really be a loop over BIDs with corresponding calls
+    # Boundary conditions
+    bidcount = length(grid_data.bids); # the number of BIDs
     if dofs_per_node > 1
         if multivar
             rowoffset = 0;
             for vi=1:length(var)
                 for compo=1:length(var[vi].symvar.vals)
                     rowoffset = rowoffset + 1;
-                    (A, b) = dirichlet_bc(A, b, prob.bc_func[var[vi].index, 1][compo], grid_data.bdry[1,:], t, rowoffset, dofs_per_node);
+                    for bid=1:bidcount
+                        (A, b) = dirichlet_bc(A, b, prob.bc_func[var[vi].index, bid][compo], grid_data.bdry[bid], t, rowoffset, dofs_per_node);
+                    end
                 end
             end
         else
             for d=1:dofs_per_node
                 #rows = ((d-1)*length(glb)+1):(d*length(glb));
                 rowoffset = (d-1)*Np;
-                (A, b) = dirichlet_bc(A, b, prob.bc_func[var.index, 1][d], grid_data.bdry[1,:], t, d, dofs_per_node);
+                for bid=1:bidcount
+                    (A, b) = dirichlet_bc(A, b, prob.bc_func[var.index, bid][d], grid_data.bdry[bid], t, d, dofs_per_node);
+                end
             end
         end
     else
-        (A, b) = dirichlet_bc(A, b, prob.bc_func[var.index, 1], grid_data.bdry[1,:], t);
+        for bid=1:bidcount
+            (A, b) = dirichlet_bc(A, b, prob.bc_func[var.index, bid], grid_data.bdry[bid], t);
+        end
     end
     
     return (A, b);
@@ -269,26 +276,32 @@ function assemble_rhs_only(var, linear, t=0.0, dt=0.0)
         end
     end
     
-    # Just for testing. This should really be a loop over BIDs with corresponding calls
-    #b = dirichlet_bc_rhs_only(b, prob.bc_func[var.index, 1], grid_data.bdry[1,:], t);
+    # Boundary conditions
+    bidcount = length(grid_data.bids); # the number of BIDs
     if dofs_per_node > 1
         if multivar
             rowoffset = 0;
             for vi=1:length(var)
                 for compo=1:length(var[vi].symvar.vals)
                     rowoffset = rowoffset + 1;
-                    b = dirichlet_bc_rhs_only(b, prob.bc_func[var[vi].index, 1][compo], grid_data.bdry[1,:], t, rowoffset, dofs_per_node);
+                    for bid=1:bidcount
+                        b = dirichlet_bc_rhs_only(b, prob.bc_func[var[vi].index, bid][compo], grid_data.bdry[bid], t, rowoffset, dofs_per_node);
+                    end
                 end
             end
         else
             for d=1:dofs_per_node
                 #rows = ((d-1)*length(glb)+1):(d*length(glb));
                 rowoffset = (d-1)*Np;
-                b = dirichlet_bc_rhs_only(b, prob.bc_func[var.index, 1][d], grid_data.bdry[1,:], t, d, dofs_per_node);
+                for bid=1:bidcount
+                    b = dirichlet_bc_rhs_only(b, prob.bc_func[var.index, bid][d], grid_data.bdry[bid], t, d, dofs_per_node);
+                end
             end
         end
     else
-        b = dirichlet_bc_rhs_only(b, prob.bc_func[var.index, 1], grid_data.bdry[1,:], t);
+        for bid=1:bidcount
+            b = dirichlet_bc_rhs_only(b, prob.bc_func[var.index, bid], grid_data.bdry[bid], t);
+        end
     end
 
     return b;

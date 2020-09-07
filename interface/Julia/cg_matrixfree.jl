@@ -188,24 +188,31 @@ function elem_matvec(x, bilinear, dofs_per_node, var, t = 0.0, dt = 0.0)
     end
     
     # Apply boudary conditions
+    bidcount = length(grid_data.bids); # the number of BIDs
     if dofs_per_node > 1
         if multivar
             rowoffset = 0;
             for vi=1:length(var)
                 for compo=1:length(var[vi].symvar.vals)
                     rowoffset = rowoffset + 1;
-                    Ax = dirichlet_bc_matfree(Ax, x, grid_data.bdry[1,:], rowoffset, dofs_per_node);
+                    for bid=1:bidcount
+                        Ax = dirichlet_bc_matfree(Ax, x, grid_data.bdry[bid], rowoffset, dofs_per_node);
+                    end
                 end
             end
         else
             for d=1:dofs_per_node
                 #rows = ((d-1)*length(glb)+1):(d*length(glb));
                 rowoffset = (d-1)*Np;
-                Ax = dirichlet_bc_matfree(Ax, x, grid_data.bdry[1,:], d, dofs_per_node);
+                for bid=1:bidcount
+                    Ax = dirichlet_bc_matfree(Ax, x, grid_data.bdry[bid], d, dofs_per_node);
+                end
             end
         end
     else
-        Ax = dirichlet_bc_matfree(Ax, x, grid_data.bdry[1,:]);
+        for bid=1:bidcount
+            Ax = dirichlet_bc_matfree(Ax, x, grid_data.bdry[bid]);
+        end
     end
     
     return Ax;
