@@ -16,12 +16,12 @@ import ..Femshop: JULIA, CPP, MATLAB, SQUARE, IRREGULAR, TREE, UNSTRUCTURED, CG,
 import ..Femshop: log_entry, printerr
 import ..Femshop: config, prob, variables, mesh_data, grid_data, loc2glb, refel, time_stepper
 import ..Femshop: Variable, Coefficient, GenFunction
+import ..Femshop: geometric_factors
 
 using LinearAlgebra, SparseArrays
 
-#include("cg_operators.jl");
 include("cg_boundary.jl");
-#include("elemental_matrix.jl");
+include("cg_matrixfree.jl");
 
 function init_cgsolver()
     dim = config.dimension;
@@ -80,6 +80,10 @@ function setup3D()
 end
 
 function solve(var, bilinear, linear, stepper=nothing)
+    if config.linalg_matrixfree
+        return solve_matrix_free_sym(var, bilinear, linear, stepper);
+        #return solve_matrix_free_asym(var, bilinear, linear, stepper);
+    end
     if prob.time_dependent && !(stepper === nothing)
         #TODO time dependent coefficients
         assemble_t = @elapsed((A, b) = assemble(var, bilinear, linear, 0, stepper.dt));
@@ -159,7 +163,7 @@ function assemble(var, bilinear, linear, t=0.0, dt=0.0)
     A = spzeros(Nn, Nn);
     
     # The elemental assembly loop
-    for e=1:nel;
+    for e=1:nel
         nv = mesh_data.nv[e];
         gis = zeros(Int, nv);
         for vi=1:nv
