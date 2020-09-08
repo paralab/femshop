@@ -3,7 +3,7 @@
 =#
 struct Grid
     allnodes::Array{Float64}    # All node coordinates
-    bdry::Array{Int,2}     # Indices of boundary nodes for each BID
+    bdry::Array{Array{Int,1},1} # Indices of boundary nodes for each BID (bdry[bid][nodes])
     bids::Array{Int,1}          # BID corresponding to rows of bdrynodes
     
     Grid(a,b,c) = new(a,b,c)

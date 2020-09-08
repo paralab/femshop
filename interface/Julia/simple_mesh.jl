@@ -5,7 +5,7 @@ export simple_line_mesh, simple_quad_mesh, simple_hex_mesh
 # Conveniently builds a uniform unit interval mesh.
 # Simple just to get things working.
 =#
-function simple_line_mesh(nx)
+function simple_line_mesh(nx, bn)
     ord = config.basis_order_min;
     refel = build_refel(1, ord, 2, LOBATTO);
     Nv = nx;                    # number of vertex nodes
@@ -16,7 +16,11 @@ function simple_line_mesh(nx)
     xv = zeros(Nv,1);           # coordinates of vertices
     x = zeros(N,1);             # coordinates of all nodes
     bdry = [];                  # index(in x) of boundary nodes for each BID
-    bids = [1];
+    if bn == 2
+        bids = [1,2]; # for two BIDs
+    else
+        bids = [1]; # for one BID
+    end
     loc2glb = zeros(Int, nel,Np)# local to global index map for each element's nodes
     h = 1/(nx-1);               # unit interval uniformly divided
     
@@ -44,8 +48,12 @@ function simple_line_mesh(nx)
     # indices are in order
     ind = Array(1:Nv);
     
-    # boundary is simple
-    bdry = [1 N];
+    # boundary nodes
+    if bn == 2
+        bdry = [[1],[N]];
+    else
+        bdry = [1 N]; # for one BID
+    end
     
     mesh = MeshData(Nv, xv, ind, nel, el, ones(nel), 2*ones(nel)); # MeshData struct
     grid = Grid(x, bdry, bids);
@@ -57,7 +65,7 @@ end
 # Conveniently builds a square, uniform, unit quad mesh.
 # Simple just to get things working.
 =#
-function simple_quad_mesh(nx)
+function simple_quad_mesh(nx, bn)
     ord = config.basis_order_min;
     refel = build_refel(2, ord, 4, LOBATTO);
     Nv = nx*nx;                 # number of vertex nodes
@@ -69,7 +77,16 @@ function simple_quad_mesh(nx)
     xv = zeros(Nv,2);           # coordinates of vertices
     x = zeros(N,2);             # coordinates of all nodes
     bdry = [];                  # index(in x) of boundary nodes for each BID
-    bids = [1];
+    if bn == 4
+        bids = [1,2,3,4]; # x=0, x=1, y=0, y=1
+    elseif bn == 3
+        bids = [1,2,3]; # x=0 , x=1, y=0,1
+    elseif bn == 2
+        bids = [1,2]; # x=0,1 , y=0,1
+    else
+        bids = [1]; # everywhere
+    end
+    
     loc2glb = zeros(Int, nel,Np)# local to global index map for each element's nodes
     h = 1/(nx-1);               # unit square uniformly divided
     
@@ -133,15 +150,58 @@ function simple_quad_mesh(nx)
     ind = Array(1:Nv);
     
     # boundaries
-    bdry = zeros(1, rowsize*4 - 4);
-    for i=1:rowsize
-        bdry[1,i] = i; # bottom
-        bdry[1,i+rowsize] = N-rowsize + i; # top
-        if i > 1 && i < rowsize
-            bdry[1, i-1 + rowsize*2] = (i-1)*rowsize + 1; # left
-            bdry[1, i-3 + rowsize*3] = i*rowsize; # right
+    if bn == 4
+        bdry1 = zeros(rowsize); # x=0
+        bdry2 = zeros(rowsize); # x=1
+        bdry3 = zeros(rowsize - 2); # y=0
+        bdry4 = zeros(rowsize - 2); # y=1
+        for i=1:rowsize
+            bdry1[i] = (i-1)*rowsize + 1; # left
+            bdry2[i] = i*rowsize; # right
+            if i > 1 && i < rowsize
+                bdry3[i-1] = i; # bottom
+                bdry4[i-1] = N-rowsize + i; # top
+            end
         end
+        bdry = [bdry1, bdry2, bdry3];
+    elseif bn == 3
+        bdry1 = zeros(rowsize); # x=0
+        bdry2 = zeros(rowsize); # x=1
+        bdry3 = zeros(rowsize*2 - 4); # y=0,1
+        for i=1:rowsize
+            bdry1[i] = (i-1)*rowsize + 1; # left
+            bdry2[i] = i*rowsize; # right
+            if i > 1 && i < rowsize
+                bdry3[i-1] = i; # bottom
+                bdry3[i+rowsize-2] = N-rowsize + i; # top
+            end
+        end
+        bdry = [bdry1, bdry2, bdry3];
+    elseif bn == 2
+        bdry1 = zeros(rowsize*2); # x=0,1
+        bdry2 = zeros(rowsize*2 - 4); # y=0,1
+        for i=1:rowsize
+            bdry1[i] = (i-1)*rowsize + 1; # left
+            bdry1[i + rowsize] = i*rowsize; # right
+            if i > 1 && i < rowsize
+                bdry2[i-1] = i; # bottom
+                bdry2[i+rowsize-2] = N-rowsize + i; # top
+            end
+        end
+        bdry = [bdry1, bdry2];
+    else
+        bdry = zeros(rowsize*4 - 4);
+        for i=1:rowsize
+            bdry[i] = i; # bottom
+            bdry[i+rowsize] = N-rowsize + i; # top
+            if i > 1 && i < rowsize
+                bdry[i-1 + rowsize*2] = (i-1)*rowsize + 1; # left
+                bdry[i-3 + rowsize*3] = i*rowsize; # right
+            end
+        end
+        bdry = [bdry];
     end
+    
     
     mesh = MeshData(Nv, xv, ind, nel, el, 3*ones(nel), 4*ones(nel)); # MeshData struct
     grid = Grid(x, bdry, bids);
@@ -153,7 +213,7 @@ end
 # Conveniently builds a uniform, unit cube, hex mesh.
 # Simple just to get things working.
 =#
-function simple_hex_mesh(nx)
+function simple_hex_mesh(nx, bn)
     ord = config.basis_order_min;
     refel = build_refel(3, ord, 6, LOBATTO);
     Nv = nx*nx*nx;                 # number of vertex nodes
@@ -165,12 +225,15 @@ function simple_hex_mesh(nx)
     xv = zeros(Nv,3);           # coordinates of vertices
     x = zeros(N,3);             # coordinates of all nodes
     bdry = [];                  # index(in x) of boundary nodes for each BID
-    bids = [1];
+    bids = [];
+    for i=1:bn
+        push!(bids,i);
+    end
     loc2glb = zeros(Int, nel, Np)# local to global index map for each element's nodes
     h = 1/(nx-1);               # unit square uniformly divided
     
     # Start with a 2d quad mesh
-    (mesh2d, refel2d, grid2d, loc2glb2d) = simple_quad_mesh(nx);
+    (mesh2d, refel2d, grid2d, loc2glb2d) = simple_quad_mesh(nx, bn);
     
     # vertex nodes are ordered along x then y then z
     for k=1:nx
@@ -248,26 +311,179 @@ function simple_hex_mesh(nx)
     indexorder = Array(1:Nv);
     
     # boundaries
-    N1d = (nx-1)*ord + 1;
-    bdry = zeros(1, N - (N1d-2)*(N1d-2)*(N1d-2));
-    ind = 1;
-    for i=1:slicesize
-        bdry[1, i] = i; # z=0
-        bdry[1, i+slicesize] = N-i+1; # z=1
-    end
-    ind = 2*slicesize + 1;
-    for j=2:rowsize-1
-        offset = (j-1)*slicesize;
-        for i=1:rowsize
-            bdry[1,ind] = offset + i; # bottom
-            bdry[1,ind+1] = offset + slicesize-rowsize + i; # top
-            ind += 2;
-            if i > 1 && i < rowsize
-                bdry[1, ind] = offset + (i-1)*rowsize + 1; # left
-                bdry[1, ind + 1] = offset + i*rowsize; # right
-                ind += 2;
+    if bn == 6 # all separate
+        bdry1 = zeros(slicesize); # x=0
+        bdry2 = zeros(slicesize); # x=1
+        bdry3 = zeros(slicesize - 2*rowsize); # y=0
+        bdry4 = zeros(slicesize - 2*rowsize); # y=1
+        bdry5 = zeros(slicesize - 4*rowsize); # z=0
+        bdry6 = zeros(slicesize - 4*rowsize); # z=1
+        
+        ind1 = 1;
+        ind2 = 1;
+        ind3 = 1;
+        for j=1:rowsize
+            offset = (j-1)*slicesize;
+            for i=1:rowsize
+                bdry1[ind1] = offset + (i-1)*rowsize + 1; # x=0
+                bdry2[ind1] = offset + i*rowsize; # x = 1
+                ind1 = ind1+1;
+                if i > 1 && i < rowsize
+                    bdry3[ind2] = offset + i;# y=0
+                    bdry4[ind2] = offset + (rowsize-1)*rowsize + i;# y=1
+                    ind2 = ind2+1;
+                end
+                if j > 1 && j < rowsize && i > 1 && i < rowsize
+                    bdry5[ind3] = (j-1)*rowsize + i;# z=0
+                    bdry6[ind3] = (rowsize-1)*slicesize + (j-1)*rowsize + i;# z=1
+                    ind3 = ind3+1;
+                end
+                
             end
         end
+        bdry = [bdry1, bdry2, bdry3, bdry4, bdry5, bdry6];
+        
+    elseif bn == 5 # combine zs
+        bdry1 = zeros(slicesize); # x=0
+        bdry2 = zeros(slicesize); # x=1
+        bdry3 = zeros(slicesize - 2*rowsize); # y=0
+        bdry4 = zeros(slicesize - 2*rowsize); # y=1
+        bdry5 = zeros(2*slicesize - 8*rowsize); # z=0,1
+        
+        ind1 = 1;
+        ind2 = 1;
+        ind3 = 1;
+        for j=1:rowsize
+            offset = (j-1)*slicesize;
+            for i=1:rowsize
+                bdry1[ind1] = offset + (i-1)*rowsize + 1; # x=0
+                bdry2[ind1] = offset + i*rowsize; # x = 1
+                ind1 = ind1+1;
+                if i > 1 && i < rowsize
+                    bdry3[ind2] = offset + i;# y=0
+                    bdry4[ind2] = offset + (rowsize-1)*rowsize + i;# y=1
+                    ind2 = ind2+1;
+                end
+                if j > 1 && j < rowsize && i > 1 && i < rowsize
+                    bdry5[ind3] = (j-1)*rowsize + i;# z=0
+                    bdry5[ind3+1] = (rowsize-1)*slicesize + (j-1)*rowsize + i;# z=1
+                    ind3 = ind3+2;
+                end
+                
+            end
+        end
+        bdry = [bdry1, bdry2, bdry3, bdry4, bdry5];
+        
+    elseif bn == 4 # combine ys and zs
+        bdry1 = zeros(slicesize); # x=0
+        bdry2 = zeros(slicesize); # x=1
+        bdry3 = zeros(2*slicesize - 4*rowsize); # y=0,1
+        bdry4 = zeros(2*slicesize - 8*rowsize); # z=0,1
+        
+        ind1 = 1;
+        ind2 = 1;
+        ind3 = 1;
+        for j=1:rowsize
+            offset = (j-1)*slicesize;
+            for i=1:rowsize
+                bdry1[ind1] = offset + (i-1)*rowsize + 1; # x=0
+                bdry2[ind1] = offset + i*rowsize; # x = 1
+                ind1 = ind1+1;
+                if i > 1 && i < rowsize
+                    bdry3[ind2] = offset + i;# y=0
+                    bdry3[ind2+1] = offset + (rowsize-1)*rowsize + i;# y=1
+                    ind2 = ind2+2;
+                end
+                if j > 1 && j < rowsize && i > 1 && i < rowsize
+                    bdry4[ind3] = (j-1)*rowsize + i;# z=0
+                    bdry4[ind3+1] = (rowsize-1)*slicesize + (j-1)*rowsize + i;# z=1
+                    ind3 = ind3+2;
+                end
+                
+            end
+        end
+        bdry = [bdry1, bdry2, bdry3, bdry4];
+        
+    elseif bn == 3 # xs, ys, zs
+        bdry1 = zeros(2*slicesize); # x=0,1
+        bdry2 = zeros(2*slicesize - 4*rowsize); # y=0,1
+        bdry3 = zeros(2*slicesize - 8*rowsize); # z=0,1
+        
+        ind1 = 1;
+        ind2 = 1;
+        ind3 = 1;
+        for j=1:rowsize
+            offset = (j-1)*slicesize;
+            for i=1:rowsize
+                bdry1[ind1] = offset + (i-1)*rowsize + 1; # x=0
+                bdry1[ind1+1] = offset + i*rowsize; # x = 1
+                ind1 = ind1+2;
+                if i > 1 && i < rowsize
+                    bdry2[ind2] = offset + i;# y=0
+                    bdry2[ind2+1] = offset + (rowsize-1)*rowsize + i;# y=1
+                    ind2 = ind2+2;
+                end
+                if j > 1 && j < rowsize && i > 1 && i < rowsize
+                    bdry3[ind3] = (j-1)*rowsize + i;# z=0
+                    bdry3[ind3+1] = (rowsize-1)*slicesize + (j-1)*rowsize + i;# z=1
+                    ind3 = ind3+2;
+                end
+                
+            end
+        end
+        bdry = [bdry1, bdry2, bdry3];
+        
+    elseif bn == 2 # x=0, everything else
+        bdry1 = zeros(slicesize); # x=0
+        bdry2 = zeros(5*slicesize - 4*rowsize); # the rest
+        
+        ind1 = 1;
+        ind2 = 1;
+        for j=1:rowsize
+            offset = (j-1)*slicesize;
+            for i=1:rowsize
+                bdry1[ind1] = offset + (i-1)*rowsize + 1; # x=0
+                ind1 = ind1+1;
+                bdry2[ind2] = offset + i*rowsize; # x = 1
+                ind2 = ind2+1;
+                if i > 1 && i < rowsize
+                    bdry2[ind2] = offset + i;# y=0
+                    bdry2[ind2+1] = offset + (rowsize-1)*rowsize + i;# y=1
+                    ind2 = ind2+2;
+                end
+                if j > 1 && j < rowsize && i > 1 && i < rowsize
+                    bdry2[ind2] = (j-1)*rowsize + i;# z=0
+                    bdry2[ind2+1] = (rowsize-1)*slicesize + (j-1)*rowsize + i;# z=1
+                    ind2 = ind2+2;
+                end
+                
+            end
+        end
+        bdry = [bdry1, bdry2];
+        
+    else
+        N1d = (nx-1)*ord + 1;
+        bdry = zeros(N - (N1d-2)*(N1d-2)*(N1d-2));
+        ind = 1;
+        for i=1:slicesize
+            bdry[i] = i; # z=0
+            bdry[i+slicesize] = N-i+1; # z=1
+        end
+        ind = 2*slicesize + 1;
+        for j=2:rowsize-1
+            offset = (j-1)*slicesize;
+            for i=1:rowsize
+                bdry[ind] = offset + i; # bottom
+                bdry[ind+1] = offset + slicesize-rowsize + i; # top
+                ind += 2;
+                if i > 1 && i < rowsize
+                    bdry[ind] = offset + (i-1)*rowsize + 1; # left
+                    bdry[ind + 1] = offset + i*rowsize; # right
+                    ind += 2;
+                end
+            end
+        end
+        bdry = [bdry];
     end
     
     mesh = MeshData(Nv, xv, indexorder, nel, el, 5*ones(nel), 8*ones(nel)); # MeshData struct

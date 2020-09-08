@@ -16,13 +16,14 @@ import ..Femshop: JULIA, CPP, MATLAB, SQUARE, IRREGULAR, TREE, UNSTRUCTURED, CG,
 import ..Femshop: log_entry, printerr
 import ..Femshop: config, prob, variables, mesh_data, grid_data, loc2glb, refel, time_stepper
 import ..Femshop: Variable, Coefficient, GenFunction
+import ..Femshop: geometric_factors
 
 using LinearAlgebra, SparseArrays
 
-#include("cg_operators.jl");
 include("cg_boundary.jl");
 include("nonlinear.jl")
 #include("elemental_matrix.jl");
+include("cg_matrixfree.jl");
 
 function init_cgsolver()
     dim = config.dimension;
@@ -81,6 +82,10 @@ function setup3D()
 end
 
 function solve(var, bilinear, linear, stepper=nothing)
+    if config.linalg_matrixfree
+        return solve_matrix_free_sym(var, bilinear, linear, stepper);
+        #return solve_matrix_free_asym(var, bilinear, linear, stepper);
+    end
     if prob.time_dependent && !(stepper === nothing)
         #TODO time dependent coefficients
         assemble_t = @elapsed((A, b) = assemble(var, bilinear, linear, 0, stepper.dt));
@@ -206,7 +211,7 @@ function assemble(var, bilinear, linear, t=0.0, dt=0.0)
     A = spzeros(Nn, Nn);
 
     # The elemental assembly loop
-    for e=1:nel;
+    for e=1:nel
         nv = mesh_data.nv[e];
         gis = zeros(Int, nv);
         for vi=1:nv
@@ -243,24 +248,32 @@ function assemble(var, bilinear, linear, t=0.0, dt=0.0)
     end
 
     # Just for testing. This should really be a loop over BIDs with corresponding calls
+    # Boundary conditions
+    bidcount = length(grid_data.bids); # the number of BIDs
     if dofs_per_node > 1
         if multivar
             rowoffset = 0;
             for vi=1:length(var)
                 for compo=1:length(var[vi].symvar.vals)
                     rowoffset = rowoffset + 1;
-                    (A, b) = dirichlet_bc(A, b, prob.bc_func[var[vi].index, 1][compo], grid_data.bdry[1,:], t, rowoffset, dofs_per_node);
+                    for bid=1:bidcount
+                        (A, b) = dirichlet_bc(A, b, prob.bc_func[var[vi].index, bid][compo], grid_data.bdry[bid], t, rowoffset, dofs_per_node);
+                    end
                 end
             end
         else
             for d=1:dofs_per_node
                 #rows = ((d-1)*length(glb)+1):(d*length(glb));
                 rowoffset = (d-1)*Np;
-                (A, b) = dirichlet_bc(A, b, prob.bc_func[var.index, 1][d], grid_data.bdry[1,:], t, d, dofs_per_node);
+                for bid=1:bidcount
+                    (A, b) = dirichlet_bc(A, b, prob.bc_func[var.index, bid][d], grid_data.bdry[bid], t, d, dofs_per_node);
+                end
             end
         end
     else
-        (A, b) = dirichlet_bc(A, b, prob.bc_func[var.index, 1], grid_data.bdry[1,:], t);
+        for bid=1:bidcount
+            (A, b) = dirichlet_bc(A, b, prob.bc_func[var.index, bid], grid_data.bdry[bid], t);
+        end
     end
 
     return (A, b);
@@ -314,24 +327,32 @@ function assemble_rhs_only(var, linear, t=0.0, dt=0.0)
 
     # Just for testing. This should really be a loop over BIDs with corresponding calls
     #b = dirichlet_bc_rhs_only(b, prob.bc_func[var.index, 1], grid_data.bdry[1,:], t);
+    # Boundary conditions
+    bidcount = length(grid_data.bids); # the number of BIDs
     if dofs_per_node > 1
         if multivar
             rowoffset = 0;
             for vi=1:length(var)
                 for compo=1:length(var[vi].symvar.vals)
                     rowoffset = rowoffset + 1;
-                    b = dirichlet_bc_rhs_only(b, prob.bc_func[var[vi].index, 1][compo], grid_data.bdry[1,:], t, rowoffset, dofs_per_node);
+                    for bid=1:bidcount
+                        b = dirichlet_bc_rhs_only(b, prob.bc_func[var[vi].index, bid][compo], grid_data.bdry[bid], t, rowoffset, dofs_per_node);
+                    end
                 end
             end
         else
             for d=1:dofs_per_node
                 #rows = ((d-1)*length(glb)+1):(d*length(glb));
                 rowoffset = (d-1)*Np;
-                b = dirichlet_bc_rhs_only(b, prob.bc_func[var.index, 1][d], grid_data.bdry[1,:], t, d, dofs_per_node);
+                for bid=1:bidcount
+                    b = dirichlet_bc_rhs_only(b, prob.bc_func[var.index, bid][d], grid_data.bdry[bid], t, d, dofs_per_node);
+                end
             end
         end
     else
-        b = dirichlet_bc_rhs_only(b, prob.bc_func[var.index, 1], grid_data.bdry[1,:], t);
+        for bid=1:bidcount
+            b = dirichlet_bc_rhs_only(b, prob.bc_func[var.index, bid], grid_data.bdry[bid], t);
+        end
     end
 
     return b;
