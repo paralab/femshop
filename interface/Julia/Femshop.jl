@@ -34,7 +34,6 @@ log_line_index = 1;
 #mesh
 mesh_data = nothing;
 grid_data = nothing;
-loc2glb = nothing;
 refel = nothing;
 #problem variables
 var_count = 0;
@@ -69,7 +68,6 @@ function init_femshop(name="unnamedProject")
     global log_line_index = 1;
     global mesh_data = nothing;
     global grid_data = nothing;
-    global loc2glb = nothing;
     global refel = nothing;
     global var_count = 0;
     global variables = [];
@@ -113,8 +111,7 @@ function add_mesh(mesh)
     if typeof(mesh) <: Tuple
         global mesh_data = mesh[1];
         global refel = mesh[2];
-        global grid_data = mesh[3]
-        global loc2glb = mesh[4];
+        global grid_data = mesh[3];
     else
         global mesh_data = mesh;
     end
@@ -272,8 +269,8 @@ function add_boundary_condition(var, bid, type, ex, nfuns)
 end
 
 function set_rhs(var, code="")
+    global linears;
     if language == 0 || language == JULIA
-        global linears;
         if typeof(var) <:Array
             for i=1:length(var)
                 linears[var[i].index] = genfunctions[end];
@@ -281,14 +278,21 @@ function set_rhs(var, code="")
         else
             linears[var.index] = genfunctions[end];
         end
-    else
-        global linears[var.index] = code;
+        
+    else # external generation
+        if typeof(var) <:Array
+            for i=1:length(var)
+                linears[var[i].index] = code;
+            end
+        else
+            linears[var.index] = code;
+        end
     end
 end
 
 function set_lhs(var, code="")
+    global bilinears;
     if language == 0 || language == JULIA
-        global bilinears;
         if typeof(var) <:Array
             for i=1:length(var)
                 bilinears[var[i].index] = genfunctions[end];
@@ -296,12 +300,19 @@ function set_lhs(var, code="")
         else
             bilinears[var.index] = genfunctions[end];
         end
-    else
-        global bilinears[var.index] = code;
+        
+    else # external generation
+        if typeof(var) <:Array
+            for i=1:length(var)
+                bilinears[var[i].index] = code;
+            end
+        else
+            bilinears[var.index] = code;
+        end
     end
 end
 
-function solve(var)
+function solve(var, nlvar=nothing; nonlinear=false)
     # Generate files or solve directly
     if gen_files != nothing
         generate_main();
@@ -337,11 +348,11 @@ function solve(var)
             
             if prob.time_dependent
                 global time_stepper = init_stepper(grid_data.allnodes, time_stepper);
-                t = @elapsed(result = CGSolver.solve(var, lhs, rhs, time_stepper));
+                t = @elapsed(result = CGSolver.solve(var, lhs, rhs, time_stepper, nlvar, nonlinear));
                 # result is already stored in variables
             else
                 # solve it!
-                t = @elapsed(result = CGSolver.solve(var, lhs, rhs));
+                t = @elapsed(result = CGSolver.solve(var, lhs, rhs, nothing, nlvar, nonlinear));
                 
                 # place the values in the variable value arrays
                 if typeof(var) <: Array

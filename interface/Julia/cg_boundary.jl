@@ -35,6 +35,79 @@ function identity_rows(A, rows, N)
     end
 end
 
+# Inserts the rows of S in A
+function insert_rows(A, S, rows, N)
+    if issparse(A)
+        (I, J, V) = findnz(A);
+        
+        # determine which elements to remove
+        toskip = zeros(Int, length(I));
+        includen = 0;
+        for k = 1:length(I)
+            for i=1:length(rows)
+                if I[k] == rows[i]
+                    toskip[k] = 1;
+                end
+            end
+            if toskip[k] == 0
+                includen = includen + 1;
+            end
+        end
+        
+        # put the remaining elements in a new matrix
+        newI = zeros(Int, includen);
+        newJ = zeros(Int, includen);
+        newV = zeros(includen);
+        ind = 1;
+        for k = 1:length(I)
+            if toskip[k] == 0
+                newI[ind] = I[k];
+                newJ[ind] = J[k];
+                newV[ind] = V[k];
+                ind = ind + 1;
+            end
+        end
+        
+        # Do something similar to extract elements of S
+        (I, J, V) = findnz(S);
+        
+        toskip = ones(Int, length(I));
+        includen = 0;
+        for k = 1:length(I)
+            for i=1:length(rows)
+                if I[k] == rows[i]
+                    toskip[k] = 0;
+                end
+            end
+            if toskip[k] == 0
+                includen = includen + 1;
+            end
+        end
+        newI2 = zeros(Int, includen);
+        newJ2 = zeros(Int, includen);
+        newV2 = zeros(includen);
+        ind = 1;
+        for k = 1:length(I)
+            if toskip[k] == 0
+                newI2[ind] = I[k];
+                newJ2[ind] = J[k];
+                newV2[ind] = V[k];
+                ind = ind + 1;
+            end
+        end
+        
+        append!(newI, newI2);
+        append!(newJ, newJ2);
+        append!(newV, newV2);
+        return sparse(newI,newJ,newV);
+    else
+        for i=1:length(rows)
+            A[rows[i],:] = S[rows[i],:];
+        end
+        return A;
+    end
+end
+
 function dirichlet_bc(A, b, val, bdryind, t=0, dofind = 1, totaldofs = 1)
     N = length(b);
     bdry = copy(bdryind);
@@ -43,41 +116,7 @@ function dirichlet_bc(A, b, val, bdryind, t=0, dofind = 1, totaldofs = 1)
     end
     A = identity_rows(A, bdry, N);
     
-    if typeof(val) <: Number
-        for i=1:length(bdry)
-            b[bdry[i]]=val;
-        end
-        
-    elseif typeof(val) == Coefficient && typeof(val.value[1]) == GenFunction
-        if config.dimension == 1
-            for i=1:length(bdry)
-                b[bdry[i]]=val.value[1].func(grid_data.allnodes[bdryind[i],1],0,0,t);
-            end
-        elseif config.dimension == 2
-            for i=1:length(bdry)
-                b[bdry[i]]=val.value[1].func(grid_data.allnodes[bdryind[i],1],grid_data.allnodes[bdryind[i],2],0,t);
-            end
-        else
-            for i=1:length(bdry)
-                b[bdry[i]]=val.value[1].func(grid_data.allnodes[bdryind[i],1],grid_data.allnodes[bdryind[i],2],grid_data.allnodes[bdryind[i],3],t);
-            end
-        end
-        
-    elseif typeof(val) == GenFunction
-        if config.dimension == 1
-            for i=1:length(bdry)
-                b[bdry[i]]=val.func(grid_data.allnodes[bdryind[i],1],0,0,t);
-            end
-        elseif config.dimension == 2
-            for i=1:length(bdry)
-                b[bdry[i]]=val.func(grid_data.allnodes[bdryind[i],1],grid_data.allnodes[bdryind[i],2],0,t);
-            end
-        else
-            for i=1:length(bdry)
-                b[bdry[i]]=val.func(grid_data.allnodes[bdryind[i],1],grid_data.allnodes[bdryind[i],2],grid_data.allnodes[bdryind[i],3],t);
-            end
-        end
-    end
+    b = dirichlet_bc_rhs_only(b, val, bdryind, t, dofind, totaldofs); # how convenient
     
     return (A, b);
 end
@@ -126,4 +165,42 @@ function dirichlet_bc_rhs_only(b, val, bdryind, t=0, dofind = 1, totaldofs = 1)
     end
     
     return b;
+end
+
+function neumann_bc(A, b, val, bdryind, bid, t=0, dofind = 1, totaldofs = 1)
+    N = length(b);
+    bdry = copy(bdryind);
+    if totaldofs > 1
+        bdry = (bdry .- 1) .* totaldofs .+ dofind;
+    end
+    # Assemble the differentiation matrix and swap rows in A
+    (na, nb) = size(A);
+    S = spzeros(na, nb);
+    bel = grid_data.bdryelem[bid];
+    for e = 1:length(bel)
+        glb = grid_data.loc2glb[e,:];       # global indices of this element's nodes
+        xe = grid_data.allnodes[glb[:],:];  # coordinates of this element's nodes
+        
+        (detJ, J) = geometric_factors(refel, xe);
+        if config.dimension == 1
+            R1matrix = diagm(J.rx)
+            Q1matrix = refel.Qr
+            Dmat = R1matrix*Q1matrix;
+        elseif config.dimension == 2
+            
+        elseif config.dimension == 3
+            
+        end
+        S[glb,glb] += Dmat;
+    end
+    
+    insert_rows(A, S, bdry, N);
+    
+    dirichlet_bc_rhs_only(b, val, bdryind, t, dofind, totaldofs); # how convenient
+    
+    return (A, b);
+end
+
+function neumann_bc_rhs_only(b, val, bdryind, bid, t=0, dofind = 1, totaldofs = 1)
+    return dirichlet_bc_rhs_only(b, val, bdryind, t, dofind, totaldofs); # how convenient
 end

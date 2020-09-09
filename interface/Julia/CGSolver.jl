@@ -14,7 +14,7 @@ import ..Femshop: JULIA, CPP, MATLAB, SQUARE, IRREGULAR, TREE, UNSTRUCTURED, CG,
             LHS, RHS,
             LINEMESH, QUADMESH, HEXMESH
 import ..Femshop: log_entry, printerr
-import ..Femshop: config, prob, variables, mesh_data, grid_data, loc2glb, refel, time_stepper
+import ..Femshop: config, prob, variables, mesh_data, grid_data, refel, time_stepper
 import ..Femshop: Variable, Coefficient, GenFunction
 import ..Femshop: geometric_factors
 
@@ -25,13 +25,7 @@ include("cg_matrixfree.jl");
 
 function init_cgsolver()
     dim = config.dimension;
-    if dim == 1
-        setup1D();
-    elseif dim == 2
-        setup2D();
-    elseif dim == 3
-        setup3D();
-    end
+    
     # build initial conditions
     for vind=1:length(variables)
         if vind <= length(prob.initial)
@@ -69,17 +63,14 @@ function init_cgsolver()
     end
 end
 
-function setup1D()
-    # This may be unnecessary. I'll keep this for now in case I need it.
-end
-function setup2D()
+function solve(var, bilinear, linear, stepper=nothing, nlvar=nothing, nonlinear=false)
+    ############################ redirect to nonlinear solve
+    if nonlinear
+        # var is du, nlvar is u, bilinear/linear are for the du weak form.
+        
+    end
+    ########################################################
     
-end
-function setup3D()
-    
-end
-
-function solve(var, bilinear, linear, stepper=nothing)
     if config.linalg_matrixfree
         return solve_matrix_free_sym(var, bilinear, linear, stepper);
         #return solve_matrix_free_asym(var, bilinear, linear, stepper);
@@ -171,7 +162,7 @@ function assemble(var, bilinear, linear, t=0.0, dt=0.0)
         end
         
         vx = mesh_data.nodes[gis,:];        # coordinates of element's vertices
-        glb = loc2glb[e,:];                 # global indices of this element's nodes for extracting values from var arrays
+        glb = grid_data.loc2glb[e,:];                 # global indices of this element's nodes for extracting values from var arrays
         xe = grid_data.allnodes[glb[:],:];  # coordinates of this element's nodes for evaluating coefficient functions
         
         # The linear part. Compute the elemental linear part for each dof
@@ -208,7 +199,13 @@ function assemble(var, bilinear, linear, t=0.0, dt=0.0)
                 for compo=1:length(var[vi].symvar.vals)
                     rowoffset = rowoffset + 1;
                     for bid=1:bidcount
-                        (A, b) = dirichlet_bc(A, b, prob.bc_func[var[vi].index, bid][compo], grid_data.bdry[bid], t, rowoffset, dofs_per_node);
+                        if prob.bc_type[var[vi].index, bid] == DIRICHLET
+                            (A, b) = dirichlet_bc(A, b, prob.bc_func[var[vi].index, bid][compo], grid_data.bdry[bid], t, rowoffset, dofs_per_node);
+                        elseif prob.bc_type[var[vi].index, bid] == NEUMANN
+                            (A, b) = neumann_bc(A, b, prob.bc_func[var[vi].index, bid][compo], grid_data.bdry[bid], bid, t, rowoffset, dofs_per_node);
+                        else
+                            printerr("Unsupported boundary condition type: "*prob.bc_type[var[vi].index, bid]);
+                        end
                     end
                 end
             end
@@ -217,13 +214,25 @@ function assemble(var, bilinear, linear, t=0.0, dt=0.0)
                 #rows = ((d-1)*length(glb)+1):(d*length(glb));
                 rowoffset = (d-1)*Np;
                 for bid=1:bidcount
-                    (A, b) = dirichlet_bc(A, b, prob.bc_func[var.index, bid][d], grid_data.bdry[bid], t, d, dofs_per_node);
+                    if prob.bc_type[var.index, bid] == DIRICHLET
+                        (A, b) = dirichlet_bc(A, b, prob.bc_func[var.index, bid][d], grid_data.bdry[bid], t, rowoffset, dofs_per_node);
+                    elseif prob.bc_type[var.index, bid] == NEUMANN
+                        (A, b) = neumann_bc(A, b, prob.bc_func[var[vi].index, bid][d], grid_data.bdry[bid], bid, t, rowoffset, dofs_per_node);
+                    else
+                        printerr("Unsupported boundary condition type: "*prob.bc_type[var.index, bid]);
+                    end
                 end
             end
         end
     else
         for bid=1:bidcount
-            (A, b) = dirichlet_bc(A, b, prob.bc_func[var.index, bid], grid_data.bdry[bid], t);
+            if prob.bc_type[var.index, bid] == DIRICHLET
+                (A, b) = dirichlet_bc(A, b, prob.bc_func[var.index, bid], grid_data.bdry[bid], t);
+            elseif prob.bc_type[var.index, bid] == NEUMANN
+                (A, b) = neumann_bc(A, b, prob.bc_func[var.index, bid], grid_data.bdry[bid], bid, t);
+            else
+                printerr("Unsupported boundary condition type: "*prob.bc_type[var.index, bid]);
+            end
         end
     end
     
@@ -254,7 +263,7 @@ function assemble_rhs_only(var, linear, t=0.0, dt=0.0)
     b = zeros(Nn);
     
     for e=1:nel;
-        glb = loc2glb[e,:];                 # global indices of this element's nodes for extracting values from var arrays
+        glb = grid_data.loc2glb[e,:];                 # global indices of this element's nodes for extracting values from var arrays
         xe = grid_data.allnodes[glb[:],:];  # coordinates of this element's nodes for evaluating coefficient functions
         
         rhsargs = (var, xe, glb, refel, RHS, t, dt);

@@ -16,6 +16,7 @@ function simple_line_mesh(nx, bn)
     xv = zeros(Nv,1);           # coordinates of vertices
     x = zeros(N,1);             # coordinates of all nodes
     bdry = [];                  # index(in x) of boundary nodes for each BID
+    bdryel = [];                # index of elements touching each BID
     if bn == 2
         bids = [1,2]; # for two BIDs
     else
@@ -51,14 +52,16 @@ function simple_line_mesh(nx, bn)
     # boundary nodes
     if bn == 2
         bdry = [[1],[N]];
+        bdryel = [[1],[nel]];
     else
         bdry = [1 N]; # for one BID
+        bdryel = [1 nel];
     end
     
     mesh = MeshData(Nv, xv, ind, nel, el, ones(nel), 2*ones(nel)); # MeshData struct
-    grid = Grid(x, bdry, bids);
+    grid = Grid(x, bdry, bdryel, bids, loc2glb);
     
-    return (mesh, refel, grid, loc2glb);
+    return (mesh, refel, grid);
 end
 
 #=
@@ -77,6 +80,7 @@ function simple_quad_mesh(nx, bn)
     xv = zeros(Nv,2);           # coordinates of vertices
     x = zeros(N,2);             # coordinates of all nodes
     bdry = [];                  # index(in x) of boundary nodes for each BID
+    bdryel = [];                # index of elements touching each BID
     if bn == 4
         bids = [1,2,3,4]; # x=0, x=1, y=0, y=1
     elseif bn == 3
@@ -164,6 +168,18 @@ function simple_quad_mesh(nx, bn)
             end
         end
         bdry = [bdry1, bdry2, bdry3];
+        bdryel1 = zeros(nx-1);
+        bdryel2 = zeros(nx-1);
+        bdryel3 = zeros(nx-1);
+        bdryel4 = zeros(nx-1);
+        for i=1:(nx-1)
+            bdryel1[i] = (i-1)*(nx-1) + 1;
+            bdryel2[i] = i*(nx-1);
+            bdryel3[i] = i;
+            bdryel4[i] = (nx-2)*(nx-1) + i;
+        end
+        bdryel = [bdryel1, bdryel2, bdryel3, bdryel4];
+        
     elseif bn == 3
         bdry1 = zeros(rowsize); # x=0
         bdry2 = zeros(rowsize); # x=1
@@ -177,6 +193,17 @@ function simple_quad_mesh(nx, bn)
             end
         end
         bdry = [bdry1, bdry2, bdry3];
+        bdryel1 = zeros(nx-1);
+        bdryel2 = zeros(nx-1);
+        bdryel3 = zeros((nx-1)*2);
+        for i=1:(nx-1)
+            bdryel1[i] = (i-1)*(nx-1) + 1;
+            bdryel2[i] = i*(nx-1);
+            bdryel3[i] = i;
+            bdryel3[i+nx-1] = (nx-2)*(nx-1) + i;
+        end
+        bdryel = [bdryel1, bdryel2, bdryel3];
+        
     elseif bn == 2
         bdry1 = zeros(rowsize*2); # x=0,1
         bdry2 = zeros(rowsize*2 - 4); # y=0,1
@@ -189,6 +216,16 @@ function simple_quad_mesh(nx, bn)
             end
         end
         bdry = [bdry1, bdry2];
+        bdryel1 = zeros((nx-1)*2);
+        bdryel2 = zeros((nx-1)*2);
+        for i=1:(nx-1)
+            bdryel1[i] = (i-1)*(nx-1) + 1;
+            bdryel1[i+nx-1] = i*(nx-1);
+            bdryel2[i] = i;
+            bdryel2[i+nx-1] = (nx-2)*(nx-1) + i;
+        end
+        bdryel = [bdryel1, bdryel2];
+        
     else
         bdry = zeros(rowsize*4 - 4);
         for i=1:rowsize
@@ -200,13 +237,21 @@ function simple_quad_mesh(nx, bn)
             end
         end
         bdry = [bdry];
+        bdryel = zeros((nx-1)*4 - 4);
+        for i=1:(nx-2)
+            bdryel[i] = i;
+            bdryel[i+nx-2] = (nx-1)*(nx-2) + i + 1;
+            bdryel[i+2*(nx-2)] = i*(nx-1) + 1;
+            bdryel[i+3*(nx-2)] = i*(nx-1);
+        end
+        bdryel = [bdryel];
     end
     
     
     mesh = MeshData(Nv, xv, ind, nel, el, 3*ones(nel), 4*ones(nel)); # MeshData struct
-    grid = Grid(x, bdry, bids);
+    grid = Grid(x, bdry, bdryel, bids, loc2glb);
     
-    return (mesh, refel, grid, loc2glb);
+    return (mesh, refel, grid);
 end
 
 #=
@@ -225,6 +270,7 @@ function simple_hex_mesh(nx, bn)
     xv = zeros(Nv,3);           # coordinates of vertices
     x = zeros(N,3);             # coordinates of all nodes
     bdry = [];                  # index(in x) of boundary nodes for each BID
+    bdryel = [];                # index of elements touching each BID
     bids = [];
     for i=1:bn
         push!(bids,i);
@@ -487,7 +533,7 @@ function simple_hex_mesh(nx, bn)
     end
     
     mesh = MeshData(Nv, xv, indexorder, nel, el, 5*ones(nel), 8*ones(nel)); # MeshData struct
-    grid = Grid(x, bdry, bids);
+    grid = Grid(x, bdry, bdryel, bids, loc2glb);
     
-    return (mesh, refel, grid, loc2glb);
+    return (mesh, refel, grid);
 end
