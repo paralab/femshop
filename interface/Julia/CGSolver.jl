@@ -27,7 +27,7 @@ include("cg_matrixfree.jl");
 
 function init_cgsolver()
     dim = config.dimension;
-    
+
     # build initial conditions
     for vind=1:length(variables)
         if vind <= length(prob.initial)
@@ -66,7 +66,7 @@ function init_cgsolver()
 end
 
 function linear_solve(var, bilinear, linear, stepper=nothing)
-    
+
     if config.linalg_matrixfree
         return solve_matrix_free_sym(var, bilinear, linear, stepper);
         #return solve_matrix_free_asym(var, bilinear, linear, stepper);
@@ -138,12 +138,11 @@ function nonlinear_solve(var, nlvar, bilinear, linear, stepper=nothing)
         log_entry("Beginning "*string(stepper.Nsteps)*" time steps.");
         t = 0;
         start_t = Base.Libc.time();
-		nl = nonlinear(10, 1e-12, 1e-12);
+		nl = nonlinear(100, 1e-12, 1e-12);
         for i=1:stepper.Nsteps
 			init_nonlinear(nl, var, nlvar, bilinear, linear);
-			f = assemble;
-			newton(nl, f, f);
-			var = nl.var;
+			func = assemble;
+			newton(nl, func, func, nlvar);
             t += stepper.dt;
         end
         end_t = Base.Libc.time();
@@ -152,11 +151,11 @@ function nonlinear_solve(var, nlvar, bilinear, linear, stepper=nothing)
         #display(sol);
 		outfile = "nonlinear_sol.txt"
 		open(outfile, "w") do f
-  			for ii in nl.var.values
+  			for ii in nlvar.values
     			println(f, ii)
   			end
 		end # the file f is automatically closed after this block finishes
-        return nl.var.values;
+        return nlvar.values;
 
     else
         assemble_t = @elapsed((A, b) = assemble(var, bilinear, linear));
