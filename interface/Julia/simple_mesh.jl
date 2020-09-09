@@ -44,7 +44,8 @@ function simple_line_mesh(nx, bn)
     end
     # The last node was left out
     x[N] = 1.0;
-    
+   
+	x = x.+1; 
     # indices are in order
     ind = Array(1:Nv);
     
