@@ -63,14 +63,7 @@ function init_cgsolver()
     end
 end
 
-function solve(var, bilinear, linear, stepper=nothing, nlvar=nothing, nonlinear=false)
-    ############################ redirect to nonlinear solve
-    if nonlinear
-        # var is du, nlvar is u, bilinear/linear are for the du weak form.
-        
-    end
-    ########################################################
-    
+function solve(var, bilinear, linear, stepper=nothing)
     if config.linalg_matrixfree
         return solve_matrix_free_sym(var, bilinear, linear, stepper);
         #return solve_matrix_free_asym(var, bilinear, linear, stepper);
@@ -120,6 +113,46 @@ function solve(var, bilinear, linear, stepper=nothing, nlvar=nothing, nonlinear=
         assemble_t = @elapsed((A, b) = assemble(var, bilinear, linear));
         sol_t = @elapsed(sol = A\b);
         
+        log_entry("Assembly took "*string(assemble_t)*" seconds");
+        log_entry("Linear solve took "*string(sol_t)*" seconds");
+        #display(A);
+        #display(b);
+        #display(sol);
+        return sol;
+    end
+end
+
+function nonlinear_solve(var, nlvar, bilinear, linear, stepper=nothing)
+    if prob.time_dependent && !(stepper === nothing)
+        #TODO time dependent coefficients
+
+        log_entry("Beginning "*string(stepper.Nsteps)*" time steps.");
+        t = 0;
+        start_t = Base.Libc.time();
+		nl = nonlinear(10, 1e-12, 1e-12);
+        for i=1:stepper.Nsteps
+			init_nonlinear(nl, var, bilinear, linear);
+			f = assemble;
+			newton(nl, f, f);
+			var = nl.var;
+            t += stepper.dt;
+        end
+        end_t = Base.Libc.time();
+
+        log_entry("Solve took "*string(end_t-start_t)*" seconds");
+        #display(sol);
+		outfile = "nonlinear_sol.txt"
+		open(outfile, "w") do f
+  			for ii in nl.var.values
+    			println(f, ii)
+  			end
+		end # the file f is automatically closed after this block finishes
+        return nl.var.values;
+
+    else
+        assemble_t = @elapsed((A, b) = assemble(var, bilinear, linear));
+        sol_t = @elapsed(sol = A\b);
+
         log_entry("Assembly took "*string(assemble_t)*" seconds");
         log_entry("Linear solve took "*string(sol_t)*" seconds");
         #display(A);

@@ -184,13 +184,23 @@ function neumann_bc(A, b, val, bdryind, bid, t=0, dofind = 1, totaldofs = 1)
         (detJ, J) = geometric_factors(refel, xe);
         if config.dimension == 1
             R1matrix = diagm(J.rx)
-            Q1matrix = refel.Qr
-            Dmat = R1matrix*Q1matrix;
+            D1matrix = refel.Dr
         elseif config.dimension == 2
-            
+            R1matrix = [diagm(J.rx) diagm(J.sx)];
+            D1matrix = [refel.Ddr ; refel.Dds];
+            R1matrix = [diagm(J.ry) diagm(J.sy)];
+            D1matrix = [refel.Ddr ; refel.Dds];
         elseif config.dimension == 3
-            
+            R1matrix = [diagm(J.rx) diagm(J.sx) diagm(J.tx)];
+            D1matrix = [refel.Ddr ; refel.Dds ; refel.Ddt];
+            R2matrix = [diagm(J.ry) diagm(J.sy) diagm(J.ty)];
+            D2matrix = [refel.Ddr ; refel.Dds ; refel.Ddt];
+            R3matrix = [diagm(J.rz) diagm(J.sz) diagm(J.tz)];
+            D3matrix = [refel.Ddr ; refel.Dds ; refel.Ddt];
         end
+        # Need to decide which matrix to apply.
+        # This is just for a 1D test
+        Dmat = R1matrix*D1matrix;
         S[glb,glb] += Dmat;
     end
     

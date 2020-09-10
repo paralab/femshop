@@ -48,6 +48,10 @@ mutable struct Refel
     Qs::Array{Float64}      # 
     Qt::Array{Float64}      # 
     
+    Ddr::Array{Float64}      # Similar to Qr, but for the elemental nodes, not quadrature nodes
+    Dds::Array{Float64}      # 
+    Ddt::Array{Float64}      # 
+    
     # for DG
     lift::Array{Float64}    # Surface integral matrix
     
@@ -120,15 +124,21 @@ function build_refel(dimension, order, nfaces, nodetype)
     if dimension == 1
         refel.Q = refel.Q1d;
         refel.Qr = refel.Dg;
+        refel.Ddr = refel.Dr;
     elseif dimension == 2
         refel.Q = kron(refel.Q1d,refel.Q1d);
         refel.Qr = kron(refel.Q1d,refel.Dg);
         refel.Qs = kron(refel.Dg,refel.Q1d);
+        refel.Ddr = kron(LinearAlgebra.I,refel.Dr);
+        refel.Dds = kron(refel.Dr,LinearAlgebra.I);
     elseif dimension == 3
         refel.Q = kron(kron(refel.Q1d, refel.Q1d), refel.Q1d);
         refel.Qr = kron(kron(refel.Q1d, refel.Q1d), refel.Dg);
         refel.Qs = kron(kron(refel.Q1d, refel.Dg), refel.Q1d);
         refel.Qt = kron(kron(refel.Dg, refel.Q1d), refel.Q1d);
+        refel.Ddr = kron(kron(LinearAlgebra.I, LinearAlgebra.I), refel.Dg);
+        refel.Dds = kron(kron(LinearAlgebra.I, refel.Dg), LinearAlgebra.I);
+        refel.Ddt = kron(kron(refel.Dg, LinearAlgebra.I), LinearAlgebra.I);
     end
     
     # # Build surface integral matrix

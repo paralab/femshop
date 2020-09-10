@@ -314,9 +314,9 @@ end
 
 function solve(var, nlvar=nothing; nonlinear=false)
     # Generate files or solve directly
-    if gen_files != nothing
+    if !(gen_files === nothing && (language == JULIA || language == 0))
         generate_main();
-        if dendro_params != nothing
+        if !(dendro_params === nothing)
             generate_config(dendro_params);
         else
             generate_config();
@@ -348,11 +348,19 @@ function solve(var, nlvar=nothing; nonlinear=false)
             
             if prob.time_dependent
                 global time_stepper = init_stepper(grid_data.allnodes, time_stepper);
-                t = @elapsed(result = CGSolver.solve(var, lhs, rhs, time_stepper, nlvar, nonlinear));
+                if nonlinear
+                    t = @elapsed(result = CGSolver.nonlinear_solve(var, nlvar, lhs, rhs, time_stepper));
+                else
+                    t = @elapsed(result = CGSolver.solve(var, lhs, rhs, time_stepper));
+                end
                 # result is already stored in variables
             else
                 # solve it!
-                t = @elapsed(result = CGSolver.solve(var, lhs, rhs, nothing, nlvar, nonlinear));
+                if nonlinear
+                    t = @elapsed(result = CGSolver.nonlinear_solve(var, nlvar, lhs, rhs));
+                else
+                    t = @elapsed(result = CGSolver.solve(var, lhs, rhs));
+                end
                 
                 # place the values in the variable value arrays
                 if typeof(var) <: Array

@@ -117,18 +117,24 @@ function generate_code_layer_julia(symex, var, lorr)
         if config.dimension == 1
             push!(code.args, Expr(:(=), :R1matrix, :(diagm(J.rx))));
             push!(code.args, Expr(:(=), :Q1matrix, :(refel.Qr)));
+            push!(code.args, Expr(:(=), :D1matrix, :(refel.Ddr)));
         elseif config.dimension == 2
             push!(code.args, Expr(:(=), :R1matrix, :([diagm(J.rx) diagm(J.sx)])));
             push!(code.args, Expr(:(=), :Q1matrix, :([refel.Qr ; refel.Qs])));
+            push!(code.args, Expr(:(=), :D1matrix, :([refel.Ddr ; refel.Dds])));
             push!(code.args, Expr(:(=), :R2matrix, :([diagm(J.ry) diagm(J.sy)])));
             push!(code.args, Expr(:(=), :Q2matrix, :([refel.Qr ; refel.Qs])));
+            push!(code.args, Expr(:(=), :D2matrix, :([refel.Ddr ; refel.Dds])));
         elseif config.dimension == 3
             push!(code.args, Expr(:(=), :R1matrix, :([diagm(J.rx) diagm(J.sx) diagm(J.tx)])));
             push!(code.args, Expr(:(=), :Q1matrix, :([refel.Qr ; refel.Qs ; refel.Qt])));
+            push!(code.args, Expr(:(=), :D1matrix, :([refel.Ddr ; refel.Dds ; refel.Ddt])));
             push!(code.args, Expr(:(=), :R2matrix, :([diagm(J.ry) diagm(J.sy) diagm(J.ty)])));
             push!(code.args, Expr(:(=), :Q2matrix, :([refel.Qr ; refel.Qs ; refel.Qt])));
+            push!(code.args, Expr(:(=), :D2matrix, :([refel.Ddr ; refel.Dds ; refel.Ddt])));
             push!(code.args, Expr(:(=), :R3matrix, :([diagm(J.rz) diagm(J.sz) diagm(J.tz)])));
             push!(code.args, Expr(:(=), :Q3matrix, :([refel.Qr ; refel.Qs ; refel.Qt])));
+            push!(code.args, Expr(:(=), :D3matrix, :([refel.Ddr ; refel.Dds ; refel.Ddt])));
         end
     end
     
@@ -244,7 +250,7 @@ function generate_code_layer_julia(symex, var, lorr)
                 tmpc = Symbol(tmps);
                 
                 dmatr = Symbol("R"*needed_coef_deriv[i][3]*"matrix");
-                dmatq = Symbol("Q"*needed_coef_deriv[i][3]*"matrix");
+                dmatq = Symbol("D"*needed_coef_deriv[i][3]*"matrix");
                 tmpb= :(length($tmpc) == 1 ? 0 : $dmatr * $dmatq * $tmpc);
                 
                 push!(code.args, Expr(:(=), tmpc, tmpb));

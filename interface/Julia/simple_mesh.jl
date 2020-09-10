@@ -54,8 +54,8 @@ function simple_line_mesh(nx, bn)
         bdry = [[1],[N]];
         bdryel = [[1],[nel]];
     else
-        bdry = [1 N]; # for one BID
-        bdryel = [1 nel];
+        bdry = [[1,N]]; # for one BID
+        bdryel = [[1,nel]];
     end
     
     mesh = MeshData(Nv, xv, ind, nel, el, ones(nel), 2*ones(nel)); # MeshData struct
