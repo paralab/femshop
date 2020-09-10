@@ -312,9 +312,9 @@ end
 
 function solve(var, nlvar=nothing; nonlinear=false)
     # Generate files or solve directly
-    if gen_files != nothing
+    if !(gen_files === nothing && (language == JULIA || language == 0))
         generate_main();
-        if dendro_params != nothing
+        if !(dendro_params === nothing)
             generate_config(dendro_params);
         else
             generate_config();
