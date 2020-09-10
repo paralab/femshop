@@ -24,12 +24,12 @@ function simple_line_mesh(nx, bn)
     end
     loc2glb = zeros(Int, nel,Np)# local to global index map for each element's nodes
     h = 1/(nx-1);               # unit interval uniformly divided
-    
-    # vertex nodes are ordered 
+
+    # vertex nodes are ordered
     for j=1:nx
         xv[j,1] = (j-1)*h;
     end
-    
+
     # Elements are ordered the same way
     for ei=1:(nx-1)
         x1 = (ei-1)*h; # left vertex
@@ -39,16 +39,17 @@ function simple_line_mesh(nx, bn)
             loc2glb[ei,ni] = gi; # local to global map
         end
         loc2glb[ei,Np] = ei*(Np-1) + 1;
-        
+
         el[ei,1] = ei;
         el[ei,2] = ei+1;
     end
     # The last node was left out
     x[N] = 1.0;
-    
+
+	x = x.+1;
     # indices are in order
     ind = Array(1:Nv);
-    
+
     # boundary nodes
     if bn == 2
         bdry = [[1],[N]];
@@ -57,10 +58,10 @@ function simple_line_mesh(nx, bn)
         bdry = [[1,N]]; # for one BID
         bdryel = [[1,nel]];
     end
-    
+
     mesh = MeshData(Nv, xv, ind, nel, el, ones(nel), 2*ones(nel)); # MeshData struct
     grid = Grid(x, bdry, bdryel, bids, loc2glb);
-    
+
     return (mesh, refel, grid);
 end
 
@@ -90,10 +91,10 @@ function simple_quad_mesh(nx, bn)
     else
         bids = [1]; # everywhere
     end
-    
+
     loc2glb = zeros(Int, nel,Np)# local to global index map for each element's nodes
     h = 1/(nx-1);               # unit square uniformly divided
-    
+
     # vertex nodes are ordered along x then y
     for j=1:nx
         for i=1:nx
@@ -102,14 +103,14 @@ function simple_quad_mesh(nx, bn)
             xv[k,2] = (j-1)*h;
         end
     end
-    
+
     # Elements are ordered along x then y
     n1d = ord+1;
     rowsize = (nx-1)*(n1d-1) + 1;
     for j=1:(nx-1)
         for i=1:(nx-1)
             ei = i + (j-1)*(nx-1); # element index
-            x1 = [(i-1)*h ; (j-1)*h]; # southwest corner 
+            x1 = [(i-1)*h ; (j-1)*h]; # southwest corner
             for jj=1:n1d-1
                 row = (j-1)*(n1d-1) + jj;
                 for ii=1:n1d-1
@@ -124,7 +125,7 @@ function simple_quad_mesh(nx, bn)
             for ii=1:n1d
                 loc2glb[ei, n1d*(n1d-1)+ii] = ((row-1)*rowsize + (i-1)*(n1d-1)) + ii; # last in local y
             end
-            
+
             el[ei,1] = i + (j-1)*nx;
             el[ei,2] = i + (j-1)*nx + 1;
             el[ei,3] = i + (j)*nx;
@@ -149,10 +150,10 @@ function simple_quad_mesh(nx, bn)
     end
     # corner
     x[N,:] = [1; 1];
-    
+
     # indices are in order
     ind = Array(1:Nv);
-    
+
     # boundaries
     if bn == 4
         bdry1 = zeros(rowsize); # x=0
@@ -179,7 +180,7 @@ function simple_quad_mesh(nx, bn)
             bdryel4[i] = (nx-2)*(nx-1) + i;
         end
         bdryel = [bdryel1, bdryel2, bdryel3, bdryel4];
-        
+
     elseif bn == 3
         bdry1 = zeros(rowsize); # x=0
         bdry2 = zeros(rowsize); # x=1
@@ -203,7 +204,7 @@ function simple_quad_mesh(nx, bn)
             bdryel3[i+nx-1] = (nx-2)*(nx-1) + i;
         end
         bdryel = [bdryel1, bdryel2, bdryel3];
-        
+
     elseif bn == 2
         bdry1 = zeros(rowsize*2); # x=0,1
         bdry2 = zeros(rowsize*2 - 4); # y=0,1
@@ -225,7 +226,7 @@ function simple_quad_mesh(nx, bn)
             bdryel2[i+nx-1] = (nx-2)*(nx-1) + i;
         end
         bdryel = [bdryel1, bdryel2];
-        
+
     else
         bdry = zeros(rowsize*4 - 4);
         for i=1:rowsize
@@ -246,11 +247,11 @@ function simple_quad_mesh(nx, bn)
         end
         bdryel = [bdryel];
     end
-    
-    
+
+
     mesh = MeshData(Nv, xv, ind, nel, el, 3*ones(nel), 4*ones(nel)); # MeshData struct
     grid = Grid(x, bdry, bdryel, bids, loc2glb);
-    
+
     return (mesh, refel, grid);
 end
 
@@ -277,10 +278,10 @@ function simple_hex_mesh(nx, bn)
     end
     loc2glb = zeros(Int, nel, Np)# local to global index map for each element's nodes
     h = 1/(nx-1);               # unit square uniformly divided
-    
+
     # Start with a 2d quad mesh
     (mesh2d, refel2d, grid2d, loc2glb2d) = simple_quad_mesh(nx, bn);
-    
+
     # vertex nodes are ordered along x then y then z
     for k=1:nx
         for j=1:nx
@@ -292,7 +293,7 @@ function simple_hex_mesh(nx, bn)
             end
         end
     end
-    
+
     # Use 2d quad mesh to build hex mesh nodes
     n1d = ord+1;
     rowsize = (nx-1)*(n1d-1) + 1;
@@ -302,7 +303,7 @@ function simple_hex_mesh(nx, bn)
         range = ((k-1)*slicesize+1):(k*slicesize);
         x[range, :] = [grid2d.allnodes  zvals[k].*ones(slicesize)];
     end
-    
+
     # Elements are ordered along x then y then z
     for k=1:(nx-1)
         for j=1:(nx-1) # element indices
@@ -319,13 +320,13 @@ function simple_hex_mesh(nx, bn)
                         end
                         loc2glb[ei,(kk-1)*n1d*n1d + jj*n1d] = (slice-1)*slicesize + (row-1)*rowsize + (i-1)*(n1d-1) + n1d; # last in local x
                     end
-                    
+
                     row = j*(n1d-1)+1;
                     for ii=1:n1d
                         loc2glb[ei, (kk-1)*n1d*n1d + n1d*(n1d-1)+ii] = ((slice-1)*slicesize + (row-1)*rowsize + (i-1)*(n1d-1)) + ii; # last in local y
                     end
                 end
-                
+
                 slice = k*(n1d-1)+1;  # last in local z
                 for jj=1:n1d-1
                     row = (j-1)*(n1d-1) + jj;
@@ -340,7 +341,7 @@ function simple_hex_mesh(nx, bn)
                 for ii=1:n1d
                     loc2glb[ei, (n1d-1)*n1d*n1d + n1d*(n1d-1)+ii] = ((slice-1)*slicesize + (row-1)*rowsize + (i-1)*(n1d-1)) + ii; # last in local y
                 end
-                
+
                 el[ei,1] = i + (j-1)*nx + (k-1)*nx*nx;
                 el[ei,2] = i + (j-1)*nx + (k-1)*nx*nx + 1;
                 el[ei,3] = i + (j)*nx + (k-1)*nx*nx;
@@ -352,10 +353,10 @@ function simple_hex_mesh(nx, bn)
             end
         end
     end
-    
+
     # indices are in order
     indexorder = Array(1:Nv);
-    
+
     # boundaries
     if bn == 6 # all separate
         bdry1 = zeros(slicesize); # x=0
@@ -364,7 +365,7 @@ function simple_hex_mesh(nx, bn)
         bdry4 = zeros(slicesize - 2*rowsize); # y=1
         bdry5 = zeros(slicesize - 4*rowsize); # z=0
         bdry6 = zeros(slicesize - 4*rowsize); # z=1
-        
+
         ind1 = 1;
         ind2 = 1;
         ind3 = 1;
@@ -384,18 +385,18 @@ function simple_hex_mesh(nx, bn)
                     bdry6[ind3] = (rowsize-1)*slicesize + (j-1)*rowsize + i;# z=1
                     ind3 = ind3+1;
                 end
-                
+
             end
         end
         bdry = [bdry1, bdry2, bdry3, bdry4, bdry5, bdry6];
-        
+
     elseif bn == 5 # combine zs
         bdry1 = zeros(slicesize); # x=0
         bdry2 = zeros(slicesize); # x=1
         bdry3 = zeros(slicesize - 2*rowsize); # y=0
         bdry4 = zeros(slicesize - 2*rowsize); # y=1
         bdry5 = zeros(2*slicesize - 8*rowsize); # z=0,1
-        
+
         ind1 = 1;
         ind2 = 1;
         ind3 = 1;
@@ -415,17 +416,17 @@ function simple_hex_mesh(nx, bn)
                     bdry5[ind3+1] = (rowsize-1)*slicesize + (j-1)*rowsize + i;# z=1
                     ind3 = ind3+2;
                 end
-                
+
             end
         end
         bdry = [bdry1, bdry2, bdry3, bdry4, bdry5];
-        
+
     elseif bn == 4 # combine ys and zs
         bdry1 = zeros(slicesize); # x=0
         bdry2 = zeros(slicesize); # x=1
         bdry3 = zeros(2*slicesize - 4*rowsize); # y=0,1
         bdry4 = zeros(2*slicesize - 8*rowsize); # z=0,1
-        
+
         ind1 = 1;
         ind2 = 1;
         ind3 = 1;
@@ -445,16 +446,16 @@ function simple_hex_mesh(nx, bn)
                     bdry4[ind3+1] = (rowsize-1)*slicesize + (j-1)*rowsize + i;# z=1
                     ind3 = ind3+2;
                 end
-                
+
             end
         end
         bdry = [bdry1, bdry2, bdry3, bdry4];
-        
+
     elseif bn == 3 # xs, ys, zs
         bdry1 = zeros(2*slicesize); # x=0,1
         bdry2 = zeros(2*slicesize - 4*rowsize); # y=0,1
         bdry3 = zeros(2*slicesize - 8*rowsize); # z=0,1
-        
+
         ind1 = 1;
         ind2 = 1;
         ind3 = 1;
@@ -474,15 +475,15 @@ function simple_hex_mesh(nx, bn)
                     bdry3[ind3+1] = (rowsize-1)*slicesize + (j-1)*rowsize + i;# z=1
                     ind3 = ind3+2;
                 end
-                
+
             end
         end
         bdry = [bdry1, bdry2, bdry3];
-        
+
     elseif bn == 2 # x=0, everything else
         bdry1 = zeros(slicesize); # x=0
         bdry2 = zeros(5*slicesize - 4*rowsize); # the rest
-        
+
         ind1 = 1;
         ind2 = 1;
         for j=1:rowsize
@@ -502,11 +503,11 @@ function simple_hex_mesh(nx, bn)
                     bdry2[ind2+1] = (rowsize-1)*slicesize + (j-1)*rowsize + i;# z=1
                     ind2 = ind2+2;
                 end
-                
+
             end
         end
         bdry = [bdry1, bdry2];
-        
+
     else
         N1d = (nx-1)*ord + 1;
         bdry = zeros(N - (N1d-2)*(N1d-2)*(N1d-2));
@@ -531,9 +532,9 @@ function simple_hex_mesh(nx, bn)
         end
         bdry = [bdry];
     end
-    
+
     mesh = MeshData(Nv, xv, indexorder, nel, el, 5*ones(nel), 8*ones(nel)); # MeshData struct
     grid = Grid(x, bdry, bdryel, bids, loc2glb);
-    
+
     return (mesh, refel, grid);
 end

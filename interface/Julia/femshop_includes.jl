@@ -38,6 +38,7 @@ include("variables.jl");
 include("coefficient.jl");
 include("geometric_factors.jl");
 include("time_steppers.jl");
+#include("nonlinear.jl");
 
 # Femshop submodules
 include("SymbolicParser.jl")

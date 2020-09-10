@@ -115,7 +115,7 @@ function add_mesh(mesh)
     else
         global mesh_data = mesh;
     end
-    
+
     log_entry("Added mesh with "*string(mesh_data.nx)*" vertices and "*string(mesh_data.nel)*" elements.");
     log_entry("Full grid has "*string(length(grid_data.allnodes))*" nodes.");
 end
@@ -129,7 +129,7 @@ function add_test_function(v, type)
     varind = length(test_functions) + 1;
     # make SymType
     symvar = sym_var(string(v), type, config.dimension);
-    
+
     push!(test_functions, Femshop.Coefficient(v, symvar, varind, type, []););
     log_entry("Set test function symbol: "*string(v)*" of type: "*type);
 end
@@ -149,17 +149,15 @@ function add_variable(var)
             var.values = zeros(N, Int((config.dimension*(config.dimension+1))/2));
         end
     end
-    
-    
     # make SymType
     symvar = sym_var(string(var.symbol), var.type, config.dimension);
     var.symvar = symvar;
-    
+
     global variables = [variables; var];
-    
+
     global linears = [linears; nothing];
     global bilinears = [bilinears; nothing];
-    
+
     log_entry("Added variable: "*string(var.symbol)*" of type: "*var.type);
 end
 
@@ -171,7 +169,7 @@ function add_coefficient(c, type, val, nfuns)
         if length(vals) == 1 && !(typeof(vals) <: Array)
             vals = [val];
         end
-            
+
     else # genfunction values
         if typeof(val) <: Array
             ind = length(genfunctions) - nfuns + 1;
@@ -187,14 +185,14 @@ function add_coefficient(c, type, val, nfuns)
             push!(vals, genfunctions[end]);
         end
     end
-    
+
     symvar = sym_var(string(c), type, config.dimension);
-    
+
     index = length(coefficients);
     push!(coefficients, Coefficient(c, symvar, index, type, vals));
-    
+
     log_entry("Added coefficient "*string(c)*" : "*string(val));
-    
+
     return coefficients[end];
 end
 
@@ -222,7 +220,7 @@ function add_initial_condition(varindex, ex, nfuns)
             prob.initial[varindex] = ex;
         end
     end
-    
+
     log_entry("Initial condition for "*string(variables[varindex].symbol)*" : "*string(prob.initial[varindex]));
     # hold off on initializing till solve or generate is determined.
 end
@@ -264,7 +262,7 @@ function add_boundary_condition(var, bid, type, ex, nfuns)
     end
     prob.bc_type[var.index, bid] = type;
     prob.bid[var.index, bid] = bid;
-    
+
     log_entry("Boundary condition: var="*string(var.symbol)*" bid="*string(bid)*" type="*type*" val="*string(ex));
 end
 
@@ -314,16 +312,16 @@ end
 
 function solve(var, nlvar=nothing; nonlinear=false)
     # Generate files or solve directly
-    if !(gen_files === nothing && (language == JULIA || language == 0))
+    if gen_files != nothing
         generate_main();
-        if !(dendro_params === nothing)
+        if dendro_params != nothing
             generate_config(dendro_params);
         else
             generate_config();
         end
         generate_prob();
         generate_mesh();
-        generate_genfunction(); 
+        generate_genfunction();
         generate_bilinear(bilinears[1]);
         generate_linear(linears[1]);
         #generate_stepper();
@@ -342,26 +340,26 @@ function solve(var, nlvar=nothing; nonlinear=false)
                 varnames = string(var.symbol);
                 varind = var.index;
             end
-            
+
             lhs = bilinears[varind];
             rhs = linears[varind];
-            
+
             if prob.time_dependent
                 global time_stepper = init_stepper(grid_data.allnodes, time_stepper);
-                if nonlinear
-                    t = @elapsed(result = CGSolver.nonlinear_solve(var, nlvar, lhs, rhs, time_stepper));
-                else
-                    t = @elapsed(result = CGSolver.solve(var, lhs, rhs, time_stepper));
-                end
+				if (nonlinear)
+                	t = @elapsed(result = CGSolver.nonlinear_solve(var, nlvar, lhs, rhs, time_stepper));
+				else
+                	t = @elapsed(result = CGSolver.linear_solve(var, lhs, rhs, time_stepper));
+				end
                 # result is already stored in variables
             else
                 # solve it!
-                if nonlinear
-                    t = @elapsed(result = CGSolver.nonlinear_solve(var, nlvar, lhs, rhs));
-                else
-                    t = @elapsed(result = CGSolver.solve(var, lhs, rhs));
-                end
-                
+				if (nonlinear)
+                	t = @elapsed(result = CGSolver.nonlinear_solve(var, nlvar, lhs, rhs));
+				else
+                	t = @elapsed(result = CGSolver.linear_solve(var, lhs, rhs));
+				end
+
                 # place the values in the variable value arrays
                 if typeof(var) <: Array
                     tmp = 0;
@@ -383,11 +381,11 @@ function solve(var, nlvar=nothing; nonlinear=false)
                     end
                 end
             end
-            
+
             log_entry("Solved for "*varnames*".(took "*string(t)*" seconds)");
         end
     end
-    
+
 end
 
 function finalize()
