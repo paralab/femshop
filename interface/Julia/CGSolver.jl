@@ -230,8 +230,7 @@ function assemble(var, bilinear, linear, t=0.0, dt=0.0)
             insert_bilinear!(A, bilinchunk, glb, 1:dofs_per_node, dofs_per_node);
         end
     end
-
-    # Just for testing. This should really be a loop over BIDs with corresponding calls
+    
     # Boundary conditions
     bidcount = length(grid_data.bids); # the number of BIDs
     if dofs_per_node > 1

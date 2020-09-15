@@ -31,13 +31,14 @@ function eval_res(nl, formfunc)
 end
 
 function newton(nl,formjac, formfunc, nlvar)
+	debug = false;
 	eval_res(nl, formfunc);
 	init_res = norm(nl.res);
 	if (init_res < nl.atol)
-		print("\ninitial residual = ", init_res, ", already converged\n");
+		if debug print("\ninitial residual = ", init_res, ", already converged\n"); end
 		return;
 	end
-	print("\ninitial residual = ", init_res, "\n");
+	if debug print("\ninitial residual = ", init_res, "\n"); end
 
 	i = 0;
 	while (i < nl.max_iter)
@@ -69,13 +70,13 @@ function newton(nl,formjac, formfunc, nlvar)
 		end
 
 		nlvar = nl.nlvar;
-		@show(nlvar.values)
+		#@show(nlvar.values)
 		i = i+1;
 		eval_res(nl, formfunc);
 		curr_res = norm(nl.res);
-		print(i,"th iteration residual = ", curr_res, "\n");
+		if debug print(i,"th iteration residual = ", curr_res, "\n");end
 		if (curr_res < nl.atol || curr_res/init_res < nl.rtol)
-			print("\nsolution is converged in ", i, " iterations\n");
+			if debug print("\nsolution is converged in ", i, " iterations\n");end
 			return;
 		end
 	end

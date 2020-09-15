@@ -29,7 +29,7 @@ function init_stepper(x, stepper)
             stepper.cfl = 0.25;
         end
         stepper.dt = stepper.cfl*dxmin*dxmin;
-        stepper.Nsteps = 1; #ceil(prob.end_time/stepper.dt);
+        stepper.Nsteps = (prob.end_time/stepper.dt);
         stepper.dt = prob.end_time/stepper.Nsteps;
         
         return stepper;

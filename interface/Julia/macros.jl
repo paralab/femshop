@@ -157,20 +157,21 @@ macro mesh(m)
         
     end)
 end
-macro mesh(m,N) return esc(quote @mesh($m,$N,1); end) end
-macro mesh(m, N, bids)
+macro mesh(m,N) return esc(quote @mesh($m,$N,1,[0,1]); end) end
+macro mesh(m,N,bids) return esc(quote @mesh($m,$N,$bids,[0,1]); end) end
+macro mesh(m, N, bids, interval)
     return esc(quote
         if $m == LINEMESH
             log_entry("Building simple line mesh with nx elements, nx="*string($N));
-            meshtime = @elapsed(add_mesh(simple_line_mesh($N+1, $bids)));
+            meshtime = @elapsed(add_mesh(simple_line_mesh($N+1, $bids, $interval)));
             log_entry("Grid building took "*string(meshtime)*" seconds");
         elseif $m == QUADMESH
             log_entry("Building simple quad mesh with nx*nx elements, nx="*string($N));
-            meshtime = @elapsed(add_mesh(simple_quad_mesh($N+1, $bids)));
+            meshtime = @elapsed(add_mesh(simple_quad_mesh($N+1, $bids, $interval)));
             log_entry("Grid building took "*string(meshtime)*" seconds");
         elseif $m == HEXMESH
             log_entry("Building simple hex mesh with nx*nx*nx elements, nx="*string($N));
-            meshtime = @elapsed(add_mesh(simple_hex_mesh($N+1, $bids)));
+            meshtime = @elapsed(add_mesh(simple_hex_mesh($N+1, $bids, $interval)));
             log_entry("Grid building took "*string(meshtime)*" seconds");
         end
     end)
@@ -192,7 +193,7 @@ macro variable(var, type)
     varsym = string(var);
     return esc(quote
         varind = Femshop.var_count + 1;
-        global $var = Symbol($varsym);
+        $var = Symbol($varsym);
         $var = Femshop.Variable($var, nothing, varind, $type, [], [], false);
         add_variable($var);
     end)
@@ -202,7 +203,7 @@ macro coefficient(c, val) return esc(:(@coefficient($c, SCALAR, $val))); end
 macro coefficient(c, type, val)
     csym = string(c);
     return esc(quote
-        global $c = Symbol($csym);
+        $c = Symbol($csym);
         nfuns = @makeFunctions($val); # if val is constant, nfuns will be 0
         $c = add_coefficient($c, $type, $val, nfuns);
     end)
@@ -236,7 +237,7 @@ macro testSymbol(var) return esc(:(@testSymbol($var, SCALAR))); end
 macro testSymbol(var, type)
     varsym = string(var);
     return esc(quote
-        global $var = Symbol($varsym);
+        $var = Symbol($varsym);
         add_test_function($var, $type);
     end)
 end
@@ -279,8 +280,8 @@ macro weakForm(var, ex)
         
         # make a string for the expression
         if length(lhs_expr) > 1
-            lhsstring = "";
-            rhsstring = "";
+            global lhsstring = "";
+            global rhsstring = "";
             for i=1:length(lhs_expr)
                 global lhsstring = lhsstring*"lhs"*string(i)*" = "*string(lhs_expr[i][1]);
                 global rhsstring = rhsstring*"rhs"*string(i)*" = "*string(rhs_expr[i][1]);
@@ -294,8 +295,8 @@ macro weakForm(var, ex)
                 rhsstring = rhsstring*"\n";
             end
         else
-            lhsstring = "lhs = "*string(lhs_expr[1][1]);
-            rhsstring = "rhs = "*string(rhs_expr[1][1]);
+            global lhsstring = "lhs = "*string(lhs_expr[1][1]);
+            global rhsstring = "rhs = "*string(rhs_expr[1][1]);
             for j=2:length(lhs_expr[1])
                 global lhsstring = lhsstring*" + "*string(lhs_expr[1][j]);
             end

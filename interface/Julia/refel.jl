@@ -126,19 +126,21 @@ function build_refel(dimension, order, nfaces, nodetype)
         refel.Qr = refel.Dg;
         refel.Ddr = refel.Dr;
     elseif dimension == 2
+        ident = Matrix(1.0*I,order+1,order+1);
         refel.Q = kron(refel.Q1d,refel.Q1d);
         refel.Qr = kron(refel.Q1d,refel.Dg);
         refel.Qs = kron(refel.Dg,refel.Q1d);
-        refel.Ddr = kron(LinearAlgebra.I,refel.Dr);
-        refel.Dds = kron(refel.Dr,LinearAlgebra.I);
+        refel.Ddr = kron(ident,refel.Dr);
+        refel.Dds = kron(refel.Dr,ident);
     elseif dimension == 3
+        ident = Matrix(1.0*I,order+1,order+1);
         refel.Q = kron(kron(refel.Q1d, refel.Q1d), refel.Q1d);
         refel.Qr = kron(kron(refel.Q1d, refel.Q1d), refel.Dg);
         refel.Qs = kron(kron(refel.Q1d, refel.Dg), refel.Q1d);
         refel.Qt = kron(kron(refel.Dg, refel.Q1d), refel.Q1d);
-        refel.Ddr = kron(kron(LinearAlgebra.I, LinearAlgebra.I), refel.Dg);
-        refel.Dds = kron(kron(LinearAlgebra.I, refel.Dg), LinearAlgebra.I);
-        refel.Ddt = kron(kron(refel.Dg, LinearAlgebra.I), LinearAlgebra.I);
+        refel.Ddr = kron(kron(ident, ident), refel.Dg);
+        refel.Dds = kron(kron(ident, refel.Dg), ident);
+        refel.Ddt = kron(kron(refel.Dg, ident), ident);
     end
     
     # # Build surface integral matrix

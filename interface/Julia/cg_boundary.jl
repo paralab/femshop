@@ -175,21 +175,31 @@ function neumann_bc(A, b, val, bdryind, bid, t=0, dofind = 1, totaldofs = 1)
     end
     # Assemble the differentiation matrix and swap rows in A
     (na, nb) = size(A);
+    S1 = spzeros(na, nb);
+    S2 = spzeros(na, nb);
+    S3 = spzeros(na, nb);
     S = spzeros(na, nb);
     bel = grid_data.bdryelem[bid];
     for e = 1:length(bel)
-        glb = grid_data.loc2glb[e,:];       # global indices of this element's nodes
+        glb = grid_data.loc2glb[bel[e],:];       # global indices of this element's nodes
         xe = grid_data.allnodes[glb[:],:];  # coordinates of this element's nodes
         
         (detJ, J) = geometric_factors(refel, xe);
         if config.dimension == 1
-            R1matrix = diagm(J.rx)
-            D1matrix = refel.Dr
+            R1matrix = diagm(J.rx);
+            D1matrix = refel.Dr;
+            
+            S1[glb,glb] = R1matrix*D1matrix;
+            
         elseif config.dimension == 2
             R1matrix = [diagm(J.rx) diagm(J.sx)];
             D1matrix = [refel.Ddr ; refel.Dds];
-            R1matrix = [diagm(J.ry) diagm(J.sy)];
-            D1matrix = [refel.Ddr ; refel.Dds];
+            R2matrix = [diagm(J.ry) diagm(J.sy)];
+            D2matrix = [refel.Ddr ; refel.Dds];
+            
+            S1[glb,glb] = R1matrix*D1matrix;
+            S2[glb,glb] = R2matrix*D2matrix;
+            
         elseif config.dimension == 3
             R1matrix = [diagm(J.rx) diagm(J.sx) diagm(J.tx)];
             D1matrix = [refel.Ddr ; refel.Dds ; refel.Ddt];
@@ -197,14 +207,26 @@ function neumann_bc(A, b, val, bdryind, bid, t=0, dofind = 1, totaldofs = 1)
             D2matrix = [refel.Ddr ; refel.Dds ; refel.Ddt];
             R3matrix = [diagm(J.rz) diagm(J.sz) diagm(J.tz)];
             D3matrix = [refel.Ddr ; refel.Dds ; refel.Ddt];
+            
+            S1[glb,glb] = R1matrix*D1matrix;
+            S2[glb,glb] = R2matrix*D2matrix;
+            S3[glb,glb] = R3matrix*D3matrix;
         end
-        # Need to decide which matrix to apply.
-        # This is just for a 1D test
-        Dmat = R1matrix*D1matrix;
-        S[glb,glb] += Dmat;
     end
     
-    insert_rows(A, S, bdry, N);
+    # Add the right components of S1,S2,S3 according to normal vector
+    for i=1:length(bdry)
+        norm = grid_data.bdrynorm[bid][i,:];
+        if config.dimension == 1
+            S[bdry[i],:] = norm[1] .* S1[bdry[i],:];
+        elseif config.dimension == 2
+            S[bdry[i],:] = norm[1] .* S1[bdry[i],:] + norm[2] .* S2[bdry[i],:];
+        elseif config.dimension == 3
+            S[bdry[i],:] = norm[1] .* S1[bdry[i],:] + norm[2] .* S2[bdry[i],:] + norm[3] .* S3[bdry[i],:];
+        end
+    end
+    
+    A = insert_rows(A, S, bdry, N);
     
     dirichlet_bc_rhs_only(b, val, bdryind, t, dofind, totaldofs); # how convenient
     

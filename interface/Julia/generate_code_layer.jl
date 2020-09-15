@@ -199,14 +199,15 @@ function generate_code_layer_julia(symex, var, lorr)
                 if ctype == 1
                     # constant coefficient -> coef_n = cval
                     tmpn = cval;
-                    push!(code.args, Expr(:(=), tmpc, tmpn)); # allocate coef_n
+                    push!(code.args, Expr(:(=), tmpc, tmpn));
                 elseif ctype == 2
                     # genfunction coefficients -> coef_n_i = coef.value[i].func(cargs)
                     tmpv = :(a[coefi]);
                     tmpv.args[1] = tmpc;
-                    tmpn = :(a.value[1]);
-                    tmpn.args[2] = needed_coef_ind[i];
-                    tmpn.args[1].args[1] = needed_coef[i];
+                    #tmpn = :(a.value[1]);
+                    #tmpn.args[2] = needed_coef_ind[i];
+                    #tmpn.args[1].args[1] = :(Femshop.genfunctions[$cval]); # Femshop.genfunctions[cval]
+                    tmpn = :(Femshop.genfunctions[$cval]); # Femshop.genfunctions[cval]
                     tmpb = :(a.func());
                     tmpb.args[1].args[1]= tmpn;
                     append!(tmpb.args, cargs);
@@ -620,7 +621,10 @@ function is_constant_coef(c)
 end
 
 # Checks the type of coefficient: constant, genfunction, or variable
-# Returns: value, name, or array
+# Returns: (type, val)
+# constant: type=1, val=number
+# genfunction: type=2, val= index in genfunctions array
+# variable: type=3, val=index in variables array
 function get_coef_val(c, comp)
     type = 0;
     val = 0;
@@ -632,7 +636,12 @@ function get_coef_val(c, comp)
                 val = coefficients[i].value[comp];
             else
                 type = 2;
-                val = coefficients[i].value[comp].name;
+                name = coefficients[i].value[comp].name;
+                for j=1:length(genfunctions)
+                    if name == genfunctions[j].name
+                        val = j;
+                    end
+                end
             end
         end
     end
