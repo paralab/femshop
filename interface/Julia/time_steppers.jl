@@ -26,7 +26,7 @@ function init_stepper(x, stepper)
     elseif stepper.type == EULER_IMPLICIT
         dxmin = abs(x[2,1]-x[1,1]); # TODO this only works for similar, square elements
         if stepper.cfl == 0
-            stepper.cfl = 0.25;
+            stepper.cfl = 1;
         end
         stepper.dt = stepper.cfl*dxmin*dxmin;
         stepper.Nsteps = (prob.end_time/stepper.dt);
@@ -37,9 +37,9 @@ function init_stepper(x, stepper)
     elseif stepper.type == CRANK_NICHOLSON
         dxmin = abs(x[2,1]-x[1,1]); # TODO this only works for similar, square elements
         if stepper.cfl == 0
-            stepper.cfl = 1;
+            stepper.cfl = 0.25;
         end
-        stepper.dt = stepper.cfl*dxmin*dxmin;
+        stepper.dt = stepper.cfl*dxmin;
         stepper.Nsteps = ceil(prob.end_time/stepper.dt);
         stepper.dt = prob.end_time/stepper.Nsteps;
         
@@ -108,7 +108,7 @@ function reformat_for_stepper(lhs, rhs, stepper, wrap=true)
             lhs2r = copy(lhs[2][1]);
             for i=1:length(lhs[2][1])
                 lhs2l[i] = Basic(0.5)*lhs2l[i]*dt; # 0.5*dt*lhs2
-                lhs2l[i] = Basic(-0.5)*lhs2r[i]*dt; # -0.5*dt*lhs2
+                lhs2r[i] = Basic(-0.5)*lhs2r[i]*dt; # -0.5*dt*lhs2
             end
             for i=1:length(rhs[1])
                 rhs[1][i] = rhs[1][i]*dt; # dt*rhs

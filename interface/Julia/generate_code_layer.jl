@@ -414,7 +414,7 @@ function process_term_julia(sterm, var, lorr, offset_ind=0)
                     # no derivative mods
                     test_part = :(refel.Q');
                 end
-            elseif is_unknown_var(v, var)
+            elseif is_unknown_var(v, var) && lorr == LHS # If rhs, treat as a coefficient
                 if !(trial_part === nothing)
                     # Two unknowns multiplied in this term. Nonlinear. abort.
                     printerr("Nonlinear term. Code layer incomplete.");
@@ -439,19 +439,20 @@ function process_term_julia(sterm, var, lorr, offset_ind=0)
                     trial_part = :($dmatr * $dmatq);
                 else
                     # no derivative mods
-                    if lorr == RHS # If rhs, change var into var.values and treat as a coefficient
-                        if length(trial_var.symvar.vals) > 1
-                            # need a component index in there
-                            tmpv = :(a.values[gbl,$trial_component]);
-                        else
-                            tmpv = :(a.values[gbl]);
-                        end
-                        tmpv.args[1].args[1] = trial_var.symbol;
-                        push!(coef_facs, tmpv);
-                        push!(coef_inds, trial_component);
-                    else
-                        trial_part = :(refel.Q);
-                    end
+                    trial_part = :(refel.Q);
+                    # if lorr == RHS # If rhs, change var into var.values and treat as a coefficient
+                    #     if length(trial_var.symvar.vals) > 1
+                    #         # need a component index in there
+                    #         tmpv = :(a.values[gbl,$trial_component]);
+                    #     else
+                    #         tmpv = :(a.values[gbl]);
+                    #     end
+                    #     tmpv.args[1].args[1] = trial_var.symbol;
+                    #     push!(coef_facs, tmpv);
+                    #     push!(coef_inds, trial_component);
+                    # else
+                    #     trial_part = :(refel.Q);
+                    # end
                 end
             else # coefficients
                 if length(index) == 1
@@ -463,7 +464,7 @@ function process_term_julia(sterm, var, lorr, offset_ind=0)
                     
                     push!(needed_coef_deriv, [v, mods[1], mods[1][2]]);
                     
-                else
+                elseif !(v ===:dt)
                     push!(needed_coef_deriv, [v, "", ""]);
                 end
                 
