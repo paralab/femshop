@@ -16,7 +16,7 @@ import ..Femshop: Femshop_config, Femshop_prob, Variable, Coefficient
 import ..Femshop: log_entry, printerr
 import ..Femshop: config, prob, variables, coefficients, test_functions
 
-using SymEngine
+using SymEngine, LinearAlgebra
 
 include("symtype.jl");
 include("symoperator.jl");
@@ -177,7 +177,7 @@ end
 
 # Eval to apply the sym_*_op ops to create a SymEngine expression
 function apply_ops(ex)
-    
+    #IDENTITY = diagm(ones(config.dimension));
     try
         if typeof(ex) <:Array
             result = [];

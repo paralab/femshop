@@ -235,15 +235,15 @@ function assemble(var, bilinear, linear, t=0.0, dt=0.0)
     bidcount = length(grid_data.bids); # the number of BIDs
     if dofs_per_node > 1
         if multivar
-            rowoffset = 0;
+            dofind = 0;
             for vi=1:length(var)
                 for compo=1:length(var[vi].symvar.vals)
-                    rowoffset = rowoffset + 1;
+                    dofind = dofind + 1;
                     for bid=1:bidcount
                         if prob.bc_type[var[vi].index, bid] == DIRICHLET
-                            (A, b) = dirichlet_bc(A, b, prob.bc_func[var[vi].index, bid][compo], grid_data.bdry[bid], t, rowoffset, dofs_per_node);
+                            (A, b) = dirichlet_bc(A, b, prob.bc_func[var[vi].index, bid][compo], grid_data.bdry[bid], t, dofind, dofs_per_node);
                         elseif prob.bc_type[var[vi].index, bid] == NEUMANN
-                            (A, b) = neumann_bc(A, b, prob.bc_func[var[vi].index, bid][compo], grid_data.bdry[bid], bid, t, rowoffset, dofs_per_node);
+                            (A, b) = neumann_bc(A, b, prob.bc_func[var[vi].index, bid][compo], grid_data.bdry[bid], bid, t, dofind, dofs_per_node);
                         else
                             printerr("Unsupported boundary condition type: "*prob.bc_type[var[vi].index, bid]);
                         end
@@ -252,13 +252,12 @@ function assemble(var, bilinear, linear, t=0.0, dt=0.0)
             end
         else
             for d=1:dofs_per_node
-                #rows = ((d-1)*length(glb)+1):(d*length(glb));
-                rowoffset = (d-1)*Np;
+                dofind = d;
                 for bid=1:bidcount
                     if prob.bc_type[var.index, bid] == DIRICHLET
-                        (A, b) = dirichlet_bc(A, b, prob.bc_func[var.index, bid][d], grid_data.bdry[bid], t, rowoffset, dofs_per_node);
+                        (A, b) = dirichlet_bc(A, b, prob.bc_func[var.index, bid][d], grid_data.bdry[bid], t, dofind, dofs_per_node);
                     elseif prob.bc_type[var.index, bid] == NEUMANN
-                        (A, b) = neumann_bc(A, b, prob.bc_func[var[vi].index, bid][d], grid_data.bdry[bid], bid, t, rowoffset, dofs_per_node);
+                        (A, b) = neumann_bc(A, b, prob.bc_func[var.index, bid][d], grid_data.bdry[bid], bid, t, dofind, dofs_per_node);
                     else
                         printerr("Unsupported boundary condition type: "*prob.bc_type[var.index, bid]);
                     end
@@ -332,19 +331,19 @@ function assemble_rhs_only(var, linear, t=0.0, dt=0.0)
     bidcount = length(grid_data.bids); # the number of BIDs
     if dofs_per_node > 1
         if multivar
-            rowoffset = 0;
+            dofind = 0;
             for vi=1:length(var)
                 for compo=1:length(var[vi].symvar.vals)
-                    rowoffset = rowoffset + 1;
+                    dofind = dofind + 1;
                     for bid=1:bidcount
-                        b = dirichlet_bc_rhs_only(b, prob.bc_func[var[vi].index, bid][compo], grid_data.bdry[bid], t, rowoffset, dofs_per_node);
+                        b = dirichlet_bc_rhs_only(b, prob.bc_func[var[vi].index, bid][compo], grid_data.bdry[bid], t, dofind, dofs_per_node);
                     end
                 end
             end
         else
             for d=1:dofs_per_node
                 #rows = ((d-1)*length(glb)+1):(d*length(glb));
-                rowoffset = (d-1)*Np;
+                dofind = d;
                 for bid=1:bidcount
                     b = dirichlet_bc_rhs_only(b, prob.bc_func[var.index, bid][d], grid_data.bdry[bid], t, d, dofs_per_node);
                 end

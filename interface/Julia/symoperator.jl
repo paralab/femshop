@@ -16,6 +16,7 @@ function init_ops()
     push!(ops, SymOperator(:dot, sym_dot_op));
     push!(ops, SymOperator(:inner, sym_inner_op));
     push!(ops, SymOperator(:cross, sym_cross_op));
+    push!(ops, SymOperator(:transpose, sym_transpose_op));
     push!(ops, SymOperator(:grad, sym_grad_op));
     push!(ops, SymOperator(:div, sym_div_op));
     push!(ops, SymOperator(:curl, sym_curl_op));
@@ -62,6 +63,16 @@ function sym_cross_op(a,b)
         end
     else
         printerr("Unequal dimensions for: cross(a,b), sizes: a="*string(size(a))*", b="*string(size(b))*")");
+    end
+end
+
+function sym_transpose_op(a)
+    if size(a) == (1,) # scalar
+        return a;
+    elseif ndims(a) == 1 # vector
+        return reshape(a,1,length(a));
+    else
+        return permutedims(a);
     end
 end
 
@@ -118,7 +129,7 @@ function sym_grad_op(u)
                     push!(result, sym_deriv(u[i], j));
                 end
             end
-            reshape(result, d,d);
+            result = reshape(result, d,d);
         elseif rank == 2
             # not yet ready
             printerr("unsupported operator, grad(tensor)");
