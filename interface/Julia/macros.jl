@@ -1,14 +1,9 @@
 #=
 Macros for the interface.
-Some of these may not be necessary.
-Some may be better as regular functions.
-We'll change as needed.
 =#
 
 # Initializes code generation module
-macro language(lang, filename)
-    return esc(:(@language($lang, $filename, "")));
-end
+macro language(lang, filename) return esc(:(@language($lang, $filename, ""))); end
 macro language(lang, filename, header)
     return esc(quote
         language = $lang;
@@ -30,7 +25,7 @@ macro useLog(name, dir)
     end)
 end
 
-# These set the configuration states
+# Sets dimension, domain shape, discretization type
 macro domain(dims) return :(@domain($dims, SQUARE, GRID)) end
 macro domain(dims, geometry, mesh)
     return esc(quote
@@ -40,6 +35,7 @@ macro domain(dims, geometry, mesh)
     end)
 end
 
+# Set the solver type: CG, etc.
 macro solver(type)
     return esc(quote
         Femshop.config.solver_type = $type;
@@ -51,12 +47,9 @@ macro solver(type)
     end)
 end
 
-macro functionSpace(space)
-    return esc(:(@functionSpace($space, 1, 1)))
-end
-macro functionSpace(space, N)
-    return esc(:(@functionSpace($space, $N, $N)))
-end
+# Set basis function type and order
+macro functionSpace(space) return esc(:(@functionSpace($space, 1, 1))) end
+macro functionSpace(space, N) return esc(:(@functionSpace($space, $N, $N))) end
 macro functionSpace(space, Nmin, Nmax)
     return esc(quote
         @trialFunction($space, $Nmin, $Nmax);
@@ -64,9 +57,7 @@ macro functionSpace(space, Nmin, Nmax)
     end)
 end
 
-macro trialFunction(space, N)
-    return esc(:(@trialFunction($space, $N, $N)))
-end
+macro trialFunction(space, N) return esc(:(@trialFunction($space, $N, $N))) end
 macro trialFunction(space, Nmin, Nmax)
     return esc(quote
         Femshop.config.trial_function = $space;
@@ -80,9 +71,7 @@ macro trialFunction(space, Nmin, Nmax)
     end)
 end
 
-macro testFunction(space, N)
-    return esc(:(@testFunction($space, $N, $N)))
-end
+macro testFunction(space, N) return esc(:(@testFunction($space, $N, $N))) end
 macro testFunction(space, Nmin, Nmax)
     return esc(quote
         Femshop.config.test_function = $space;
@@ -96,27 +85,30 @@ macro testFunction(space, Nmin, Nmax)
     end)
 end
 
+# Sets elemental node locations: Lobatto, etc.
 macro nodes(nodetype)
     return esc(quote
         Femshop.config.elemental_nodes = $nodetype;
     end)
 end
 
-macro order(N)
-    return esc(:(@order($N, $N)));
-end
-macro order(Nmin, Nmax)
-    return esc(quote
-        if $Nmin == $Nmax
-            Femshop.config.p_adaptive = false;
-        else
-            Femshop.config.p_adaptive = true;
-        end
-        Femshop.config.basis_order_min = $Nmin;
-        Femshop.config.basis_order_max = $Nmax;
-    end)
-end
+#### Not needed ####
+# macro order(N)
+#     return esc(:(@order($N, $N)));
+# end
+# macro order(Nmin, Nmax)
+#     return esc(quote
+#         if $Nmin == $Nmax
+#             Femshop.config.p_adaptive = false;
+#         else
+#             Femshop.config.p_adaptive = true;
+#         end
+#         Femshop.config.basis_order_min = $Nmin;
+#         Femshop.config.basis_order_max = $Nmax;
+#     end)
+# end
 
+# Sets time stepper type 
 macro stepper(s) return esc(:(@stepper($s, 0))) end
 macro stepper(s, cfl)
     return esc(quote
@@ -124,6 +116,7 @@ macro stepper(s, cfl)
     end)
 end
 
+# Selects matrix free
 macro matrixFree() return esc(:(@matrixFree(1000, 1e-6))) end
 macro matrixFree(max, tol)
     return esc(quote
@@ -131,13 +124,21 @@ macro matrixFree(max, tol)
     end)
 end
 
+# Adds a custom operator
 macro customOperator(s, handle)
     symb = string(s);
     return esc(quote
-        varind = Femshop.var_count + 1;
         $s = Symbol($symb);
-        add_custom_op($s, $handle);
+        Femshop.add_custom_op($s, $handle);
         log_entry("Added custom operator: "*string($s));
+    end)
+end
+
+# Adds a set of custom operators defined in a file
+macro customOperatorFile(file)
+    return esc(quote
+        Femshop.add_custom_op_file($file);
+        log_entry("Added custom operators from file: "*string($file));
     end)
 end
 
