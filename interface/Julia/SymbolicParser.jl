@@ -2,7 +2,7 @@
 # A set of tools for parsing the variational forms into symEngine expressions.
 =#
 module SymbolicParser
-export sp_parse, add_custom_op
+export sp_parse, add_custom_op, add_custom_op_file
 
 import ..Femshop: JULIA, CPP, MATLAB, SQUARE, IRREGULAR, TREE, UNSTRUCTURED, CG, DG, HDG,
         NODAL, MODAL, LEGENDRE, UNIFORM, GAUSS, LOBATTO, NONLINEAR_NEWTON,
@@ -16,24 +16,21 @@ import ..Femshop: Femshop_config, Femshop_prob, Variable, Coefficient
 import ..Femshop: log_entry, printerr
 import ..Femshop: config, prob, variables, coefficients, test_functions
 
-using SymEngine
+using SymEngine, LinearAlgebra
 
-include("symtype.jl");
-include("symoperator.jl");
-
-# Predefined operator symbols that will be replaced with sym_*_op 
-op_names = [:dot, :inner, :cross, :grad, :div, :curl, :laplacian];
-# Build SymOperator objects for those
-ops = init_ops();
+#### globals ########################
+# Basic symbolic operators that are included automatically and have precedence
+op_names = [];
+ops = [];
 
 # Custom operators that can be added by a user
 custom_op_names = [];
 custom_ops = [];
+#####################################
 
-function add_custom_op(s, handle)
-    push!(custom_op_names, s); # add the Symbol s to the list
-    push!(custom_ops, SymOperator(s, handle));
-end
+include("symtype.jl");
+include("symoperator.jl");
+include("basic_ops.jl");
 
 # a special operator for dealing with scalar multiplication when the scalar is in an array
 import Base.*
@@ -46,6 +43,24 @@ function *(a::Array{Basic,1}, b::Array{Basic,1})
         # This should be an error, but I will treat it as a dot product for lazy people
         # Note, it will still be an error if dimensions are not right.
         return [transpose(a) * b];
+    end
+end
+
+# Adds a single custom operator
+function add_custom_op(s, handle)
+    global custom_op_names;
+    global custom_ops;
+    push!(custom_op_names, s); # add the Symbol s to the list
+    push!(custom_ops, SymOperator(s, handle));
+end
+
+# Includes a set of custom operators
+# The file will include an array of symbols and an array of function handles
+function add_custom_op_file(file)
+    include(file);
+    for i=1:length(_names)
+        add_custom_op(_names[i], _handles[i]);
+        log_entry("Added custom operator: "*string(_names[i]));
     end
 end
 
@@ -96,10 +111,16 @@ function sp_parse(ex, var)
         for i=1:length(symex)
             sz = size(symex[i]);
             (lhs[i],rhs[i]) = split_left_right(sterms[i],sz,var);
+            if length(rhs[i]) == 0
+                rhs[i] = [Basic(0)];
+            end
         end
     else
         sz = size(symex);
         (lhs,rhs) = split_left_right(sterms,sz,var);
+        if length(rhs[1]) == 0
+            rhs[1] = [Basic(0)];
+        end
     end
     
     # If there was a time derivative, separate those terms as well
@@ -140,15 +161,16 @@ function replace_symbols(ex)
                 return c.symvar.vals;
             end
         end
-        # operator?
-        for p in ops
-            if ex === p.symbol
-                return Symbol("sym_"*string(ex)*"_op");
+        for i=1:length(ops)
+            if ex === ops[i].symbol
+                #return Symbol(string(ops[i].op));
+                return :(ops[$i].op);
             end
         end
-        for p in custom_ops
-            if ex === p.symbol
-                return Symbol("sym_"*string(ex)*"_op");
+        for i=1:length(custom_ops)
+            if ex === custom_ops[i].symbol
+                #return Symbol(string(custom_ops[i].op));
+                return :(custom_ops[$i].op);
             end
         end
         # test function?
@@ -177,7 +199,7 @@ end
 
 # Eval to apply the sym_*_op ops to create a SymEngine expression
 function apply_ops(ex)
-    
+    #IDENTITY = diagm(ones(config.dimension));
     try
         if typeof(ex) <:Array
             result = [];

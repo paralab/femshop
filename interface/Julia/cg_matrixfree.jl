@@ -27,6 +27,11 @@ function solve_matrix_free_sym(var, bilinear, linear, stepper=nothing)
     end
     Nn = dofs_per_node * N1;
     
+    if dofs_per_node > 1
+        println("Oops. Still working on multi DOF matrix-free");
+        return zeros(Nn);
+    end
+    
     if prob.time_dependent && !(stepper === nothing)
         #TODO
     else
@@ -71,8 +76,13 @@ function solve_matrix_free_sym(var, bilinear, linear, stepper=nothing)
         total_time = time_ns() - start_time;
         log_entry("Linear solve took "*string(total_time/1e9)*" seconds");
         
+        # Rearrange the values to match the regular solve
+        x = block_to_interlace(x,N1, dofs_per_node);
+        
         return x;
     end
+    
+    
 end
 
 # Note: This uses the stabilized biconjugate gradient method which works for nonsymmetric matrices
@@ -159,6 +169,29 @@ end
 function elem_matvec(x, bilinear, dofs_per_node, var, t = 0.0, dt = 0.0)
     Np = refel.Np;
     nel = mesh_data.nel;
+    multivar = typeof(var) <: Array;
+    if multivar
+        # multiple variables being solved for simultaneously
+        dofs_per_node = 0;
+        var_to_dofs = [];
+        for vi=1:length(var)
+            tmp = dofs_per_node;
+            dofs_per_node += length(var[vi].symvar.vals);
+            push!(var_to_dofs, (tmp+1):dofs_per_node);
+            
+            # # check for neumann bcs
+            # for bi=1:length(prob.bc_type[vi,:])
+            #     if prob.bc_type[vi,bi] == NEUMANN
+                    
+            #     end
+            # end
+        end
+        
+    else
+        # one variable
+        dofs_per_node = length(var.symvar.vals);
+    end
+    
     Ax = zeros(size(x));
     for e=1:nel
         nv = mesh_data.nv[e];
@@ -168,22 +201,26 @@ function elem_matvec(x, bilinear, dofs_per_node, var, t = 0.0, dt = 0.0)
         end
         
         vx = mesh_data.nodes[gis,:];        # coordinates of element's vertices
-        glb = loc2glb[e,:];                 # global indices of this element's nodes for extracting values from var arrays
+        glb = grid_data.loc2glb[e,:];                 # global indices of this element's nodes for extracting values from var arrays
         xe = grid_data.allnodes[glb[:],:];  # coordinates of this element's nodes for evaluating coefficient functions
         
         subx = extract_linear(x, glb, dofs_per_node);
         
         lhsargs = (var, xe, glb, refel, LHS, t, dt);
+        bilinchunk = bilinear.func(lhsargs); # the elemental bilinear part
+        # Neumann bcs need to be applied to this
+        
+        
         if dofs_per_node == 1
-            bilinchunk = bilinear.func(lhsargs); # the elemental bilinear part
+            #bilinchunk = bilinear.func(lhsargs); # the elemental bilinear part
             Ax[glb] = Ax[glb] + bilinchunk * subx;
         elseif typeof(var) == Variable
             # only one variable, but more than one dof
-            # bilinchunk = bilinear.func(lhsargs);
-            #insert_bilinear!(A, bilinchunk, glb, 1:dofs_per_node, dofs_per_node);
+            #bilinchunk = bilinear.func(lhsargs);
+            insert_linear_matfree!(Ax, bilinchunk*subx, glb, 1:dofs_per_node, dofs_per_node);
         else
             #bilinchunk = bilinear.func(lhsargs);
-            #insert_bilinear!(A, bilinchunk, glb, 1:dofs_per_node, dofs_per_node);
+            insert_linear_matfree!(Ax, bilinchunk*subx, glb, 1:dofs_per_node, dofs_per_node);
         end
     end
     
@@ -221,10 +258,13 @@ end
 # sets b[bdry] = x[bdry]
 function dirichlet_bc_matfree(b, x, bdryind, dofind=1, totaldofs=1)
     if totaldofs > 1
-        bdry = copy(bdryind);
-        bdry = (bdry .- 1) .* totaldofs .+ dofind;
-        b[bdry] = x[bdry];
+        #bdry = copy(bdryind);
+        #bdry = (bdry .- 1) .* totaldofs .+ dofind;
+        #b[bdry] = x[bdry];
+        N1 = length(grid_data.allnodes[:,1]);
+        ind = bdryind .+ (dofind-1)*N1;
         
+        b[ind] = x[ind];
     else
         b[bdryind] = x[bdryind];
     end
@@ -244,6 +284,17 @@ function extract_linear(b, glb, dofs)
         end
         
         return part;
+    end
+end
+
+# Inset the single dof into the greater construct
+function insert_linear_matfree!(b, bel, glb, dof, Ndofs)
+    # group nodal dofs
+    for d=1:length(dof)
+        #ind = glb.*Ndofs .- (Ndofs-dof[d]);
+        ind2 = ((d-1)*length(glb)+1):(d*length(glb));
+        
+        b[ind2] = b[ind2] + bel[ind2];
     end
 end
 

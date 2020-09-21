@@ -7,7 +7,7 @@ module Femshop
 # Public macros and functions
 export @language, @domain, @mesh, @solver, @stepper, @functionSpace, @trialFunction, @matrixFree,
         @testFunction, @nodes, @order, @boundary, @variable, @coefficient, @testSymbol, @initial,
-        @timeInterval, @weakForm, @LHS, @RHS, @customOperator,
+        @timeInterval, @weakForm, @LHS, @RHS, @customOperator, @customOperatorFile,
         @outputMesh, @useLog, @finalize
 export init_femshop, set_language, dendro, set_solver, set_stepper, set_matrix_free, reformat_for_stepper, 
         add_mesh, output_mesh, add_test_function, 
@@ -312,9 +312,9 @@ end
 
 function solve(var, nlvar=nothing; nonlinear=false)
     # Generate files or solve directly
-    if gen_files != nothing
+    if !(gen_files === nothing && (language == JULIA || language == 0))
         generate_main();
-        if dendro_params != nothing
+        if !(dendro_params === nothing)
             generate_config(dendro_params);
         else
             generate_config();

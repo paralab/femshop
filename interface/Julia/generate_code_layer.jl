@@ -117,18 +117,24 @@ function generate_code_layer_julia(symex, var, lorr)
         if config.dimension == 1
             push!(code.args, Expr(:(=), :R1matrix, :(diagm(J.rx))));
             push!(code.args, Expr(:(=), :Q1matrix, :(refel.Qr)));
+            push!(code.args, Expr(:(=), :D1matrix, :(refel.Ddr)));
         elseif config.dimension == 2
             push!(code.args, Expr(:(=), :R1matrix, :([diagm(J.rx) diagm(J.sx)])));
             push!(code.args, Expr(:(=), :Q1matrix, :([refel.Qr ; refel.Qs])));
+            push!(code.args, Expr(:(=), :D1matrix, :([refel.Ddr ; refel.Dds])));
             push!(code.args, Expr(:(=), :R2matrix, :([diagm(J.ry) diagm(J.sy)])));
             push!(code.args, Expr(:(=), :Q2matrix, :([refel.Qr ; refel.Qs])));
+            push!(code.args, Expr(:(=), :D2matrix, :([refel.Ddr ; refel.Dds])));
         elseif config.dimension == 3
             push!(code.args, Expr(:(=), :R1matrix, :([diagm(J.rx) diagm(J.sx) diagm(J.tx)])));
             push!(code.args, Expr(:(=), :Q1matrix, :([refel.Qr ; refel.Qs ; refel.Qt])));
+            push!(code.args, Expr(:(=), :D1matrix, :([refel.Ddr ; refel.Dds ; refel.Ddt])));
             push!(code.args, Expr(:(=), :R2matrix, :([diagm(J.ry) diagm(J.sy) diagm(J.ty)])));
             push!(code.args, Expr(:(=), :Q2matrix, :([refel.Qr ; refel.Qs ; refel.Qt])));
+            push!(code.args, Expr(:(=), :D2matrix, :([refel.Ddr ; refel.Dds ; refel.Ddt])));
             push!(code.args, Expr(:(=), :R3matrix, :([diagm(J.rz) diagm(J.sz) diagm(J.tz)])));
             push!(code.args, Expr(:(=), :Q3matrix, :([refel.Qr ; refel.Qs ; refel.Qt])));
+            push!(code.args, Expr(:(=), :D3matrix, :([refel.Ddr ; refel.Dds ; refel.Ddt])));
         end
     end
     
@@ -193,14 +199,15 @@ function generate_code_layer_julia(symex, var, lorr)
                 if ctype == 1
                     # constant coefficient -> coef_n = cval
                     tmpn = cval;
-                    push!(code.args, Expr(:(=), tmpc, tmpn)); # allocate coef_n
+                    push!(code.args, Expr(:(=), tmpc, tmpn));
                 elseif ctype == 2
                     # genfunction coefficients -> coef_n_i = coef.value[i].func(cargs)
                     tmpv = :(a[coefi]);
                     tmpv.args[1] = tmpc;
-                    tmpn = :(a.value[1]);
-                    tmpn.args[2] = needed_coef_ind[i];
-                    tmpn.args[1].args[1] = needed_coef[i];
+                    #tmpn = :(a.value[1]);
+                    #tmpn.args[2] = needed_coef_ind[i];
+                    #tmpn.args[1].args[1] = :(Femshop.genfunctions[$cval]); # Femshop.genfunctions[cval]
+                    tmpn = :(Femshop.genfunctions[$cval]); # Femshop.genfunctions[cval]
                     tmpb = :(a.func());
                     tmpb.args[1].args[1]= tmpn;
                     append!(tmpb.args, cargs);
@@ -244,7 +251,7 @@ function generate_code_layer_julia(symex, var, lorr)
                 tmpc = Symbol(tmps);
                 
                 dmatr = Symbol("R"*needed_coef_deriv[i][3]*"matrix");
-                dmatq = Symbol("Q"*needed_coef_deriv[i][3]*"matrix");
+                dmatq = Symbol("D"*needed_coef_deriv[i][3]*"matrix");
                 tmpb= :(length($tmpc) == 1 ? 0 : $dmatr * $dmatq * $tmpc);
                 
                 push!(code.args, Expr(:(=), tmpc, tmpb));
@@ -407,7 +414,7 @@ function process_term_julia(sterm, var, lorr, offset_ind=0)
                     # no derivative mods
                     test_part = :(refel.Q');
                 end
-            elseif is_unknown_var(v, var)
+            elseif is_unknown_var(v, var) && lorr == LHS # If rhs, treat as a coefficient
                 if !(trial_part === nothing)
                     # Two unknowns multiplied in this term. Nonlinear. abort.
                     printerr("Nonlinear term. Code layer incomplete.");
@@ -432,19 +439,20 @@ function process_term_julia(sterm, var, lorr, offset_ind=0)
                     trial_part = :($dmatr * $dmatq);
                 else
                     # no derivative mods
-                    if lorr == RHS # If rhs, change var into var.values and treat as a coefficient
-                        if length(trial_var.symvar.vals) > 1
-                            # need a component index in there
-                            tmpv = :(a.values[gbl,$trial_component]);
-                        else
-                            tmpv = :(a.values[gbl]);
-                        end
-                        tmpv.args[1].args[1] = trial_var.symbol;
-                        push!(coef_facs, tmpv);
-                        push!(coef_inds, trial_component);
-                    else
-                        trial_part = :(refel.Q);
-                    end
+                    trial_part = :(refel.Q);
+                    # if lorr == RHS # If rhs, change var into var.values and treat as a coefficient
+                    #     if length(trial_var.symvar.vals) > 1
+                    #         # need a component index in there
+                    #         tmpv = :(a.values[gbl,$trial_component]);
+                    #     else
+                    #         tmpv = :(a.values[gbl]);
+                    #     end
+                    #     tmpv.args[1].args[1] = trial_var.symbol;
+                    #     push!(coef_facs, tmpv);
+                    #     push!(coef_inds, trial_component);
+                    # else
+                    #     trial_part = :(refel.Q);
+                    # end
                 end
             else # coefficients
                 if length(index) == 1
@@ -456,7 +464,7 @@ function process_term_julia(sterm, var, lorr, offset_ind=0)
                     
                     push!(needed_coef_deriv, [v, mods[1], mods[1][2]]);
                     
-                else
+                elseif !(v ===:dt)
                     push!(needed_coef_deriv, [v, "", ""]);
                 end
                 
@@ -614,7 +622,10 @@ function is_constant_coef(c)
 end
 
 # Checks the type of coefficient: constant, genfunction, or variable
-# Returns: value, name, or array
+# Returns: (type, val)
+# constant: type=1, val=number
+# genfunction: type=2, val= index in genfunctions array
+# variable: type=3, val=index in variables array
 function get_coef_val(c, comp)
     type = 0;
     val = 0;
@@ -626,7 +637,12 @@ function get_coef_val(c, comp)
                 val = coefficients[i].value[comp];
             else
                 type = 2;
-                val = coefficients[i].value[comp].name;
+                name = coefficients[i].value[comp].name;
+                for j=1:length(genfunctions)
+                    if name == genfunctions[j].name
+                        val = j;
+                    end
+                end
             end
         end
     end

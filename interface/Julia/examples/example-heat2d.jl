@@ -15,10 +15,10 @@ init_femshop("heat2d");
 @solver(CG)                         # DG, CG, etc.
 @functionSpace(LEGENDRE, 2)         # function, order (or use testFunction and trialFunction)
 @nodes(LOBATTO)                     # elemental node arrangement
-@stepper(EULER_IMPLICIT)            # time stepper (optional second arg is CFL#)
+@stepper(CRANK_NICHOLSON)            # time stepper (optional second arg is CFL#)
 
 # Specify the problem
-@mesh(QUADMESH, 15)                   # .msh file or generate our own
+@mesh(QUADMESH, 10)                   # .msh file or generate our own
 
 @variable(u)                        # same as @variable(u, SCALAR)
 
@@ -26,23 +26,20 @@ init_femshop("heat2d");
 
 T = 1;
 @timeInterval(T)                    # (start, end) using this sets problem to time dependent
-#@initial(u, "abs(x-0.5)+abs(y-0.5) < 0.2 ? 1 : 0")  # initial condition needed if time dependent
-@initial(u, "1")  # initial condition needed if time dependent
+@initial(u, "abs(x-0.5)+abs(y-0.5) < 0.2 ? 1 : 0")  # initial condition needed if time dependent
 
 @boundary(u, 1, DIRICHLET, 0)
 
 # Write the weak form
-#@coefficient(f, "sin(6*pi*x)*sin(6*pi*y)")
-@coefficient(f, "8*pi*pi*sin(2*pi*x)*sin(2*pi*y)")
-#@weakForm(u, "Dt(u*v) + 0.01 * dot(grad(u),grad(v)) - f*v")
-@weakForm(u, "dot(grad(u),grad(v)) - f*v")
+@coefficient(f, "0.2*sin(6*pi*x)*sin(6*pi*y)")
+@weakForm(u, "Dt(u*v) + 0.01 * dot(grad(u),grad(v)) - f*v")
 
 solve(u);
 
 # solution is stored in the variable's "values"
-#using Plots
-#pyplot();
-#display(plot(Femshop.grid_data.allnodes[:,1], Femshop.grid_data.allnodes[:,2], u.values, st = :surface))
+using Plots
+pyplot();
+display(plot(Femshop.grid_data.allnodes[:,1], Femshop.grid_data.allnodes[:,2], u.values, st = :surface))
 
 # check
 log_dump_config(Femshop.config);
