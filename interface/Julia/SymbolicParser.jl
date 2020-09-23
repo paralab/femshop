@@ -39,10 +39,12 @@ function *(a::Array{Basic,1}, b::Array{Basic,1})
         return b.*a[1];
     elseif size(b) == (1,)
         return a.*b[1];
-    else
+    elseif size(a) == size(b)
         # This should be an error, but I will treat it as a dot product for lazy people
-        # Note, it will still be an error if dimensions are not right.
         return [transpose(a) * b];
+    else
+        # un oh... How do I redirect this to the symengine method?
+        # (sigh) This will be an error until I figure it out.
     end
 end
 
@@ -199,7 +201,6 @@ end
 
 # Eval to apply the sym_*_op ops to create a SymEngine expression
 function apply_ops(ex)
-    #IDENTITY = diagm(ones(config.dimension));
     try
         if typeof(ex) <:Array
             result = [];
