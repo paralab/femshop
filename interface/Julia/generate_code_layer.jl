@@ -586,15 +586,15 @@ function process_known_expr_julia(ex)
     elseif typeof(ex) == Symbol
         # turn arithmetic ops into dotted versions
         if ex === :+ || ex === :.+
-            return (:.+ , [], [], []);
+            return (:.+ , false, [], [], []);
         elseif ex === :- || ex === :.-
-            return (:.- , [], [], []);
+            return (:.- , false, [], [], []);
         elseif ex === :* || ex === :.*
-            return (:.* , [], [], []);
+            return (:.* , false, [], [], []);
         elseif ex === :/ || ex === :./
-            return (:./ , [], [], []);
+            return (:./ , false, [], [], []);
         elseif ex === :^ || ex === :.^
-            return (:.^ , [], [], []);
+            return (:.^ , false, [], [], []);
         end
         
         (index, v, mods) = extract_symbols(ex);

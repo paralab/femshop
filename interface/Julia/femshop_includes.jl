@@ -36,6 +36,7 @@ include("symtype.jl");
 include("symoperator.jl");
 include("variables.jl");
 include("coefficient.jl");
+include("parameter.jl");
 include("geometric_factors.jl");
 include("time_steppers.jl");
 #include("nonlinear.jl");
