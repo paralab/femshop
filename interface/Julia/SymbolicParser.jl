@@ -93,11 +93,11 @@ function sp_parse(ex, var)
     
     # Insert parameters
     symex = insert_parameters(symex);
-    println("insert parameters -> "*string(symex));
+    #println("insert parameters -> "*string(symex));
     
     # Replace symbols for variables, coefficients, test functions, and special operators
     symex = replace_symbols(symex);
-    println("replace symbols -> "*string(symex));
+    #println("replace symbols -> "*string(symex));
     
     # Evaluate the expression to apply symbolic operators
     symex = apply_ops(symex);

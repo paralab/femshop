@@ -6,7 +6,7 @@
 2.	Building simple hex mesh with nx*nx*nx elements, nx=6
 3.	Added mesh with 343 vertices and 216 elements.
 4.	Full grid has 6591 nodes.
-5.	Grid building took 0.438087099 seconds
+5.	Grid building took 1.615251299 seconds
 6.	Added variable: u of type: scalar
 7.	Set test function symbol: v of type: scalar
 8.	Generated function: genfunction_0
@@ -34,13 +34,10 @@ rhs = dt*_v_1*_f_1 + _v_1*_u_1
     time = args[6]
     dt = args[7]
     (detJ, J) = geometric_factors(refel, x)
-    R1matrix = [diagm(J.rx) diagm(J.sx) diagm(J.tx)]
-    Q1matrix = [refel.Qr; refel.Qs; refel.Qt]
-    R2matrix = [diagm(J.ry) diagm(J.sy) diagm(J.ty)]
-    Q2matrix = [refel.Qr; refel.Qs; refel.Qt]
-    R3matrix = [diagm(J.rz) diagm(J.sz) diagm(J.tz)]
-    Q3matrix = [refel.Qr; refel.Qs; refel.Qt]
-    return (refel.Q)' * diagm(refel.wg .* detJ) * refel.Q + transpose(R1matrix * Q1matrix) * (diagm((refel.wg .* detJ) .* (0.01 .* dt)) * (R1matrix * Q1matrix)) + transpose(R2matrix * Q2matrix) * (diagm((refel.wg .* detJ) .* (0.01 .* dt)) * (R2matrix * Q2matrix)) + transpose(R3matrix * Q3matrix) * (diagm((refel.wg .* detJ) .* (0.01 .* dt)) * (R3matrix * Q3matrix))
+    wgdetj = refel.wg .* detJ
+    (RQ1, RQ2, RQ3, RD1, RD2, RD3) = build_deriv_matrix(refel, J)
+    (TRQ1, TRQ2, TRQ3) = (RQ1', RQ2', RQ3')
+    return (refel.Q)' * diagm(wgdetj) * refel.Q + TRQ1 * (diagm(wgdetj .* (0.01 .* dt)) * RQ1) + TRQ2 * (diagm(wgdetj .* (0.01 .* dt)) * RQ2) + TRQ3 * (diagm(wgdetj .* (0.01 .* dt)) * RQ3)
 end 
   RHS = begin
     var = args[1]
@@ -51,19 +48,21 @@ end
     time = args[6]
     dt = args[7]
     (detJ, J) = geometric_factors(refel, x)
+    wgdetj = refel.wg .* detJ
     coef_0_1 = zeros(refel.Np)
+    coef_u_1 = copy((Femshop.variables[1]).values[gbl])
     for coefi = 1:refel.Np
-        coef_0_1[coefi] = (f.value[1]).func(x[coefi, 1], x[coefi, 2], x[coefi, 3], time)
+        coef_0_1[coefi] = (Femshop.genfunctions[2]).func(x[coefi, 1], x[coefi, 2], x[coefi, 3], time)
     end
-    return (refel.Q)' * (diagm(refel.wg .* detJ) * (refel.Q * (dt .* coef_0_1))) + (refel.Q)' * (diagm(refel.wg .* detJ) * (refel.Q * u.values[gbl]))
+    return (refel.Q)' * (wgdetj .* (refel.Q * (dt .* coef_0_1))) + (refel.Q)' * (wgdetj .* (refel.Q * coef_u_1))
 end
 19.	Generated function: genfunction_2
 20.	Generated function: genfunction_3
 21.	Built initial conditions for: u
-22.	Assembly took 0.6384672 seconds
-23.	Beginning 576.0 time steps.
-24.	Solve took 35.10099983215332 seconds
-25.	Solved for u.(took 35.752186499 seconds)
+22.	Assembly took 0.922077699 seconds
+23.	Beginning 144.0 time steps.
+24.	Solve took 8.92900013923645 seconds
+25.	Solved for u.(took 9.996870101 seconds)
 26.	Dumping configuration:
 27.		dimension = 3
 28.		geometry = square
@@ -80,18 +79,20 @@ end
 39.		t_adaptive = false
 40.		stepper = Euler-implicit
 41.		linalg_matrixfree = false
-42.		linalg_backend = ours
-43.		output_format = vtk
-44.	Dumping problem:
-45.		bc_type = ["Dirichlet"]
-46.		bid = [1]
-47.		bc_func = Any[0]
-48.		time_dependent = true
-49.		end_time = 1.0
-50.		initial = Any[GenFunction("genfunction_0", "x=0,y=0,z=0,t=0", "abs(x-0.5)+abs(y-0.5)+abs(z-0.5) < 0.2 ? 1 : 0", :(if abs(x - 0.5) + abs(y - 0.5) + abs(z - 0.5) < 0.2
+42.		linalg_matfree_max = 1
+43.		linalg_matfree_tol = 1.0
+44.		linalg_backend = ours
+45.		output_format = vtk
+46.	Dumping problem:
+47.		bc_type = ["Dirichlet"]
+48.		bid = [1]
+49.		bc_func = Any[0]
+50.		time_dependent = true
+51.		end_time = 1.0
+52.		initial = Any[GenFunction("genfunction_0", "x=0,y=0,z=0,t=0", "abs(x-0.5)+abs(y-0.5)+abs(z-0.5) < 0.2 ? 1 : 0", :(if abs(x - 0.5) + abs(y - 0.5) + abs(z - 0.5) < 0.2
       1
   else
       0
   end), genfunction_0)]
-51.		lhs_time_deriv = Bool[]
-52.	Completed. Closing Log.
+53.		lhs_time_deriv = Bool[]
+54.	Completed. Closing Log.

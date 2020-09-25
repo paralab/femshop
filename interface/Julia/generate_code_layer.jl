@@ -35,6 +35,7 @@ function generate_code_layer_julia(symex, var, lorr)
         push!(code.args, :(dt = args[7])); # dt for time dependent problems
     end
     push!(code.args, :((detJ, J) = geometric_factors(refel, x)));
+    push!(code.args, :(wgdetj = refel.wg .* detJ));
     
     need_derivative = false;
     needed_coef = [];
@@ -115,26 +116,31 @@ function generate_code_layer_julia(symex, var, lorr)
     # If derivatives are needed, prepare the appropriate matrices
     if need_derivative
         if config.dimension == 1
-            push!(code.args, Expr(:(=), :R1matrix, :(diagm(J.rx))));
-            push!(code.args, Expr(:(=), :Q1matrix, :(refel.Qr)));
-            push!(code.args, Expr(:(=), :D1matrix, :(refel.Ddr)));
+            push!(code.args, :((RQ1,RD1) = build_deriv_matrix(refel, J)));
+            push!(code.args, :(TRQ1 = RQ1'));
+            # push!(code.args, Expr(:(=), :Q1matrix, :(refel.Qr)));
+            # push!(code.args, Expr(:(=), :D1matrix, :(refel.Ddr)));
         elseif config.dimension == 2
-            push!(code.args, Expr(:(=), :R1matrix, :([diagm(J.rx) diagm(J.sx)])));
-            push!(code.args, Expr(:(=), :Q1matrix, :([refel.Qr ; refel.Qs])));
-            push!(code.args, Expr(:(=), :D1matrix, :([refel.Ddr ; refel.Dds])));
-            push!(code.args, Expr(:(=), :R2matrix, :([diagm(J.ry) diagm(J.sy)])));
-            push!(code.args, Expr(:(=), :Q2matrix, :([refel.Qr ; refel.Qs])));
-            push!(code.args, Expr(:(=), :D2matrix, :([refel.Ddr ; refel.Dds])));
+            push!(code.args, :((RQ1,RQ2,RD1,RD2) = build_deriv_matrix(refel, J)));
+            push!(code.args, :((TRQ1,TRQ2) = (RQ1',RQ2')));
+            # push!(code.args, Expr(:(=), :R1matrix, :([diagm(J.rx) diagm(J.sx)])));
+            # push!(code.args, Expr(:(=), :Q1matrix, :([refel.Qr ; refel.Qs])));
+            # push!(code.args, Expr(:(=), :D1matrix, :([refel.Ddr ; refel.Dds])));
+            # push!(code.args, Expr(:(=), :R2matrix, :([diagm(J.ry) diagm(J.sy)])));
+            # push!(code.args, Expr(:(=), :Q2matrix, :([refel.Qr ; refel.Qs])));
+            # push!(code.args, Expr(:(=), :D2matrix, :([refel.Ddr ; refel.Dds])));
         elseif config.dimension == 3
-            push!(code.args, Expr(:(=), :R1matrix, :([diagm(J.rx) diagm(J.sx) diagm(J.tx)])));
-            push!(code.args, Expr(:(=), :Q1matrix, :([refel.Qr ; refel.Qs ; refel.Qt])));
-            push!(code.args, Expr(:(=), :D1matrix, :([refel.Ddr ; refel.Dds ; refel.Ddt])));
-            push!(code.args, Expr(:(=), :R2matrix, :([diagm(J.ry) diagm(J.sy) diagm(J.ty)])));
-            push!(code.args, Expr(:(=), :Q2matrix, :([refel.Qr ; refel.Qs ; refel.Qt])));
-            push!(code.args, Expr(:(=), :D2matrix, :([refel.Ddr ; refel.Dds ; refel.Ddt])));
-            push!(code.args, Expr(:(=), :R3matrix, :([diagm(J.rz) diagm(J.sz) diagm(J.tz)])));
-            push!(code.args, Expr(:(=), :Q3matrix, :([refel.Qr ; refel.Qs ; refel.Qt])));
-            push!(code.args, Expr(:(=), :D3matrix, :([refel.Ddr ; refel.Dds ; refel.Ddt])));
+            push!(code.args, :((RQ1,RQ2,RQ3,RD1,RD2,RD3) = build_deriv_matrix(refel, J)));
+            push!(code.args, :((TRQ1,TRQ2,TRQ3) = (RQ1',RQ2',RQ3')));
+            # push!(code.args, Expr(:(=), :R1matrix, :([diagm(J.rx) diagm(J.sx) diagm(J.tx)])));
+            # push!(code.args, Expr(:(=), :Q1matrix, :([refel.Qr ; refel.Qs ; refel.Qt])));
+            # push!(code.args, Expr(:(=), :D1matrix, :([refel.Ddr ; refel.Dds ; refel.Ddt])));
+            # push!(code.args, Expr(:(=), :R2matrix, :([diagm(J.ry) diagm(J.sy) diagm(J.ty)])));
+            # push!(code.args, Expr(:(=), :Q2matrix, :([refel.Qr ; refel.Qs ; refel.Qt])));
+            # push!(code.args, Expr(:(=), :D2matrix, :([refel.Ddr ; refel.Dds ; refel.Ddt])));
+            # push!(code.args, Expr(:(=), :R3matrix, :([diagm(J.rz) diagm(J.sz) diagm(J.tz)])));
+            # push!(code.args, Expr(:(=), :Q3matrix, :([refel.Qr ; refel.Qs ; refel.Qt])));
+            # push!(code.args, Expr(:(=), :D3matrix, :([refel.Ddr ; refel.Dds ; refel.Ddt])));
         end
     end
     
@@ -250,9 +256,11 @@ function generate_code_layer_julia(symex, var, lorr)
                 tmps = "coef_"*tag*"_"*string(needed_coef_ind[i]);
                 tmpc = Symbol(tmps);
                 
-                dmatr = Symbol("R"*needed_coef_deriv[i][3]*"matrix");
-                dmatq = Symbol("D"*needed_coef_deriv[i][3]*"matrix");
-                tmpb= :(length($tmpc) == 1 ? 0 : $dmatr * $dmatq * $tmpc);
+                dmat = Symbol("RD"*needed_coef_deriv[i][3]);
+                tmpb= :(length($tmpc) == 1 ? 0 : $dmat * $tmpc);
+                #dmatr = Symbol("R"*needed_coef_deriv[i][3]*"matrix");
+                #dmatq = Symbol("D"*needed_coef_deriv[i][3]*"matrix");
+                #tmpb= :(length($tmpc) == 1 ? 0 : $dmatr * $dmatq * $tmpc);
                 
                 push!(code.args, Expr(:(=), tmpc, tmpb));
             else
@@ -376,7 +384,7 @@ function process_term_julia(sterm, var, lorr, offset_ind=0)
     test_part = nothing;
     trial_part = nothing;
     coef_part = nothing;
-    weight_part = :(refel.wg .* detJ);
+    weight_part = :wgdetj;
     test_component = 0;
     trial_component = 0;
     
@@ -442,9 +450,11 @@ function process_term_julia(sterm, var, lorr, offset_ind=0)
                 if length(mods) > 0
                     # TODO more than one derivative mod
                     need_derivative = true;
-                    dmatr = Symbol("R"*mods[1][2]*"matrix");
-                    dmatq = Symbol("Q"*mods[1][2]*"matrix");
-                    test_part = :(transpose($dmatr * $dmatq));
+                    dmat = Symbol("TRQ"*mods[1][2]);
+                    test_part = dmat;
+                    # dmatr = Symbol("R"*mods[1][2]*"matrix");
+                    # dmatq = Symbol("Q"*mods[1][2]*"matrix");
+                    # test_part = :(transpose($dmatr * $dmatq));
                 else
                     # no derivative mods
                     test_part = :(refel.Q');
@@ -469,9 +479,11 @@ function process_term_julia(sterm, var, lorr, offset_ind=0)
                 if length(mods) > 0
                     # TODO more than one derivative mod
                     need_derivative = true;
-                    dmatr = Symbol("R"*mods[1][2]*"matrix");
-                    dmatq = Symbol("Q"*mods[1][2]*"matrix");
-                    trial_part = :($dmatr * $dmatq);
+                    dmatr = Symbol("RQ"*mods[1][2]);
+                    trial_part = dmatr;
+                    # dmatr = Symbol("R"*mods[1][2]*"matrix");
+                    # dmatq = Symbol("Q"*mods[1][2]*"matrix");
+                    # trial_part = :($dmatr * $dmatq);
                 else
                     # no derivative mods
                     trial_part = :(refel.Q);
@@ -553,7 +565,8 @@ function process_term_julia(sterm, var, lorr, offset_ind=0)
             if lorr == LHS
                 term = :($test_part * (diagm($weight_part .* $coef_part) * $trial_part));
             else # RHS
-                term = :($test_part * (diagm($weight_part) * ($trial_part * $coef_part)));
+                term = :($test_part * ($weight_part .* ($trial_part * $coef_part)));
+                #term = :($test_part * (diagm($weight_part) * ($trial_part * $coef_part)));
             end
             
         else

@@ -5,18 +5,20 @@
 1.	Building simple line mesh with nx elements, nx=5
 2.	Added mesh with 6 vertices and 5 elements.
 3.	Full grid has 21 nodes.
-4.	Grid building took 0.0669694 seconds
+4.	Grid building took 0.0015465 seconds
 5.	Added variable: u of type: scalar
-6.	Set test function symbol: v of type: scalar
-7.	Boundary condition: var=u bid=1 type=Dirichlet val=0
-8.	Generated function: genfunction_0
-9.	Added coefficient f : -pi*pi*sin(pi*x)
-10.	Making weak form for variable(s): u
-11.	Weak form, input: -grad(u)*grad(v) - f*v
-12.	Weak form, symbolic layer:
+6.	Added variable: q of type: scalar
+7.	Set test function symbol: v of type: scalar
+8.	Boundary condition: var=u bid=1 type=Dirichlet val=0
+9.	Boundary condition: var=u bid=2 type=Dirichlet val=-1
+10.	Generated function: genfunction_0
+11.	Added coefficient f : -2.25*pi*pi*sin(1.5*pi*x)
+12.	Making weak form for variable(s): u
+13.	Weak form, input: -grad(u)*grad(v) - f*v
+14.	Weak form, symbolic layer:
 lhs = -D1__u_1*D1__v_1
 rhs = _v_1*_f_1
-13.	Weak form, code layer: LHS = begin
+15.	Weak form, code layer: LHS = begin
     var = args[1]
     x = args[2]
     gbl = args[3]
@@ -24,9 +26,10 @@ rhs = _v_1*_f_1
     borl = args[5]
     time = args[6]
     (detJ, J) = geometric_factors(refel, x)
-    R1matrix = diagm(J.rx)
-    Q1matrix = refel.Qr
-    return -(transpose(R1matrix * Q1matrix) * diagm(refel.wg .* detJ) * (R1matrix * Q1matrix))
+    wgdetj = refel.wg .* detJ
+    (RQ1, RD1) = build_deriv_matrix(refel, J)
+    TRQ1 = RQ1'
+    return -(TRQ1 * diagm(wgdetj) * RQ1)
 end 
   RHS = begin
     var = args[1]
@@ -36,41 +39,44 @@ end
     borl = args[5]
     time = args[6]
     (detJ, J) = geometric_factors(refel, x)
+    wgdetj = refel.wg .* detJ
     coef_0_1 = zeros(refel.Np)
     for coefi = 1:refel.Np
-        coef_0_1[coefi] = (f.value[1]).func(x[coefi], 0, 0, time)
+        coef_0_1[coefi] = (Femshop.genfunctions[1]).func(x[coefi], 0, 0, time)
     end
-    return (refel.Q)' * (diagm(refel.wg .* detJ) * (refel.Q * coef_0_1))
+    return (refel.Q)' * (wgdetj .* (refel.Q * coef_0_1))
 end
-14.	Generated function: genfunction_1
-15.	Generated function: genfunction_2
-16.	Assembly took 0.285016401 seconds
-17.	Linear solve took 5.0601e-5 seconds
-18.	Solved for u.(took 0.2920471 seconds)
-19.	Dumping configuration:
-20.		dimension = 1
-21.		geometry = square
-22.		mesh_type = unstructured
-23.		solver_type = CG
-24.		trial_function = Legendre
-25.		test_function = Legendre
-26.		elemental_nodes = Lobatto
-27.		quadrature = Gauss
-28.		p_adaptive = false
-29.		basis_order_min = 4
-30.		basis_order_max = 4
-31.		linear = true
-32.		t_adaptive = false
-33.		stepper = Euler-implicit
-34.		linalg_matrixfree = false
-35.		linalg_backend = ours
-36.		output_format = vtk
-37.	Dumping problem:
-38.		bc_type = ["Dirichlet"]
-39.		bid = [1]
-40.		bc_func = Any[0]
-41.		time_dependent = false
-42.		end_time = 0.0
-43.		initial = Any[]
-44.		lhs_time_deriv = Bool[]
-45.	Completed. Closing Log.
+16.	Generated function: genfunction_1
+17.	Generated function: genfunction_2
+18.	Assembly took 0.022859999 seconds
+19.	Linear solve took 5.5e-5 seconds
+20.	Solved for u.(took 0.029914499 seconds)
+21.	Dumping configuration:
+22.		dimension = 1
+23.		geometry = square
+24.		mesh_type = grid
+25.		solver_type = CG
+26.		trial_function = Legendre
+27.		test_function = Legendre
+28.		elemental_nodes = Lobatto
+29.		quadrature = Gauss
+30.		p_adaptive = false
+31.		basis_order_min = 4
+32.		basis_order_max = 4
+33.		linear = true
+34.		t_adaptive = false
+35.		stepper = Euler-implicit
+36.		linalg_matrixfree = false
+37.		linalg_matfree_max = 1
+38.		linalg_matfree_tol = 1.0
+39.		linalg_backend = ours
+40.		output_format = vtk
+41.	Dumping problem:
+42.		bc_type = ["Dirichlet" "Dirichlet"; "" ""]
+43.		bid = [1 2; 0 0]
+44.		bc_func = Any[0 -1; GenFunction("", "", "", 0, 0) GenFunction("", "", "", 0, 0)]
+45.		time_dependent = false
+46.		end_time = 0.0
+47.		initial = Any[]
+48.		lhs_time_deriv = Bool[]
+49.	Completed. Closing Log.
