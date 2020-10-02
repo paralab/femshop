@@ -1,78 +1,31 @@
-#=
-# CG solver
-=#
-module CGSolver
+# cachsim output
+import ..Femshop: init_cachesimout, add_cachesim_array, cachesim_load, cachesim_store
 
-export init_cgsolver, solve, nonlinear_solve
-
-import ..Femshop: JULIA, CPP, MATLAB, SQUARE, IRREGULAR, TREE, UNSTRUCTURED, CG, DG, HDG,
-            NODAL, MODAL, LEGENDRE, UNIFORM, GAUSS, LOBATTO, NONLINEAR_NEWTON,
-            NONLINEAR_SOMETHING, EULER_EXPLICIT, EULER_IMPLICIT, CRANK_NICHOLSON, RK4, LSRK4,
-            ABM4, OURS, PETSC, VTK, RAW_OUTPUT, CUSTOM_OUTPUT, DIRICHLET, NEUMANN, ROBIN,
-            MSH_V2, MSH_V4,
-            SCALAR, VECTOR, TENSOR, SYM_TENSOR,
-            LHS, RHS,
-            LINEMESH, QUADMESH, HEXMESH
-import ..Femshop: log_entry, printerr
-import ..Femshop: config, prob, variables, mesh_data, grid_data, refel, time_stepper
-import ..Femshop: Variable, Coefficient, GenFunction
-import ..Femshop: geometric_factors
-
-using LinearAlgebra, SparseArrays
-
-include("cg_boundary.jl");
-include("nonlinear.jl")
-include("cg_matrixfree.jl");
-include("cachsim_solve.jl");
-
-function init_cgsolver()
-    dim = config.dimension;
-
-    # build initial conditions
-    for vind=1:length(variables)
-        if vind <= length(prob.initial)
-            if prob.initial[vind] != nothing
-                variables[vind].values = zeros(size(variables[vind].values));
-                # Set initial condition
-                if typeof(prob.initial[vind]) <: Array
-                    for ci=1:length(prob.initial[vind])
-                        for ni=1:size(grid_data.allnodes)[1]
-                            if dim == 1
-                                variables[vind].values[ni,ci] = prob.initial[vind][ci].func(grid_data.allnodes[ni],0,0,0);
-                            elseif dim == 2
-                                variables[vind].values[ni,ci] = prob.initial[vind][ci].func(grid_data.allnodes[ni,1],grid_data.allnodes[ni,2],0,0);
-                            elseif dim == 3
-                                variables[vind].values[ni,ci] = prob.initial[vind][ci].func(grid_data.allnodes[ni,1],grid_data.allnodes[ni,2],grid_data.allnodes[ni,3],0);
-                            end
-                        end
-                    end
-                else
-                    for ni=1:size(grid_data.allnodes)[1]
-                        if dim == 1
-                            variables[vind].values[ni] = prob.initial[vind].func(grid_data.allnodes[ni],0,0,0);
-                        elseif dim == 2
-                            variables[vind].values[ni] = prob.initial[vind].func(grid_data.allnodes[ni,1],grid_data.allnodes[ni,2],0,0);
-                        elseif dim == 3
-                            variables[vind].values[ni] = prob.initial[vind].func(grid_data.allnodes[ni,1],grid_data.allnodes[ni,2],grid_data.allnodes[ni,3],0);
-                        end
-                    end
-                end
-
-                variables[vind].ready = true;
-                log_entry("Built initial conditions for: "*string(variables[vind].symbol));
-            end
+function linear_solve_cachesim(var, bilinear, linear, stepper=nothing)
+    # if config.linalg_matrixfree
+    #     return solve_matrix_free_sym(var, bilinear, linear, stepper);
+    #     #return solve_matrix_free_asym(var, bilinear, linear, stepper);
+    # end
+    N1 = size(grid_data.allnodes)[1];
+    multivar = typeof(var) <: Array;
+    if multivar
+        # multiple variables being solved for simultaneously
+        dofs_per_node = 0;
+        var_to_dofs = [];
+        for vi=1:length(var)
+            tmp = dofs_per_node;
+            dofs_per_node += length(var[vi].symvar.vals);
+            push!(var_to_dofs, (tmp+1):dofs_per_node);
         end
+    else
+        # one variable
+        dofs_per_node = length(var.symvar.vals);
     end
-end
-
-function linear_solve(var, bilinear, linear, stepper=nothing)
-    if config.linalg_matrixfree
-        return solve_matrix_free_sym(var, bilinear, linear, stepper);
-        #return solve_matrix_free_asym(var, bilinear, linear, stepper);
-    end
+    init_cachesimout(N1, refel, dofs_per_node);
+    
     if prob.time_dependent && !(stepper === nothing)
         #TODO time dependent coefficients
-        assemble_t = @elapsed((A, b) = assemble(var, bilinear, linear, 0, stepper.dt));
+        assemble_t = @elapsed((A, b) = assemble_cachesim(var, bilinear, linear, 0, stepper.dt));
         log_entry("Assembly took "*string(assemble_t)*" seconds");
 
         log_entry("Beginning "*string(stepper.Nsteps)*" time steps.");
@@ -80,7 +33,7 @@ function linear_solve(var, bilinear, linear, stepper=nothing)
         sol = [];
         start_t = Base.Libc.time();
         for i=1:stepper.Nsteps
-            b = assemble_rhs_only(var, linear, t, stepper.dt);
+            b = assemble_rhs_only_cachesim(var, linear, t, stepper.dt);
             sol = A\b;
             # place the values in the variable value arrays
             if typeof(var) <: Array
@@ -118,7 +71,7 @@ function linear_solve(var, bilinear, linear, stepper=nothing)
         return sol;
 
     else
-        assemble_t = @elapsed((A, b) = assemble(var, bilinear, linear));
+        assemble_t = @elapsed((A, b) = assemble_cachesim(var, bilinear, linear));
         sol_t = @elapsed(sol = A\b);
 
         log_entry("Assembly took "*string(assemble_t)*" seconds");
@@ -130,47 +83,7 @@ function linear_solve(var, bilinear, linear, stepper=nothing)
     end
 end
 
-function nonlinear_solve(var, nlvar, bilinear, linear, stepper=nothing)
-    if prob.time_dependent && !(stepper === nothing)
-        #TODO time dependent coefficients
-
-        log_entry("Beginning "*string(stepper.Nsteps)*" time steps.");
-        t = 0;
-        start_t = Base.Libc.time();
-		nl = nonlinear(100, 1e-12, 1e-12);
-        for i=1:stepper.Nsteps
-			init_nonlinear(nl, var, nlvar, bilinear, linear);
-			func = assemble;
-			newton(nl, func, func, nlvar);
-            t += stepper.dt;
-        end
-        end_t = Base.Libc.time();
-
-        log_entry("Solve took "*string(end_t-start_t)*" seconds");
-        #display(sol);
-		outfile = "nonlinear_sol.txt"
-		open(outfile, "w") do f
-  			for ii in nlvar.values
-    			println(f, ii)
-  			end
-		end # the file f is automatically closed after this block finishes
-        return nlvar.values;
-
-    else
-        assemble_t = @elapsed((A, b) = assemble(var, bilinear, linear));
-        sol_t = @elapsed(sol = A\b);
-
-        log_entry("Assembly took "*string(assemble_t)*" seconds");
-        log_entry("Linear solve took "*string(sol_t)*" seconds");
-        #display(A);
-        #display(b);
-        #display(sol);
-        return sol;
-    end
-end
-
-# assembles the A and b in Au=b
-function assemble(var, bilinear, linear, t=0.0, dt=0.0)
+function assemble_cachesim(var, bilinear, linear, t=0.0, dt=0.0)
     Np = refel.Np;
     nel = mesh_data.nel;
     N1 = size(grid_data.allnodes)[1];
@@ -189,10 +102,12 @@ function assemble(var, bilinear, linear, t=0.0, dt=0.0)
         dofs_per_node = length(var.symvar.vals);
     end
     Nn = dofs_per_node * N1;
-
+    
     b = zeros(Nn);
     A = spzeros(Nn, Nn);
-
+    
+    allnodes_id = add_cachesim_array(size(grid_data.allnodes),8);
+    
     # The elemental assembly loop
     for e=1:nel
         nv = mesh_data.nv[e];
@@ -204,29 +119,44 @@ function assemble(var, bilinear, linear, t=0.0, dt=0.0)
         vx = mesh_data.nodes[gis,:];        # coordinates of element's vertices
         glb = grid_data.loc2glb[e,:];                 # global indices of this element's nodes for extracting values from var arrays
         xe = grid_data.allnodes[glb[:],:];  # coordinates of this element's nodes for evaluating coefficient functions
-
+        for ci=1:length(glb)
+            cachesim_load(allnodes_id, 1:refel.dim, (glb[ci]-1)*3);
+        end
+        
+        
         # The linear part. Compute the elemental linear part for each dof
         rhsargs = (var, xe, glb, refel, RHS, t, dt);
         lhsargs = (var, xe, glb, refel, LHS, t, dt);
         if dofs_per_node == 1
             linchunk = linear.func(rhsargs);  # get the elemental linear part
             b[glb] .+= linchunk;
+            cachesim_load(2, glb);
+            cachesim_load(5);
+            cachesim_store(2, glb);
 
             bilinchunk = bilinear.func(lhsargs); # the elemental bilinear part
             A[glb, glb] .+= bilinchunk;         # This will be very inefficient for sparse A
+            for ci=1:length(glb)
+                cachesim_load(1, glb, (glb[ci]-1)*3);
+            end
+            cachesim_load(4);
+            for ci=1:length(glb)
+                cachesim_store(1, glb, (glb[ci]-1)*3);
+            end
+            
         elseif typeof(var) == Variable
             # only one variable, but more than one dof
             linchunk = linear.func(rhsargs);
-            insert_linear!(b, linchunk, glb, 1:dofs_per_node, dofs_per_node);
+            insert_linear_cachesim!(b, linchunk, glb, 1:dofs_per_node, dofs_per_node);
 
             bilinchunk = bilinear.func(lhsargs);
-            insert_bilinear!(A, bilinchunk, glb, 1:dofs_per_node, dofs_per_node);
+            insert_bilinear_cachesim!(A, bilinchunk, glb, 1:dofs_per_node, dofs_per_node);
         else
             linchunk = linear.func(rhsargs);
-            insert_linear!(b, linchunk, glb, 1:dofs_per_node, dofs_per_node);
+            insert_linear_cachesim!(b, linchunk, glb, 1:dofs_per_node, dofs_per_node);
 
             bilinchunk = bilinear.func(lhsargs);
-            insert_bilinear!(A, bilinchunk, glb, 1:dofs_per_node, dofs_per_node);
+            insert_bilinear_cachesim!(A, bilinchunk, glb, 1:dofs_per_node, dofs_per_node);
         end
     end
     
@@ -279,7 +209,7 @@ function assemble(var, bilinear, linear, t=0.0, dt=0.0)
 end
 
 # assembles the A and b in Au=b
-function assemble_rhs_only(var, linear, t=0.0, dt=0.0)
+function assemble_rhs_only_cachesim(var, linear, t=0.0, dt=0.0)
     Np = refel.Np;
     nel = mesh_data.nel;
     N1 = size(grid_data.allnodes)[1];
@@ -315,11 +245,11 @@ function assemble_rhs_only(var, linear, t=0.0, dt=0.0)
         elseif typeof(var) == Variable
             # only one variable, but more than one dof
             linchunk = linear.func(rhsargs);
-            insert_linear!(b, linchunk, glb, 1:dofs_per_node, dofs_per_node);
+            insert_linear_cachesim!(b, linchunk, glb, 1:dofs_per_node, dofs_per_node);
 
         else
             linchunk = linear.func(rhsargs);
-            insert_linear!(b, linchunk, glb, 1:dofs_per_node, dofs_per_node);
+            insert_linear_cachesim!(b, linchunk, glb, 1:dofs_per_node, dofs_per_node);
 
         end
     end
@@ -358,17 +288,21 @@ function assemble_rhs_only(var, linear, t=0.0, dt=0.0)
 end
 
 # Inset the single dof into the greater construct
-function insert_linear!(b, bel, glb, dof, Ndofs)
+function insert_linear_cachesim!(b, bel, glb, dof, Ndofs)
     # group nodal dofs
     for d=1:length(dof)
         ind = glb.*Ndofs .- (Ndofs-dof[d]);
         ind2 = ((d-1)*length(glb)+1):(d*length(glb));
 
         b[ind] = b[ind] + bel[ind2];
+        
+        cachesim_load(2,ind);
+        cachesim_load(5,ind2);
+        cachesim_store(2,ind);
     end
 end
 
-function insert_bilinear!(a, ael, glb, dof, Ndofs)
+function insert_bilinear_cachesim!(a, ael, glb, dof, Ndofs)
     # group nodal dofs
     for di=1:length(dof)
         indi = glb.*Ndofs .- (Ndofs-dof[di]);
@@ -378,8 +312,15 @@ function insert_bilinear!(a, ael, glb, dof, Ndofs)
             indj2 = ((dj-1)*length(glb)+1):(dj*length(glb));
 
             a[indi, indj] = a[indi, indj] + ael[indi2, indj2];
+            for ci=1:length(indi)
+                cachesim_load(1, indj, (indi[ci]-1)*3);
+            end
+            for ci=1:length(indi2)
+                cachesim_load(4, indj2, (indi2[ci]-1)*3);
+            end
+            for ci=1:length(indi)
+                cachesim_store(1, indj, (indi[ci]-1)*3);
+            end
         end
     end
 end
-
-end #module

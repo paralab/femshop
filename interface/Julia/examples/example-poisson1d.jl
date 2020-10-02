@@ -12,31 +12,33 @@ init_femshop("poisson1d");
 # Try making an optional log
 @useLog("poisson1dlog")
 
+cachesim(true);
+
 # Set up the configuration (order doesn't matter)
-@domain(1, SQUARE, UNSTRUCTURED)    # dimension, geometry, decomposition
-@solver(CG)                         # DG, CG, etc.
-@functionSpace(LEGENDRE, 4)         # function, order (or use testFunction and trialFunction)
+@domain(1)                          # dimension
+@solver(CG)                         # Use CG solver
+@functionSpace(LEGENDRE, 4)         # basis function, order
 @nodes(LOBATTO)                     # elemental node arrangement
 
 # Specify the problem
-@mesh(LINEMESH, 5)                   # .msh file or generate our own
+@mesh(LINEMESH, 5,2)               # build uniform LINEMESH. 2nd arg=# of elements, (optional)3rd arg=# of BIDs
 
 @variable(u)                        # same as @variable(u, SCALAR)
+@testSymbol(v)                      # sets the symbol for a test function
 
-@testSymbol(v)                    # sets the symbol for a test function
-
-@boundary(u, 1, DIRICHLET, 0)
+@boundary(u, 1, DIRICHLET, 0)       # boundary condition for BID 1
+@boundary(u, 2, DIRICHLET, -1)      # and BID 2
 
 # Write the weak form 
-@coefficient(f, "-pi*pi*sin(pi*x)")
+@coefficient(f, "-2.25*pi*pi*sin(1.5*pi*x)")
 @weakForm(u, "-grad(u)*grad(v) - f*v")
 
 solve(u);
 
-# exact solution is sin(pi*x)
+# exact solution is sin(1.5*pi*x)
 # check error
 maxerr = 0;
-exact(x) = sin(pi*x);
+exact(x) = sin(1.5*pi*x);
 
 for i=1:size(Femshop.grid_data.allnodes,1)
     x = Femshop.grid_data.allnodes[i,1];

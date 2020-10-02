@@ -43,9 +43,14 @@ function generate_code_layer_dendro(symex, var, lorr)
     #     push!(code_terms, codeterm);
     # end
     # Process the terms turning them into the code layer
-    code_terms = [];
+    #code_terms = [];
+    preloop_terms = [];
+    inloop_terms = [];
+    postloop_terms = [];
+    
     for i=1:length(terms)
-        (codeterm, der, coe, coeind, testi, trialj) = process_term_dendro(terms[i], length(terms), i, var, lorr);
+        #(codeterm, der, coe, coeind, testi, trialj) = process_term_dendro(terms[i], length(terms), i, var, lorr);
+        (preloop, inloop, postloop, der, coe, coeind, testi, trialj) = process_term_dendro(terms[i], length(terms), i, var, lorr);
         if coeind == -1
             # processing failed due to nonlinear term
             printerr("term processing failed for: "*string(terms[i]));
@@ -58,7 +63,10 @@ function generate_code_layer_dendro(symex, var, lorr)
         
         push!(test_ind, testi);
         push!(trial_ind, trialj);
-        push!(code_terms, codeterm);
+        #push!(code_terms, codeterm);
+        push!(preloop_terms, preloop);
+        push!(inloop_terms, inloop);
+        push!(postloop_terms, postloop);
     end
     
     # If coefficients need to be computed, do so
@@ -95,7 +103,6 @@ function generate_code_layer_dendro(symex, var, lorr)
     # }
     ######################################
     coef_alloc = "";
-    coef_loop = "";
     if length(needed_coef) > 0
         for i=1:length(needed_coef)
             if !(typeof(needed_coef[i]) <: Number || needed_coef[i] === :dt)
@@ -107,7 +114,7 @@ function generate_code_layer_dendro(symex, var, lorr)
                     printerr("Dendro not yet available for multivariate problems. Expect an error.");
                 end
                 # The string name for this coefficient
-                cname = "coef_"*string(cind)*"_"*string(needed_coef_ind[i]);
+                cname = "_"*string(needed_coef[i])*"_"*string(needed_coef_ind[i]);
                 
                 (ctype, cval) = get_coef_val(needed_coef[i], needed_coef_ind[i]);
                 
@@ -115,23 +122,16 @@ function generate_code_layer_dendro(symex, var, lorr)
                     # constant coefficient -> coef_n_i = cval
                     coef_alloc *= "double "*cname*" = "*string(cval)*";\n";
                     
-                elseif ctype == 2
+                elseif ctype >= 2 
                     # genfunction coefficients -> coef_n_i = coef.value[i].func(cargs)
-                    coef_alloc *= "double* "*cname*" = new double[nPe];\n";
-                    push!(to_delete, cname);
-                    coef_loop *= "    "*cval*"(coords[i*3+0], coords[i*3+1], coords[i*3+2], &cval);\n";
-                    coef_loop *= "    "*cname*"[i] = cval;\n";
-                elseif ctype == 3
-                    # variable values -> coef_n = variable.values
-                    #TODO THIS IS AN ERROR. multivariate support needed.
+                    push!(to_delete, "vec"*cname);
+                    coef_alloc *= "double* vec"*cname*" = new double[nPe];\n";
+                    coef_alloc *= "m_uiOctDA->getElementNodalValues(m_uiOctDA->getVecPointerToDof(grandDofVecPtr, VAR::M_UI"*cname*", false,false), vec"*cname*", m_uiOctDA->curr(), m_uiDof);\n";
+                    
+                else
                     coef_alloc *= "double "*cname*" = 0;\n";
                 end
-                
             end
-        end
-        # add the coef loop if needed
-        if length(coef_loop) > 1
-            coef_loop = "double cval;\nfor(unsigned int i=0; i<nPe; i++){\n"*coef_loop*"}\n";
         end
     end
     
@@ -164,9 +164,25 @@ function generate_code_layer_dendro(symex, var, lorr)
     end
     
     # Put the pieces together
-    code = temp_alloc * coef_alloc * coef_loop;
+    code = temp_alloc * "\n"* coef_alloc * "\n";
     for i=1:length(terms)
-        code *= code_terms[i] * "\n";
+        code *= preloop_terms[i] * "\n";
+    end
+    code *= 
+"for(unsigned int k=0;k<(eleOrder+1);k++){
+    for(unsigned int j=0;j<(eleOrder+1);j++){
+        for(unsigned int i=0;i<(eleOrder+1);i++){
+";
+            
+    for i=1:length(terms)
+        code *= inloop_terms[i] * "\n";
+    end
+    code *= "
+        }
+    }
+}\n";
+    for i=1:length(terms)
+        code *= postloop_terms[i] * "\n";
     end
     if length(terms) > 1 # combine the terms' temp arrays
         combine_loop = "out_1[i]";
@@ -252,11 +268,11 @@ DENDRO_TENSOR_AIIX_APPLY_ELEM(nrp,DgT,imV2,"*out_name*");\n";
             else
                 # no derivative mods
                 test_part = 
-"DENDRO_TENSOR_IIAX_APPLY_ELEM(nrp,QT1d,out,imV1);
+"DENDRO_TENSOR_IIAX_APPLY_ELEM(nrp,QT1d,"*out_name*",imV1);
 DENDRO_TENSOR_IAIX_APPLY_ELEM(nrp,QT1d,imV1,imV2);
 DENDRO_TENSOR_AIIX_APPLY_ELEM(nrp,QT1d,imV2,"*out_name*");\n";
             end
-        elseif is_unknown_var(v, var)
+        elseif is_unknown_var(v, var) && lorr == LHS # If rhs, treat as a coefficient
             if !(trial_part == "")
                 # Two unknowns multiplied in this term. Nonlinear. abort.
                 printerr("Nonlinear term. Code layer incomplete.");
@@ -295,29 +311,23 @@ DENDRO_TENSOR_AIIX_APPLY_ELEM(nrp,Dg,imV2,"*out_name*");\n";
 DENDRO_TENSOR_IAIX_APPLY_ELEM(nrp,Q1d,imV1,imV2);
 DENDRO_TENSOR_AIIX_APPLY_ELEM(nrp,Q1d,imV2,"*out_name*");\n";
             end
-        else
+            
+        else # coefficients
             if length(index) == 1
                 ind = index[1];
             end
+            # # Check for derivative mods
+            # if length(mods) > 0 && typeof(v) == Symbol && !(v ===:dt)
+            #     need_derivative = true;
+                
+            #     push!(needed_coef_deriv, [v, mods[1], mods[1][2]]);
+                
+            # elseif !(v ===:dt)
+            #     push!(needed_coef_deriv, [v, "", ""]);
+            # end
             push!(coef_facs, v);
             push!(coef_inds, ind);
         end
-    end
-    
-    # If rhs, change var into var.values and treat as a coefficient
-    if lorr == RHS && !(trial_part === nothing)
-        # tmpv = :(a.values[gbl]);
-        # tmpv.args[1].args[1] = var.symbol; #TODO, will not work for var=array
-        # push!(coef_facs, tmpv);
-        # push!(coef_inds, trial_component);
-    end
-    
-    # If there was no trial part, it's an RHS and we need to finish the quadrature with this
-    if trial_part == ""
-        trial_part = 
-"DENDRO_TENSOR_IIAX_APPLY_ELEM(nrp,Q1d,in,imV1);
-DENDRO_TENSOR_IAIX_APPLY_ELEM(nrp,Q1d,imV1,imV2);
-DENDRO_TENSOR_AIIX_APPLY_ELEM(nrp,Q1d,imV2,"*out_name*");\n";
     end
     
     # build weight/coefficient parts
@@ -337,18 +347,19 @@ DENDRO_TENSOR_AIIX_APPLY_ELEM(nrp,Q1d,imV2,"*out_name*");\n";
     end
     
     # Multiply by coefficients inside integral if needed
-    if length(coef_facs) > 0 && lorr == LHS
+    # need to change the index for rhs
+    if lorr == RHS
+        idxstr = "[coefi]";
+    end
+    if length(coef_facs) > 0
         for j=1:length(coef_facs)
             tmp = coef_facs[j];
             if typeof(tmp) == Symbol && !(tmp ===:dt)
                 push!(needed_coef, tmp);
                 push!(needed_coef_ind, coef_inds[j]);
                 ind = get_coef_index(coef_facs[j]);
-                if ind >= 0
-                    tmp = "coef_"*string(ind)*"_"*string(coef_inds[j])*idxstr;
-                else
-                    tmp = "coef_"*string(tmp)*"_"*string(coef_inds[j])*idxstr;
-                end
+                
+                tmp = "vec_"*string(tmp)*"_"*string(coef_inds[j])*idxstr;
             else
                 tmp = string(tmp);
             end
@@ -358,18 +369,26 @@ DENDRO_TENSOR_AIIX_APPLY_ELEM(nrp,Q1d,imV2,"*out_name*");\n";
                 coef_part = tmp;
             end
         end
-        weight_part = weight_part*" * "*coef_part;
+        
+        if lorr == LHS
+            weight_part = weight_part*" * "*coef_part;
+        else
+            rhscoef_part = "double* rhscoefvec = new double[nPe];\nfor(int coefi=0; coefi<nPe; coefi++){\n
+                rhscoefvec[coefi] = "*coef_part*";\n}\n";
+        end
+        
     end
     
     # build the inner weight/coef loop
-    body = out_name*"[k*(eleOrder+1)*(eleOrder+1)+j*(eleOrder+1)+i]*=(Jx*Jy*Jz*"*weight_part*");";
+    idxstr = "[(k*nrp+j)*nrp+i]";
+    body = out_name*idxstr*"*=(Jx*Jy*Jz*"*weight_part*");";
     if need_derivative
         if deriv_dir == 1
-            body = out_name*"[k*(eleOrder+1)*(eleOrder+1)+j*(eleOrder+1)+i]*=( ((Jy*Jz)/Jx)*"*weight_part*");";
+            body = out_name*idxstr*"*=( ((Jy*Jz)/Jx)*"*weight_part*");";
         elseif deriv_dir == 2
-            body = out_name*"[k*(eleOrder+1)*(eleOrder+1)+j*(eleOrder+1)+i]*=( ((Jx*Jz)/Jy)*"*weight_part*");";
+            body = out_name*idxstr*"*=( ((Jx*Jz)/Jy)*"*weight_part*");";
         elseif deriv_dir == 3
-            body = out_name*"[k*(eleOrder+1)*(eleOrder+1)+j*(eleOrder+1)+i]*=( ((Jx*Jy)/Jz)*"*weight_part*");";
+            body = out_name*idxstr*"*=( ((Jx*Jy)/Jz)*"*weight_part*");";
         else
             # there will be an error
         end
@@ -384,14 +403,17 @@ DENDRO_TENSOR_AIIX_APPLY_ELEM(nrp,Q1d,imV2,"*out_name*");\n";
     }
 }\n";
     
-    # Put the pieces together
-    term = trial_part * "\n" * wcloop * "\n" * test_part;
-#     if need_derivative
-#         term *= 
-# "\n"*"for(unsigned int i=0;i<nPe;i++){
-#     "*out_name*"[i]=Qx[i]+Qy[i]+Qz[i];
-# }\n";
-#     end
+    # If there was no trial part, it's an RHS and we need to finish the quadrature with this
+    if trial_part == ""
+        trial_part = 
+    rhscoef_part*"DENDRO_TENSOR_IIAX_APPLY_ELEM(nrp,Q1d,rhscoefvec,imV1);
+    DENDRO_TENSOR_IAIX_APPLY_ELEM(nrp,Q1d,imV1,imV2);
+    DENDRO_TENSOR_AIIX_APPLY_ELEM(nrp,Q1d,imV2,"*out_name*");\n delete rhscoefvec;\n";
+    end
     
-    return (term, need_derivative, needed_coef, needed_coef_ind, test_component, trial_component);
+    # Put the pieces together
+    #term = trial_part * "\n" * wcloop * "\n" * test_part;
+    
+    #return (term, need_derivative, needed_coef, needed_coef_ind, test_component, trial_component);
+    return (trial_part, body, test_part, need_derivative, needed_coef, needed_coef_ind, test_component, trial_component);
 end

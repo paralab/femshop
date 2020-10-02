@@ -572,12 +572,12 @@ function process_term_julia(sterm, var, lorr, offset_ind=0)
         else
             term = :($test_part * diagm($weight_part) * $trial_part);
         end
-    end
-    
-    if neg
-        negex = :(-a);
-        negex.args[2] = copy(term);
-        term = negex;
+        
+        if neg
+            negex = :(-a);
+            negex.args[2] = copy(term);
+            term = negex;
+        end
     end
     
     return (term, need_derivative, needed_coef, needed_coef_ind, needed_coef_deriv, test_component, trial_component);

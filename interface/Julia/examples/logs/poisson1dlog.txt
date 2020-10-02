@@ -5,20 +5,19 @@
 1.	Building simple line mesh with nx elements, nx=5
 2.	Added mesh with 6 vertices and 5 elements.
 3.	Full grid has 21 nodes.
-4.	Grid building took 0.0015465 seconds
+4.	Grid building took 3.7325983 seconds
 5.	Added variable: u of type: scalar
-6.	Added variable: q of type: scalar
-7.	Set test function symbol: v of type: scalar
-8.	Boundary condition: var=u bid=1 type=Dirichlet val=0
-9.	Boundary condition: var=u bid=2 type=Dirichlet val=-1
-10.	Generated function: genfunction_0
-11.	Added coefficient f : -2.25*pi*pi*sin(1.5*pi*x)
-12.	Making weak form for variable(s): u
-13.	Weak form, input: -grad(u)*grad(v) - f*v
-14.	Weak form, symbolic layer:
+6.	Set test function symbol: v of type: scalar
+7.	Boundary condition: var=u bid=1 type=Dirichlet val=0
+8.	Boundary condition: var=u bid=2 type=Dirichlet val=-1
+9.	Generated function: genfunction_0
+10.	Added coefficient f : -2.25*pi*pi*sin(1.5*pi*x)
+11.	Making weak form for variable(s): u
+12.	Weak form, input: -grad(u)*grad(v) - f*v
+13.	Weak form, symbolic layer:
 lhs = -D1__u_1*D1__v_1
 rhs = _v_1*_f_1
-15.	Weak form, code layer: LHS = begin
+14.	Weak form, code layer: LHS = begin
     var = args[1]
     x = args[2]
     gbl = args[3]
@@ -46,37 +45,37 @@ end
     end
     return (refel.Q)' * (wgdetj .* (refel.Q * coef_0_1))
 end
-16.	Generated function: genfunction_1
-17.	Generated function: genfunction_2
-18.	Assembly took 0.022859999 seconds
-19.	Linear solve took 5.5e-5 seconds
-20.	Solved for u.(took 0.029914499 seconds)
-21.	Dumping configuration:
-22.		dimension = 1
-23.		geometry = square
-24.		mesh_type = grid
-25.		solver_type = CG
-26.		trial_function = Legendre
-27.		test_function = Legendre
-28.		elemental_nodes = Lobatto
-29.		quadrature = Gauss
-30.		p_adaptive = false
-31.		basis_order_min = 4
-32.		basis_order_max = 4
-33.		linear = true
-34.		t_adaptive = false
-35.		stepper = Euler-implicit
-36.		linalg_matrixfree = false
-37.		linalg_matfree_max = 1
-38.		linalg_matfree_tol = 1.0
-39.		linalg_backend = ours
-40.		output_format = vtk
-41.	Dumping problem:
-42.		bc_type = ["Dirichlet" "Dirichlet"; "" ""]
-43.		bid = [1 2; 0 0]
-44.		bc_func = Any[0 -1; GenFunction("", "", "", 0, 0) GenFunction("", "", "", 0, 0)]
-45.		time_dependent = false
-46.		end_time = 0.0
-47.		initial = Any[]
-48.		lhs_time_deriv = Bool[]
-49.	Completed. Closing Log.
+15.	Generated function: genfunction_1
+16.	Generated function: genfunction_2
+17.	Assembly took 2.302271699 seconds
+18.	Linear solve took 0.747293799 seconds
+19.	Solved for u.(took 3.2021056 seconds)
+20.	Dumping configuration:
+21.		dimension = 1
+22.		geometry = square
+23.		mesh_type = grid
+24.		solver_type = CG
+25.		trial_function = Legendre
+26.		test_function = Legendre
+27.		elemental_nodes = Lobatto
+28.		quadrature = Gauss
+29.		p_adaptive = false
+30.		basis_order_min = 4
+31.		basis_order_max = 4
+32.		linear = true
+33.		t_adaptive = false
+34.		stepper = Euler-implicit
+35.		linalg_matrixfree = false
+36.		linalg_matfree_max = 1
+37.		linalg_matfree_tol = 1.0
+38.		linalg_backend = ours
+39.		output_format = vtk
+40.	Dumping problem:
+41.		bc_type = ["Dirichlet" "Dirichlet"]
+42.		bid = [1 2]
+43.		bc_func = Any[0 -1]
+44.		time_dependent = false
+45.		end_time = 0.0
+46.		initial = Any[]
+47.		lhs_time_deriv = Bool[]
+48.	Completed. Closing Log.

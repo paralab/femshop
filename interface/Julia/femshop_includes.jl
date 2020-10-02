@@ -42,6 +42,8 @@ include("time_steppers.jl");
 #include("nonlinear.jl");
 
 # Femshop submodules
+include("CachesimOut.jl");
+using .CachesimOut
 include("SymbolicParser.jl")
 using .SymbolicParser
 include("CodeGenerator.jl");
@@ -50,3 +52,4 @@ using .CodeGenerator
 #using .DGSolver
 include("CGSolver.jl");
 using .CGSolver
+

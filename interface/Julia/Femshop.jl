@@ -11,7 +11,7 @@ export @language, @domain, @mesh, @solver, @stepper, @functionSpace, @trialFunct
         @outputMesh, @useLog, @finalize
 export init_femshop, set_language, dendro, set_solver, set_stepper, set_matrix_free, reformat_for_stepper, 
         add_mesh, output_mesh, add_test_function, 
-        add_initial_condition, add_boundary_condition, set_rhs, set_lhs, solve, finalize
+        add_initial_condition, add_boundary_condition, set_rhs, set_lhs, solve, finalize, cachesim
 export sp_parse
 export generate_code_layer
 export Variable, add_variable
@@ -51,6 +51,8 @@ linears = [];
 bilinears = [];
 #time stepper
 time_stepper = nothing;
+
+use_cachesim = false;
 
 include("femshop_includes.jl");
 include("macros.jl"); # included here after globals are defined
@@ -375,7 +377,7 @@ function solve(var, nlvar=nothing; nonlinear=false)
 
             lhs = bilinears[varind];
             rhs = linears[varind];
-
+            
             if prob.time_dependent
                 global time_stepper = init_stepper(grid_data.allnodes, time_stepper);
 				if (nonlinear)
@@ -388,8 +390,12 @@ function solve(var, nlvar=nothing; nonlinear=false)
                 # solve it!
 				if (nonlinear)
                 	t = @elapsed(result = CGSolver.nonlinear_solve(var, nlvar, lhs, rhs));
-				else
-                	t = @elapsed(result = CGSolver.linear_solve(var, lhs, rhs));
+                else
+                    if use_cachesim
+                        t = @elapsed(result = CGSolver.linear_solve_cachesim(var, lhs, rhs));
+                    else
+                        t = @elapsed(result = CGSolver.linear_solve(var, lhs, rhs));
+                    end
 				end
 
                 # place the values in the variable value arrays
@@ -425,9 +431,16 @@ function finalize()
     if gen_files != nothing
         finalize_codegenerator();
     end
+    if use_cachesim
+        CachesimOut.finalize();
+    end
     # anything else
     close_log();
     println("Femshop has completed.");
+end
+
+function cachesim(use)
+    global use_cachesim = use;
 end
 
 
