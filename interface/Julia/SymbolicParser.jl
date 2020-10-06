@@ -14,7 +14,7 @@ import ..Femshop: JULIA, CPP, MATLAB, SQUARE, IRREGULAR, TREE, UNSTRUCTURED, CG,
         LINEMESH, QUADMESH, HEXMESH
 import ..Femshop: Femshop_config, Femshop_prob, Variable, Coefficient
 import ..Femshop: log_entry, printerr
-import ..Femshop: config, prob, variables, coefficients, test_functions
+import ..Femshop: config, prob, variables, coefficients, parameters, test_functions
 
 using SymEngine, LinearAlgebra
 
@@ -39,10 +39,12 @@ function *(a::Array{Basic,1}, b::Array{Basic,1})
         return b.*a[1];
     elseif size(b) == (1,)
         return a.*b[1];
-    else
+    elseif size(a) == size(b)
         # This should be an error, but I will treat it as a dot product for lazy people
-        # Note, it will still be an error if dimensions are not right.
         return [transpose(a) * b];
+    else
+        # un oh... How do I redirect this to the symengine method?
+        # (sigh) This will be an error until I figure it out.
     end
 end
 
@@ -89,13 +91,17 @@ function sp_parse(ex, var)
     # Work with a copy of ex
     symex = copy(ex);
     
+    # Insert parameters
+    symex = insert_parameters(symex);
+    #println("insert parameters -> "*string(symex));
+    
     # Replace symbols for variables, coefficients, test functions, and special operators
     symex = replace_symbols(symex);
-    #println("symex1 = "*string(symex));
+    #println("replace symbols -> "*string(symex));
     
     # Evaluate the expression to apply symbolic operators
     symex = apply_ops(symex);
-    #println("symex2 = "*string(symex));
+    #println("apply ops -> "*string(symex));
     
     # Expand the expression and separate terms
     sterms = get_sym_terms(symex);
@@ -146,6 +152,38 @@ function sp_parse(ex, var)
     end
 end
 
+# Replaces parameter symbols with their values
+function insert_parameters(ex)
+    if typeof(ex) == Symbol
+        # parameter?
+        for p in parameters
+            if ex === p.symbol
+                if p.type == SCALAR
+                    return p.value[1];
+                else
+                    return p.value;
+                end
+            end
+        end
+        # nope
+        return ex;
+        
+    elseif typeof(ex) == Expr && length(ex.args) > 0
+        for i=1:length(ex.args)
+            ex.args[i] = insert_parameters(ex.args[i]); # recursively replace on args if ex
+        end
+        return ex;
+    elseif typeof(ex) <:Array
+        result = [];
+        for i=1:length(ex)
+            push!(result, insert_parameters(ex[i]));
+        end
+        return result;
+    else
+        return ex;
+    end
+end
+
 # Replaces variable, coefficient and operator symbols in the expression
 function replace_symbols(ex)
     if typeof(ex) == Symbol
@@ -161,6 +199,7 @@ function replace_symbols(ex)
                 return c.symvar.vals;
             end
         end
+        # operator?
         for i=1:length(ops)
             if ex === ops[i].symbol
                 #return Symbol(string(ops[i].op));
@@ -199,7 +238,6 @@ end
 
 # Eval to apply the sym_*_op ops to create a SymEngine expression
 function apply_ops(ex)
-    #IDENTITY = diagm(ones(config.dimension));
     try
         if typeof(ex) <:Array
             result = [];

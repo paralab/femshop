@@ -6,16 +6,17 @@ module Femshop
 
 # Public macros and functions
 export @language, @domain, @mesh, @solver, @stepper, @functionSpace, @trialFunction, @matrixFree,
-        @testFunction, @nodes, @order, @boundary, @variable, @coefficient, @testSymbol, @initial,
+        @testFunction, @nodes, @order, @boundary, @variable, @coefficient, @parameter, @testSymbol, @initial,
         @timeInterval, @weakForm, @LHS, @RHS, @customOperator, @customOperatorFile,
         @outputMesh, @useLog, @finalize
 export init_femshop, set_language, dendro, set_solver, set_stepper, set_matrix_free, reformat_for_stepper, 
         add_mesh, output_mesh, add_test_function, 
-        add_initial_condition, add_boundary_condition, set_rhs, set_lhs, solve, finalize
+        add_initial_condition, add_boundary_condition, set_rhs, set_lhs, solve, finalize, cachesim
 export sp_parse
 export generate_code_layer
 export Variable, add_variable
 export Coefficient, add_coefficient
+export Parameter, add_parameter
 
 ### Module's global variables ###
 # config
@@ -39,6 +40,7 @@ refel = nothing;
 var_count = 0;
 variables = [];
 coefficients = [];
+parameters = [];
 test_functions = [];
 #generated functions
 genfunc_count = 0;
@@ -49,6 +51,8 @@ linears = [];
 bilinears = [];
 #time stepper
 time_stepper = nothing;
+
+use_cachesim = false;
 
 include("femshop_includes.jl");
 include("macros.jl"); # included here after globals are defined
@@ -72,6 +76,7 @@ function init_femshop(name="unnamedProject")
     global var_count = 0;
     global variables = [];
     global coefficients = [];
+    global parameters = [];
     global test_functions = [];
     global genfunc_count = 0;
     global genfunctions = [];
@@ -194,6 +199,35 @@ function add_coefficient(c, type, val, nfuns)
     log_entry("Added coefficient "*string(c)*" : "*string(val));
 
     return coefficients[end];
+end
+
+function add_parameter(p, type, val)
+    
+    index = length(parameters);
+    push!(parameters, Parameter(p, index, type, val));
+
+    log_entry("Added parameter "*string(p)*" : "*string(val));
+
+    return parameters[end];
+end
+
+function swap_parameter_xyzt(ex)
+    if typeof(ex) == Symbol
+        if ex === :x
+            return :parameterCoefficientForx ;
+        elseif ex === :y
+            return :parameterCoefficientFory ;
+        elseif ex === :z
+            return :parameterCoefficientForz ;
+        elseif ex === :t
+            return :parameterCoefficientFort ;
+        end
+    elseif typeof(ex) == Expr
+        for i=1:length(ex.args)
+            ex.args[i] = swap_parameter_xyzt(ex.args[i]); # Recursively swap
+        end
+    end
+    return ex;
 end
 
 function add_initial_condition(varindex, ex, nfuns)
@@ -343,7 +377,7 @@ function solve(var, nlvar=nothing; nonlinear=false)
 
             lhs = bilinears[varind];
             rhs = linears[varind];
-
+            
             if prob.time_dependent
                 global time_stepper = init_stepper(grid_data.allnodes, time_stepper);
 				if (nonlinear)
@@ -356,8 +390,12 @@ function solve(var, nlvar=nothing; nonlinear=false)
                 # solve it!
 				if (nonlinear)
                 	t = @elapsed(result = CGSolver.nonlinear_solve(var, nlvar, lhs, rhs));
-				else
-                	t = @elapsed(result = CGSolver.linear_solve(var, lhs, rhs));
+                else
+                    if use_cachesim
+                        t = @elapsed(result = CGSolver.linear_solve_cachesim(var, lhs, rhs));
+                    else
+                        t = @elapsed(result = CGSolver.linear_solve(var, lhs, rhs));
+                    end
 				end
 
                 # place the values in the variable value arrays
@@ -393,9 +431,16 @@ function finalize()
     if gen_files != nothing
         finalize_codegenerator();
     end
+    if use_cachesim
+        CachesimOut.finalize();
+    end
     # anything else
     close_log();
     println("Femshop has completed.");
+end
+
+function cachesim(use)
+    global use_cachesim = use;
 end
 
 

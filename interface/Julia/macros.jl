@@ -210,6 +210,40 @@ macro coefficient(c, type, val)
     end)
 end
 
+macro parameter(p,val) return esc(:(@parameter($p, SCALAR, $val))); end
+macro parameter(p, type, val)
+    psym = string(p);
+    return esc(quote
+        $p = Symbol($psym);
+        if !(@isdefined(parameter_coefficients_defined) && length(Femshop.parameters)>0)
+            @coefficient(parameterCoefficientForx, "x")
+            @coefficient(parameterCoefficientFory, "y")
+            @coefficient(parameterCoefficientForz, "z")
+            @coefficient(parameterCoefficientFort, "t")
+            parameter_coefficients_defined = true;
+        end
+        if typeof($val) <: Number
+            newval = [$val];
+        elseif typeof($val) == String
+            # newval will be an array of expressions
+            # search for x,y,z,t symbols and replace with special coefficients like parameterCoefficientForx
+            newval = [Femshop.swap_parameter_xyzt(Meta.parse($val))];
+            
+        elseif typeof($val) <: Array
+            newval = Array{Expr,1}(undef,length(val));
+            for i=1:length($val)
+                newval[i] = Femshop.swap_parameter_xyzt(Meta.parse($val[i]));
+            end
+            newval = reshape(newval,size($val));
+        else
+            println("Error: use strings to define parameters");
+            newval = 0;
+        end
+        
+        $p = add_parameter($p, $type, newval);
+    end)
+end
+
 macro boundary(var, bid, bc_type, bc_exp)
     return esc(quote
         nfuns = @makeFunctions($bc_exp);

@@ -35,6 +35,7 @@ function generate_code_layer_julia(symex, var, lorr)
         push!(code.args, :(dt = args[7])); # dt for time dependent problems
     end
     push!(code.args, :((detJ, J) = geometric_factors(refel, x)));
+    push!(code.args, :(wgdetj = refel.wg .* detJ));
     
     need_derivative = false;
     needed_coef = [];
@@ -115,26 +116,31 @@ function generate_code_layer_julia(symex, var, lorr)
     # If derivatives are needed, prepare the appropriate matrices
     if need_derivative
         if config.dimension == 1
-            push!(code.args, Expr(:(=), :R1matrix, :(diagm(J.rx))));
-            push!(code.args, Expr(:(=), :Q1matrix, :(refel.Qr)));
-            push!(code.args, Expr(:(=), :D1matrix, :(refel.Ddr)));
+            push!(code.args, :((RQ1,RD1) = build_deriv_matrix(refel, J)));
+            push!(code.args, :(TRQ1 = RQ1'));
+            # push!(code.args, Expr(:(=), :Q1matrix, :(refel.Qr)));
+            # push!(code.args, Expr(:(=), :D1matrix, :(refel.Ddr)));
         elseif config.dimension == 2
-            push!(code.args, Expr(:(=), :R1matrix, :([diagm(J.rx) diagm(J.sx)])));
-            push!(code.args, Expr(:(=), :Q1matrix, :([refel.Qr ; refel.Qs])));
-            push!(code.args, Expr(:(=), :D1matrix, :([refel.Ddr ; refel.Dds])));
-            push!(code.args, Expr(:(=), :R2matrix, :([diagm(J.ry) diagm(J.sy)])));
-            push!(code.args, Expr(:(=), :Q2matrix, :([refel.Qr ; refel.Qs])));
-            push!(code.args, Expr(:(=), :D2matrix, :([refel.Ddr ; refel.Dds])));
+            push!(code.args, :((RQ1,RQ2,RD1,RD2) = build_deriv_matrix(refel, J)));
+            push!(code.args, :((TRQ1,TRQ2) = (RQ1',RQ2')));
+            # push!(code.args, Expr(:(=), :R1matrix, :([diagm(J.rx) diagm(J.sx)])));
+            # push!(code.args, Expr(:(=), :Q1matrix, :([refel.Qr ; refel.Qs])));
+            # push!(code.args, Expr(:(=), :D1matrix, :([refel.Ddr ; refel.Dds])));
+            # push!(code.args, Expr(:(=), :R2matrix, :([diagm(J.ry) diagm(J.sy)])));
+            # push!(code.args, Expr(:(=), :Q2matrix, :([refel.Qr ; refel.Qs])));
+            # push!(code.args, Expr(:(=), :D2matrix, :([refel.Ddr ; refel.Dds])));
         elseif config.dimension == 3
-            push!(code.args, Expr(:(=), :R1matrix, :([diagm(J.rx) diagm(J.sx) diagm(J.tx)])));
-            push!(code.args, Expr(:(=), :Q1matrix, :([refel.Qr ; refel.Qs ; refel.Qt])));
-            push!(code.args, Expr(:(=), :D1matrix, :([refel.Ddr ; refel.Dds ; refel.Ddt])));
-            push!(code.args, Expr(:(=), :R2matrix, :([diagm(J.ry) diagm(J.sy) diagm(J.ty)])));
-            push!(code.args, Expr(:(=), :Q2matrix, :([refel.Qr ; refel.Qs ; refel.Qt])));
-            push!(code.args, Expr(:(=), :D2matrix, :([refel.Ddr ; refel.Dds ; refel.Ddt])));
-            push!(code.args, Expr(:(=), :R3matrix, :([diagm(J.rz) diagm(J.sz) diagm(J.tz)])));
-            push!(code.args, Expr(:(=), :Q3matrix, :([refel.Qr ; refel.Qs ; refel.Qt])));
-            push!(code.args, Expr(:(=), :D3matrix, :([refel.Ddr ; refel.Dds ; refel.Ddt])));
+            push!(code.args, :((RQ1,RQ2,RQ3,RD1,RD2,RD3) = build_deriv_matrix(refel, J)));
+            push!(code.args, :((TRQ1,TRQ2,TRQ3) = (RQ1',RQ2',RQ3')));
+            # push!(code.args, Expr(:(=), :R1matrix, :([diagm(J.rx) diagm(J.sx) diagm(J.tx)])));
+            # push!(code.args, Expr(:(=), :Q1matrix, :([refel.Qr ; refel.Qs ; refel.Qt])));
+            # push!(code.args, Expr(:(=), :D1matrix, :([refel.Ddr ; refel.Dds ; refel.Ddt])));
+            # push!(code.args, Expr(:(=), :R2matrix, :([diagm(J.ry) diagm(J.sy) diagm(J.ty)])));
+            # push!(code.args, Expr(:(=), :Q2matrix, :([refel.Qr ; refel.Qs ; refel.Qt])));
+            # push!(code.args, Expr(:(=), :D2matrix, :([refel.Ddr ; refel.Dds ; refel.Ddt])));
+            # push!(code.args, Expr(:(=), :R3matrix, :([diagm(J.rz) diagm(J.sz) diagm(J.tz)])));
+            # push!(code.args, Expr(:(=), :Q3matrix, :([refel.Qr ; refel.Qs ; refel.Qt])));
+            # push!(code.args, Expr(:(=), :D3matrix, :([refel.Ddr ; refel.Dds ; refel.Ddt])));
         end
     end
     
@@ -250,9 +256,11 @@ function generate_code_layer_julia(symex, var, lorr)
                 tmps = "coef_"*tag*"_"*string(needed_coef_ind[i]);
                 tmpc = Symbol(tmps);
                 
-                dmatr = Symbol("R"*needed_coef_deriv[i][3]*"matrix");
-                dmatq = Symbol("D"*needed_coef_deriv[i][3]*"matrix");
-                tmpb= :(length($tmpc) == 1 ? 0 : $dmatr * $dmatq * $tmpc);
+                dmat = Symbol("RD"*needed_coef_deriv[i][3]);
+                tmpb= :(length($tmpc) == 1 ? 0 : $dmat * $tmpc);
+                #dmatr = Symbol("R"*needed_coef_deriv[i][3]*"matrix");
+                #dmatq = Symbol("D"*needed_coef_deriv[i][3]*"matrix");
+                #tmpb= :(length($tmpc) == 1 ? 0 : $dmatr * $dmatq * $tmpc);
                 
                 push!(code.args, Expr(:(=), tmpc, tmpb));
             else
@@ -376,7 +384,7 @@ function process_term_julia(sterm, var, lorr, offset_ind=0)
     test_part = nothing;
     trial_part = nothing;
     coef_part = nothing;
-    weight_part = :(refel.wg .* detJ);
+    weight_part = :wgdetj;
     test_component = 0;
     trial_component = 0;
     
@@ -399,6 +407,41 @@ function process_term_julia(sterm, var, lorr, offset_ind=0)
         if typeof(factors[i]) <: Number
             push!(coef_facs, factors[i]);
             push!(coef_inds, -1);
+            
+        elseif typeof(factors[i]) == Expr && factors[i].head === :call
+            # These should both be purely coefficient/known expressions. 
+            if factors[i].args[1] === :./
+                # The second arg should be 1, the third should not contain an unknown or test symbol
+                # The denominator expression needs to be processed completely
+                (piece, nd, nc, nci, ncd) = process_known_expr_julia(factors[i].args[3]);
+                need_derivative = need_derivative || nd;
+                append!(needed_coef, nc);
+                append!(needed_coef_ind, nci);
+                append!(needed_coef_deriv, ncd);
+                factors[i].args[3] = piece;
+                push!(coef_facs, factors[i]);
+                push!(coef_inds, 0);
+                
+            elseif factors[i].args[1] === :.^
+                # The second arg is the thing raised
+                (piece1, nd, nc, nci, ncd) = process_known_expr_julia(factors[i].args[2]);
+                need_derivative = need_derivative || nd;
+                append!(needed_coef, nc);
+                append!(needed_coef_ind, nci);
+                append!(needed_coef_deriv, ncd);
+                factors[i].args[2] = piece1;
+                # Do the same for the power just in case
+                (piece2, nd, nc, nci, ncd) = process_known_expr_julia(factors[i].args[3]);
+                need_derivative = need_derivative || nd;
+                append!(needed_coef, nc);
+                append!(needed_coef_ind, nci);
+                append!(needed_coef_deriv, ncd);
+                factors[i].args[3] = piece2;
+                
+                push!(coef_facs, factors[i]);
+                push!(coef_inds, 0);
+            end
+            
         else
             (index, v, mods) = extract_symbols(factors[i]);
             
@@ -407,9 +450,11 @@ function process_term_julia(sterm, var, lorr, offset_ind=0)
                 if length(mods) > 0
                     # TODO more than one derivative mod
                     need_derivative = true;
-                    dmatr = Symbol("R"*mods[1][2]*"matrix");
-                    dmatq = Symbol("Q"*mods[1][2]*"matrix");
-                    test_part = :(transpose($dmatr * $dmatq));
+                    dmat = Symbol("TRQ"*mods[1][2]);
+                    test_part = dmat;
+                    # dmatr = Symbol("R"*mods[1][2]*"matrix");
+                    # dmatq = Symbol("Q"*mods[1][2]*"matrix");
+                    # test_part = :(transpose($dmatr * $dmatq));
                 else
                     # no derivative mods
                     test_part = :(refel.Q');
@@ -434,9 +479,11 @@ function process_term_julia(sterm, var, lorr, offset_ind=0)
                 if length(mods) > 0
                     # TODO more than one derivative mod
                     need_derivative = true;
-                    dmatr = Symbol("R"*mods[1][2]*"matrix");
-                    dmatq = Symbol("Q"*mods[1][2]*"matrix");
-                    trial_part = :($dmatr * $dmatq);
+                    dmatr = Symbol("RQ"*mods[1][2]);
+                    trial_part = dmatr;
+                    # dmatr = Symbol("R"*mods[1][2]*"matrix");
+                    # dmatq = Symbol("Q"*mods[1][2]*"matrix");
+                    # trial_part = :($dmatr * $dmatq);
                 else
                     # no derivative mods
                     trial_part = :(refel.Q);
@@ -498,6 +545,7 @@ function process_term_julia(sterm, var, lorr, offset_ind=0)
                 tag = needed_coef_deriv[length(needed_coef)][2] * tag;
                 tmps = "coef_"*tag*"_"*string(coef_inds[j]);
                 tmp = Symbol(tmps);
+                
             end
             if j>1
                 coef_part = :($coef_part .* $tmp);
@@ -507,25 +555,112 @@ function process_term_julia(sterm, var, lorr, offset_ind=0)
         end
     end
     
-    term = test_part;
-    if !(coef_part === nothing)
-        if lorr == LHS
-            term = :($test_part * (diagm($weight_part .* $coef_part) * $trial_part));
-        else # RHS
-            term = :($test_part * (diagm($weight_part) * ($trial_part * $coef_part)));
-        end
+    # If there's no test part this is probably a denominator expression being processed and should only contain coefficients/knowns
+    if test_part === nothing
+        
         
     else
-        term = :($test_part * diagm($weight_part) * $trial_part);
-    end
-    
-    if neg
-        negex = :(-a);
-        negex.args[2] = copy(term);
-        term = negex;
+        term = test_part;
+        if !(coef_part === nothing)
+            if lorr == LHS
+                term = :($test_part * (diagm($weight_part .* $coef_part) * $trial_part));
+            else # RHS
+                term = :($test_part * ($weight_part .* ($trial_part * $coef_part)));
+                #term = :($test_part * (diagm($weight_part) * ($trial_part * $coef_part)));
+            end
+            
+        else
+            term = :($test_part * diagm($weight_part) * $trial_part);
+        end
+        
+        if neg
+            negex = :(-a);
+            negex.args[2] = copy(term);
+            term = negex;
+        end
     end
     
     return (term, need_derivative, needed_coef, needed_coef_ind, needed_coef_deriv, test_component, trial_component);
+end
+
+# Special processing for sub expressions of known things.(denominators, sqrt, etc.)
+# It should only contain knowns/coeficients, so just replace symbols (f -> coef_0_1)
+# And return the needed coefficient info
+function process_known_expr_julia(ex)
+    need_derivative = false;
+    needed_coef = [];
+    needed_coef_ind = [];
+    needed_coef_deriv = [];
+    
+    # Work recursively through the expression
+    if typeof(ex) <: Number
+        return (ex, need_derivative, needed_coef, needed_coef_ind, needed_coef_deriv);
+        
+    elseif typeof(ex) == Symbol
+        # turn arithmetic ops into dotted versions
+        if ex === :+ || ex === :.+
+            return (:.+ , false, [], [], []);
+        elseif ex === :- || ex === :.-
+            return (:.- , false, [], [], []);
+        elseif ex === :* || ex === :.*
+            return (:.* , false, [], [], []);
+        elseif ex === :/ || ex === :./
+            return (:./ , false, [], [], []);
+        elseif ex === :^ || ex === :.^
+            return (:.^ , false, [], [], []);
+        end
+        
+        (index, v, mods) = extract_symbols(ex);
+        if length(index) == 1
+            ind = index[1];
+        end
+        
+        if !(v ===:dt)
+            # Check for derivative mods
+            if length(mods) > 0 && typeof(v) == Symbol
+                need_derivative = true;
+                
+                push!(needed_coef_deriv, [v, mods[1], mods[1][2]]);
+                
+            else
+                push!(needed_coef_deriv, [v, "", ""]);
+            end
+            
+            push!(needed_coef, v);
+            push!(needed_coef_ind, ind);
+            
+            cind = get_coef_index(v);
+            if cind >= 0
+                tag = string(cind);
+            else
+                tag = string(v);
+            end
+            #derivatives of coefficients
+            tag = needed_coef_deriv[length(needed_coef)][2] * tag;
+            tmps = "coef_"*tag*"_"*string(ind);
+            tmp = Symbol(tmps); # The symbol to return
+            
+        else
+            tmp = ex;
+            
+        end
+        
+        return (tmp, need_derivative, needed_coef, needed_coef_ind, needed_coef_deriv);
+        
+    elseif typeof(ex) == Expr
+        newex = copy(ex);
+        for i=1:length(ex.args)
+            (piece, nd, nc, nci, ncd) = process_known_expr_julia(ex.args[i]);
+            newex.args[i] = piece;
+            need_derivative = need_derivative || nd;
+            append!(needed_coef, nc);
+            append!(needed_coef_ind, nci);
+            append!(needed_coef_deriv, ncd);
+        end
+        
+        return (newex, need_derivative, needed_coef, needed_coef_ind, needed_coef_deriv);
+    end
+    
 end
 
 ###############################################################################################################
@@ -561,6 +696,7 @@ function terms_to_expr(symex)
         end
     elseif length(sz) == 2 # matrix
         #TODO
+        printerr("sorry. still need to implement code layer for tensors.")
     end
     
     return terms;
@@ -581,13 +717,19 @@ function separate_factors(ex)
         elseif ex.args[1] === :^ || ex.args[1] === :.^
             factors = [];
             power = ex.args[3];
-            if !(typeof(power) <: Int)
-                printerr("non-integer power in "*string(ex)*" , expect errors");
-                return [0];
+            if power == 1
+                factors = [ex.args[2]]; #a^1 = a
+            else
+                ex.args[1] = :.^ ;
+                factors = [ex]; # the power is handled later
             end
-            for i=1:power
-                append!(factors, separate_factors(ex.args[2]));
-            end
+            
+        elseif ex.args[1] === :/ || ex.args[1] === :./
+            factors = [];
+            append!(factors, separate_factors(ex.args[2])); # a/b = a * 1/b
+            divex = :(1 ./ a);
+            divex.args[3] = ex.args[3];
+            push!(factors, divex);
             
         elseif ex.args[1] === :- && length(ex.args) == 2
             # strip off negetive and place on first factor
@@ -726,7 +868,12 @@ function extract_symbols(ex)
                 if str[i] == '_'
                     e = i-1;
                 else
-                    index = [parse(Int, str[i]); index] # The indices on the variable
+                    try
+                        index = [parse(Int, str[i]); index] # The indices on the variable
+                    catch
+                        return ([0],ex,[]);
+                    end
+                    
                 end
             elseif b==l
                 if str[i] == '_'

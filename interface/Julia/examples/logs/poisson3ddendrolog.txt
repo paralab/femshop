@@ -4,55 +4,35 @@
 
 1.	Set code generation language to C++.
 2.	Created code files for: poisson3d
-3.	Building simple quad mesh with nx*nx elements, nx=30
-4.	Added mesh with 961 vertices and 900 elements.
-5.	Full grid has 7442 nodes.
-6.	Grid building took 10.932292599 seconds
-7.	Added variable: u of type: scalar
-8.	Set test function symbol: v of type: scalar
-9.	Generated function: genfunction_0
-10.	Boundary condition: var=u bid=1 type=Dirichlet val=0
-11.	Generated function: genfunction_1
-12.	Added coefficient f : -14*pi*pi*sin(3*pi*x)*sin(2*pi*y)*sin(pi*z)
+3.	Added variable: u of type: scalar
+4.	Set test function symbol: v of type: scalar
+5.	Generated function: genfunction_0
+6.	Boundary condition: var=u bid=1 type=Dirichlet val=0
+7.	Generated function: genfunction_1
+8.	Added coefficient f : -14*pi*pi*sin(3*pi*x)*sin(2*pi*y)*sin(pi*z)
+9.	Generated function: genfunction_2
+10.	Added coefficient a : 2
+11.	Generated function: genfunction_3
+12.	Added coefficient b : 2
 13.	Making weak form for variable(s): u
-14.	Weak form, input: -dot(grad(u),grad(v)) - f*v
+14.	Weak form, input: -a*dot(grad(u),grad(v)) - f*b*v
 15.	Weak form, symbolic layer:
-lhs = -D1__u_1*D1__v_1 + -D2__u_1*D2__v_1 + -D3__u_1*D3__v_1
-rhs = _v_1*_f_1
+lhs = -_a_1*D1__u_1*D1__v_1 + -_a_1*D2__u_1*D2__v_1 + -_a_1*D3__u_1*D3__v_1
+rhs = _v_1*_f_1*_b_1
 16.	Weak form, code layer: LHS = double* out_1 = new double[nPe];
 double* out_2 = new double[nPe];
 double* out_3 = new double[nPe];
+
+double* vec_a_1 = new double[nPe];
+m_uiOctDA->getElementNodalValues(m_uiOctDA->getVecPointerToDof(grandDofVecPtr, VAR::M_UI_a_1, false,false), vec_a_1, m_uiOctDA->curr(), m_uiDof);
+
 DENDRO_TENSOR_IIAX_APPLY_ELEM(nrp,Dg,in,imV1);
 DENDRO_TENSOR_IAIX_APPLY_ELEM(nrp,Q1d,imV1,imV2);
 DENDRO_TENSOR_AIIX_APPLY_ELEM(nrp,Q1d,imV2,out_1);
 
-for(unsigned int k=0;k<(eleOrder+1);k++){
-    for(unsigned int j=0;j<(eleOrder+1);j++){
-        for(unsigned int i=0;i<(eleOrder+1);i++){
-            out_1[k*(eleOrder+1)*(eleOrder+1)+j*(eleOrder+1)+i]*=( ((Jy*Jz)/Jx)*-W1d[i]*W1d[j]*W1d[k]);
-        }
-    }
-}
-
-DENDRO_TENSOR_IIAX_APPLY_ELEM(nrp,DgT,out_1,imV1);
-DENDRO_TENSOR_IAIX_APPLY_ELEM(nrp,QT1d,imV1,imV2);
-DENDRO_TENSOR_AIIX_APPLY_ELEM(nrp,QT1d,imV2,out_1);
-
 DENDRO_TENSOR_IIAX_APPLY_ELEM(nrp,Q1d,in,imV1);
 DENDRO_TENSOR_IAIX_APPLY_ELEM(nrp,Dg,imV1,imV2);
 DENDRO_TENSOR_AIIX_APPLY_ELEM(nrp,Q1d,imV2,out_2);
-
-for(unsigned int k=0;k<(eleOrder+1);k++){
-    for(unsigned int j=0;j<(eleOrder+1);j++){
-        for(unsigned int i=0;i<(eleOrder+1);i++){
-            out_2[k*(eleOrder+1)*(eleOrder+1)+j*(eleOrder+1)+i]*=( ((Jx*Jz)/Jy)*-W1d[i]*W1d[j]*W1d[k]);
-        }
-    }
-}
-
-DENDRO_TENSOR_IIAX_APPLY_ELEM(nrp,QT1d,out_2,imV1);
-DENDRO_TENSOR_IAIX_APPLY_ELEM(nrp,DgT,imV1,imV2);
-DENDRO_TENSOR_AIIX_APPLY_ELEM(nrp,QT1d,imV2,out_2);
 
 DENDRO_TENSOR_IIAX_APPLY_ELEM(nrp,Q1d,in,imV1);
 DENDRO_TENSOR_IAIX_APPLY_ELEM(nrp,Q1d,imV1,imV2);
@@ -61,10 +41,20 @@ DENDRO_TENSOR_AIIX_APPLY_ELEM(nrp,Dg,imV2,out_3);
 for(unsigned int k=0;k<(eleOrder+1);k++){
     for(unsigned int j=0;j<(eleOrder+1);j++){
         for(unsigned int i=0;i<(eleOrder+1);i++){
-            out_3[k*(eleOrder+1)*(eleOrder+1)+j*(eleOrder+1)+i]*=( ((Jx*Jy)/Jz)*-W1d[i]*W1d[j]*W1d[k]);
+out_1[(k*nrp+j)*nrp+i]*=( ((Jy*Jz)/Jx)*-W1d[i]*W1d[j]*W1d[k] * vec_a_1[(k*nrp+j)*nrp+i]);
+out_2[(k*nrp+j)*nrp+i]*=( ((Jx*Jz)/Jy)*-W1d[i]*W1d[j]*W1d[k] * vec_a_1[(k*nrp+j)*nrp+i]);
+out_3[(k*nrp+j)*nrp+i]*=( ((Jx*Jy)/Jz)*-W1d[i]*W1d[j]*W1d[k] * vec_a_1[(k*nrp+j)*nrp+i]);
+
         }
     }
 }
+DENDRO_TENSOR_IIAX_APPLY_ELEM(nrp,DgT,out_1,imV1);
+DENDRO_TENSOR_IAIX_APPLY_ELEM(nrp,QT1d,imV1,imV2);
+DENDRO_TENSOR_AIIX_APPLY_ELEM(nrp,QT1d,imV2,out_1);
+
+DENDRO_TENSOR_IIAX_APPLY_ELEM(nrp,QT1d,out_2,imV1);
+DENDRO_TENSOR_IAIX_APPLY_ELEM(nrp,DgT,imV1,imV2);
+DENDRO_TENSOR_AIIX_APPLY_ELEM(nrp,QT1d,imV2,out_2);
 
 DENDRO_TENSOR_IIAX_APPLY_ELEM(nrp,QT1d,out_3,imV1);
 DENDRO_TENSOR_IAIX_APPLY_ELEM(nrp,QT1d,imV1,imV2);
@@ -74,31 +64,46 @@ DENDRO_TENSOR_AIIX_APPLY_ELEM(nrp,DgT,imV2,out_3);
 for(unsigned int i=0;i<nPe;i++){
     out[i]=out_1[i]+out_2[i]+out_3[i];
 }
+delete [] vec_a_1;
 delete [] out_1;
 delete [] out_2;
 delete [] out_3;
  
-  RHS = DENDRO_TENSOR_IIAX_APPLY_ELEM(nrp,Q1d,in,imV1);
-DENDRO_TENSOR_IAIX_APPLY_ELEM(nrp,Q1d,imV1,imV2);
-DENDRO_TENSOR_AIIX_APPLY_ELEM(nrp,Q1d,imV2,out);
+  RHS = 
+double* vec_f_1 = new double[nPe];
+m_uiOctDA->getElementNodalValues(m_uiOctDA->getVecPointerToDof(grandDofVecPtr, VAR::M_UI_f_1, false,false), vec_f_1, m_uiOctDA->curr(), m_uiDof);
+double* vec_b_1 = new double[nPe];
+m_uiOctDA->getElementNodalValues(m_uiOctDA->getVecPointerToDof(grandDofVecPtr, VAR::M_UI_b_1, false,false), vec_b_1, m_uiOctDA->curr(), m_uiDof);
+
+double* rhscoefvec = new double[nPe];
+for(int coefi=0; coefi<nPe; coefi++){
+
+                rhscoefvec[coefi] = vec_f_1[coefi]*vec_b_1[coefi];
+}
+DENDRO_TENSOR_IIAX_APPLY_ELEM(nrp,Q1d,rhscoefvec,imV1);
+    DENDRO_TENSOR_IAIX_APPLY_ELEM(nrp,Q1d,imV1,imV2);
+    DENDRO_TENSOR_AIIX_APPLY_ELEM(nrp,Q1d,imV2,out);
+ delete rhscoefvec;
 
 for(unsigned int k=0;k<(eleOrder+1);k++){
     for(unsigned int j=0;j<(eleOrder+1);j++){
         for(unsigned int i=0;i<(eleOrder+1);i++){
-            out[k*(eleOrder+1)*(eleOrder+1)+j*(eleOrder+1)+i]*=(Jx*Jy*Jz*W1d[i]*W1d[j]*W1d[k]);
+out[(k*nrp+j)*nrp+i]*=(Jx*Jy*Jz*W1d[i]*W1d[j]*W1d[k]);
+
         }
     }
 }
-
 DENDRO_TENSOR_IIAX_APPLY_ELEM(nrp,QT1d,out,imV1);
 DENDRO_TENSOR_IAIX_APPLY_ELEM(nrp,QT1d,imV1,imV2);
 DENDRO_TENSOR_AIIX_APPLY_ELEM(nrp,QT1d,imV2,out);
 
+delete [] vec_f_1;
+delete [] vec_b_1;
 
 17.	Dumping configuration:
 18.		dimension = 3
 19.		geometry = square
-20.		mesh_type = unstructured
+20.		mesh_type = grid
 21.		solver_type = CG
 22.		trial_function = Legendre
 23.		test_function = Legendre
@@ -111,15 +116,17 @@ DENDRO_TENSOR_AIIX_APPLY_ELEM(nrp,QT1d,imV2,out);
 30.		t_adaptive = false
 31.		stepper = Euler-implicit
 32.		linalg_matrixfree = false
-33.		linalg_backend = ours
-34.		output_format = vtk
-35.	Dumping problem:
-36.		bc_type = ["Dirichlet"]
-37.		bid = [1]
-38.		bc_func = Any[GenFunction("genfunction_0", "x=0,y=0,z=0,t=0", "0", 0, genfunction_0)]
-39.		time_dependent = false
-40.		end_time = 0.0
-41.		initial = Any[]
-42.		lhs_time_deriv = Bool[]
-43.	Closed generated code files.
-44.	Completed. Closing Log.
+33.		linalg_matfree_max = 1
+34.		linalg_matfree_tol = 1.0
+35.		linalg_backend = ours
+36.		output_format = vtk
+37.	Dumping problem:
+38.		bc_type = ["Dirichlet"]
+39.		bid = [1]
+40.		bc_func = Any[GenFunction("genfunction_0", "x=0,y=0,z=0,t=0", "0", 0, genfunction_0)]
+41.		time_dependent = false
+42.		end_time = 0.0
+43.		initial = Any[]
+44.		lhs_time_deriv = Bool[]
+45.	Closed generated code files.
+46.	Completed. Closing Log.

@@ -36,11 +36,14 @@ include("symtype.jl");
 include("symoperator.jl");
 include("variables.jl");
 include("coefficient.jl");
+include("parameter.jl");
 include("geometric_factors.jl");
 include("time_steppers.jl");
 #include("nonlinear.jl");
 
 # Femshop submodules
+include("CachesimOut.jl");
+using .CachesimOut
 include("SymbolicParser.jl")
 using .SymbolicParser
 include("CodeGenerator.jl");
@@ -49,3 +52,4 @@ using .CodeGenerator
 #using .DGSolver
 include("CGSolver.jl");
 using .CGSolver
+
