@@ -28,7 +28,7 @@ num_elem = 32;
 @variable(dv)                        # same as @variable(u, SCALAR)
 @variable(dp)                        # same as @variable(u, SCALAR)
 
-@testSymbol(v)                    # sets the symbol for a test function
+@testSymbol(w)                    # sets the symbol for a test function
 
 T = 1
 @timeInterval(T)                    # (start, end) using this sets problem to time dependent
@@ -59,13 +59,17 @@ T = 1
 
 # Write the weak form
 @coefficient(f, "x^(-4)")
+@coefficient(ts, "0.01")
+@coefficient(h, "0.03125")
+@coefficient(mu, "0.01")
+# tauM = (1.0/sqrt(4.0/dt^2+sqrt(u^2+v^2)/h^2+36*0.01^2/h^4))
+# tauC = (h^2*sqrt(4.0/dt^2+sqrt(u^2+v^2)/h^2+36*0.01^2/h^4))
+@weakForm(du, "w*(Dt(du) + (u*deriv(du,1)+v*deriv(du,2))) - deriv(w,1)*dp + mu*dot(grad(w), grad(du)) + (f^2)*(u*deriv(w,1)+v*deriv(w,2))*(Dt(du) + (u*deriv(du,1)+v*deriv(du,2)) + deriv(dp,1))")
 
-
-@weakForm([du, dv, dp] ["", "Dt(u*v) + v*d(u, grad(u)) - grad(v)*p", "Cont(u,v)"])
-
-solve([du, dv, dp], [u, v, p], nonlinear=true);
+solve([du], [u, v, p], nonlinear=true);
 
 #analytical
+#=
 x = collect(1:1/num_elem/order:2);
 u_a = zeros(length(x));
 for i = 1:length(x)
@@ -80,6 +84,7 @@ for i = 1:length(x)-1
 end
 
 print("L2 error = ", err_l2, "\n")
+=#
 # solution is stored in the variable's "values"
 #using Plots
 #pyplot();
