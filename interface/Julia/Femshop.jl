@@ -346,6 +346,9 @@ end
 
 function solve(var, nlvar=nothing; nonlinear=false)
     # Generate files or solve directly
+    if prob.time_dependent
+        global time_stepper = init_stepper(grid_data.allnodes, time_stepper);
+    end
     if !(gen_files === nothing && (language == JULIA || language == 0))
         generate_main();
         if !(dendro_params === nothing)

@@ -124,10 +124,10 @@ function reformat_for_stepper(lhs, rhs, stepper, wrap=true)
     end
     
     # wrap in an array if needed (to avoid doing it on recursive steps)
-    if wrap
-        newlhs = [newlhs];
-        newrhs = [newrhs];
-    end
+    # if wrap
+    #     newlhs = [newlhs];
+    #     newrhs = [newrhs];
+    # end
     
     return (newlhs, newrhs);
 end

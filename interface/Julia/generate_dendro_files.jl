@@ -124,10 +124,8 @@ function dendro_prob_file()
     if prob.time_dependent
         println(file, "double tBegin = 0;");
         println(file, "double tEnd = "*string(prob.end_time)*";");
-        println(file, "double tBegin = 0.01;");
-        
-        # initial condition
-        println(file, "std::function initial_u = "*cpp_gen_string(prob.initial[1])*";");
+        println(file, "double dt = "*string(time_stepper.dt)*";");
+        println(file, "int tN = "*string(time_stepper.Nsteps)*";");
     end
 end
 
@@ -204,6 +202,22 @@ function dendro_main_file()
             alloc_dof = alloc_dof*"double * "*nam*"=octDA->getVecPointerToDof(uSolVecPtr,VAR::M_UI"*nam*", false,false);\n";
             set_dof = set_dof*"octDA->setVectorByFunction("*nam*","*fun*",false,false,1);\n";
         end
+    end
+    
+    solvepart = "";
+    if prob.time_dependent
+        solvepart = "double currentT = 0.0;
+        for(int ti=0; ti<tN; ti++){
+            rhsVec.computeVec("*valvec*",rhs,1.0);
+            lhsMat.cgSolve("*valvec*",rhs,solve_max_iters,solve_tol,0);
+            currentT += dt;
+        }";
+    else
+        solvepart = "// This uses the generated RHS code to compute the RHS vector.
+        rhsVec.computeVec("*valvec*",rhs,1.0);
+        
+        // Solve the linear system. 
+        lhsMat.cgSolve("*valvec*",rhs,solve_max_iters,solve_tol,0);";
     end
     
     # Just write the whole skeleton
@@ -325,12 +339,7 @@ function dendro_main_file()
         """*set_dof*"""
         octDA->setVectorByFunction(rhs,zero_init,false,false,1); // zeros
         
-        // This uses the generated RHS code to compute the RHS vector.
-        rhsVec.computeVec("""*valvec*""",rhs,1.0);
-        
-        // Solve the linear system. 
-        // For time dependent problems this will need to be in a loop along with a few other pieces.
-        lhsMat.cgSolve("""*valvec*""",rhs,solve_max_iters,solve_tol,0);
+        """*solvepart*"""
         
         // Output
         //////////////will be generated/////////////////////////////////////////////

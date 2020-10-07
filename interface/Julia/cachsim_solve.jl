@@ -119,9 +119,7 @@ function assemble_cachesim(var, bilinear, linear, t=0.0, dt=0.0)
         vx = mesh_data.nodes[gis,:];        # coordinates of element's vertices
         glb = grid_data.loc2glb[e,:];                 # global indices of this element's nodes for extracting values from var arrays
         xe = grid_data.allnodes[glb[:],:];  # coordinates of this element's nodes for evaluating coefficient functions
-        for ci=1:length(glb)
-            cachesim_load(allnodes_id, 1:refel.dim, (glb[ci]-1)*3);
-        end
+        cachesim_load_range(allnodes_id, 1:refel.dim, glb[:]);
         
         
         # The linear part. Compute the elemental linear part for each dof
@@ -130,19 +128,15 @@ function assemble_cachesim(var, bilinear, linear, t=0.0, dt=0.0)
         if dofs_per_node == 1
             linchunk = linear.func(rhsargs);  # get the elemental linear part
             b[glb] .+= linchunk;
-            cachesim_load(2, glb);
-            cachesim_load(5);
-            cachesim_store(2, glb);
+            cachesim_load_range(2, glb);
+            cachesim_load_range(5);
+            cachesim_store_range(2, glb);
 
             bilinchunk = bilinear.func(lhsargs); # the elemental bilinear part
             A[glb, glb] .+= bilinchunk;         # This will be very inefficient for sparse A
-            for ci=1:length(glb)
-                cachesim_load(1, glb, (glb[ci]-1)*3);
-            end
-            cachesim_load(4);
-            for ci=1:length(glb)
-                cachesim_store(1, glb, (glb[ci]-1)*3);
-            end
+            cachesim_load_range(1, glb, glb);
+            cachesim_load_range(4);
+            cachesim_store_range(1, glb, glb);
             
         elseif typeof(var) == Variable
             # only one variable, but more than one dof
@@ -296,9 +290,9 @@ function insert_linear_cachesim!(b, bel, glb, dof, Ndofs)
 
         b[ind] = b[ind] + bel[ind2];
         
-        cachesim_load(2,ind);
-        cachesim_load(5,ind2);
-        cachesim_store(2,ind);
+        cachesim_load_range(2,ind);
+        cachesim_load_range(5,ind2);
+        cachesim_store_range(2,ind);
     end
 end
 
@@ -312,15 +306,9 @@ function insert_bilinear_cachesim!(a, ael, glb, dof, Ndofs)
             indj2 = ((dj-1)*length(glb)+1):(dj*length(glb));
 
             a[indi, indj] = a[indi, indj] + ael[indi2, indj2];
-            for ci=1:length(indi)
-                cachesim_load(1, indj, (indi[ci]-1)*3);
-            end
-            for ci=1:length(indi2)
-                cachesim_load(4, indj2, (indi2[ci]-1)*3);
-            end
-            for ci=1:length(indi)
-                cachesim_store(1, indj, (indi[ci]-1)*3);
-            end
+            cachesim_load_range(1,indi, indj);
+            cachesim_load_range(4,indi2, indj2);
+            cachesim_store_range(1,indi, indj);
         end
     end
 end

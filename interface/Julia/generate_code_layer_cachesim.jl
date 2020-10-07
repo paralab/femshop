@@ -1,28 +1,43 @@
+###############################################################################################################
+# generate for cachesim
+###############################################################################################################
 #=
-Use the symbolic layer expressions to generate the FEM code
+Want
+
+l 2342
+s 512 8
+l 512 8
+
+to be turned into
+
+cs.load(2342)  # Loads one byte from address 2342
+cs.store(512, length=8)  # Stores 8 bytes to addresses 512-519
+cs.load(512, length=8)  # Loads from address 512 until (exclusive) 520 (eight bytes)
+...
+cs.force_write_back()
+cs.print_stats()
+
+The arrays are indexed as such:
+1 A
+2 b
+3 u
+4 Ak
+5 bk
+6 Q
+7 RQ1
+8 RQ2
+9 RQ3
+10 TRQ1
+11 TRQ2
+12 TRQ3
+13 RD1
+14 RD2
+15 RD3
+17 wdetJ
+18+ any other needed arrays
 =#
-function generate_code_layer(ex, var, lorr)
-    if language == 0 || language == JULIA
-        return generate_code_layer_julia(ex, var, lorr);
-    elseif language == CPP
-        return generate_code_layer_dendro(ex, var, lorr);
-    elseif language == MATLAB
-        return generate_code_layer_homg(ex, var, lorr);
-    end
-end
 
-# External code gen in these similar files
-include("generate_code_layer_dendro.jl");
-include("generate_code_layer_homg.jl");
-
-# Julia and utils are in this file
-
-###############################################################################################################
-# julia
-###############################################################################################################
-
-# Julia version returns an expression for the generated function for linear or bilinear term
-function generate_code_layer_julia(symex, var, lorr)
+function generate_code_layer_cachesim(symex, var, lorr)
     # This is the basic info passed in "args"
     code = Expr(:block);
     push!(code.args, :(var = args[1]));
@@ -34,8 +49,11 @@ function generate_code_layer_julia(symex, var, lorr)
     if prob.time_dependent
         push!(code.args, :(dt = args[7])); # dt for time dependent problems
     end
-    push!(code.args, :((detJ, J) = geometric_factors(refel, x)));
+    push!(code.args, :((detJ, J) = geometric_factors_cachesim(refel, x)));
+    
     push!(code.args, :(wgdetj = refel.wg .* detJ));
+    push!(code.args, :(cachesim_load_range(8))); # cachesim
+    push!(code.args, :(cachesim_load_range(9))); # cachesim
     
     need_derivative = false;
     needed_coef = [];
@@ -74,7 +92,7 @@ function generate_code_layer_julia(symex, var, lorr)
             subtest_ind = [];
             subtrial_ind = [];
             for i=1:length(terms[vi])
-                (codeterm, der, coe, coeind, coederiv, testi, trialj) = process_term_julia(terms[vi][i], var, lorr, offset_ind);
+                (codeterm, der, coe, coeind, coederiv, testi, trialj) = process_term_cachesim(terms[vi][i], var, lorr, offset_ind);
                 if coeind == -1
                     # processing failed due to nonlinear term
                     printerr("term processing failed for: "*string(terms[vi][i])*" , possible nonlinear term?");
@@ -95,7 +113,7 @@ function generate_code_layer_julia(symex, var, lorr)
         end
     else
         for i=1:length(terms)
-            (codeterm, der, coe, coeind, coederiv, testi, trialj) = process_term_julia(terms[i], var, lorr);
+            (codeterm, der, coe, coeind, coederiv, testi, trialj) = process_term_cachesim(terms[i], var, lorr);
             if coeind == -1
                 # processing failed due to nonlinear term
                 printerr("term processing failed for: "*string(terms[i])*" , possible nonlinear term?");
@@ -116,12 +134,12 @@ function generate_code_layer_julia(symex, var, lorr)
     # If derivatives are needed, prepare the appropriate matrices
     if need_derivative
         if config.dimension == 1
-            push!(code.args, :((RQ1,RD1) = build_deriv_matrix(refel, J)));
+            push!(code.args, :((RQ1,RD1) = build_deriv_matrix_cachesim(refel, J)));
             push!(code.args, :(TRQ1 = RQ1'));
             # push!(code.args, Expr(:(=), :Q1matrix, :(refel.Qr)));
             # push!(code.args, Expr(:(=), :D1matrix, :(refel.Ddr)));
         elseif config.dimension == 2
-            push!(code.args, :((RQ1,RQ2,RD1,RD2) = build_deriv_matrix(refel, J)));
+            push!(code.args, :((RQ1,RQ2,RD1,RD2) = build_deriv_matrix_cachesim(refel, J)));
             push!(code.args, :((TRQ1,TRQ2) = (RQ1',RQ2')));
             # push!(code.args, Expr(:(=), :R1matrix, :([diagm(J.rx) diagm(J.sx)])));
             # push!(code.args, Expr(:(=), :Q1matrix, :([refel.Qr ; refel.Qs])));
@@ -130,7 +148,7 @@ function generate_code_layer_julia(symex, var, lorr)
             # push!(code.args, Expr(:(=), :Q2matrix, :([refel.Qr ; refel.Qs])));
             # push!(code.args, Expr(:(=), :D2matrix, :([refel.Ddr ; refel.Dds])));
         elseif config.dimension == 3
-            push!(code.args, :((RQ1,RQ2,RQ3,RD1,RD2,RD3) = build_deriv_matrix(refel, J)));
+            push!(code.args, :((RQ1,RQ2,RQ3,RD1,RD2,RD3) = build_deriv_matrix_cachesim(refel, J)));
             push!(code.args, :((TRQ1,TRQ2,TRQ3) = (RQ1',RQ2',RQ3')));
             # push!(code.args, Expr(:(=), :R1matrix, :([diagm(J.rx) diagm(J.sx) diagm(J.tx)])));
             # push!(code.args, Expr(:(=), :Q1matrix, :([refel.Qr ; refel.Qs ; refel.Qt])));
@@ -146,9 +164,6 @@ function generate_code_layer_julia(symex, var, lorr)
     
     # If coefficients need to be computed, do so
     # # First remove duplicates
-    #println("coef-"*string(length(needed_coef))*": "*string(needed_coef));
-    #println("ind-"*string(length(needed_coef_ind))*": "*string(needed_coef_ind));
-    #println("der-"*string(length(needed_coef_deriv))*": "*string(needed_coef_deriv));
     unique_coef = [];
     unique_coef_ind = [];
     unique_coef_deriv = [];
@@ -160,7 +175,6 @@ function generate_code_layer_julia(symex, var, lorr)
             end
         end
         if !already
-            #println("coef: "*string(needed_coef[i])*" , ind: "*string(needed_coef_ind[i])*" , deriv: "*string(needed_coef_deriv[i]));
             push!(unique_coef, needed_coef[i]);
             push!(unique_coef_ind, needed_coef_ind[i]);
             push!(unique_coef_deriv, needed_coef_deriv[i]);
@@ -222,6 +236,9 @@ function generate_code_layer_julia(symex, var, lorr)
                     tmpb.args[1].args[1]= tmpn;
                     append!(tmpb.args, cargs);
                     push!(code.args, Expr(:(=), tmpc, :(zeros(refel.Np)))); # allocate coef_n
+                    cssymb = Symbol(tmps*"csa");
+                    push!(code.args, :($cssymb = add_cachesim_tmp_array())); # cachesim
+                    push!(code.args, :(cachesim_store_range($cssymb))); # cachesim
                     push!(cloopin.args, Expr(:(=), tmpv, tmpb)); # add it to the loop
                 elseif ctype == 3
                     # variable values -> coef_n = variable.values
@@ -233,6 +250,9 @@ function generate_code_layer_julia(symex, var, lorr)
                     end
                     
                     push!(code.args, Expr(:(=), tmpc, tmpb));
+                    cssymb = Symbol(tmps*"csa");
+                    push!(code.args, :($cssymb = add_cachesim_tmp_array())); # cachesim
+                    push!(code.args, :(cachesim_store_range($cssymb))); # cachesim
                 end
                 
             end# number?
@@ -299,112 +319,42 @@ function generate_code_layer_julia(symex, var, lorr)
     if dofsper > 1
         if lorr == RHS
             push!(code.args, Expr(:(=), :element_vector, :(zeros(refel.Np*$dofsper)))); # allocate vector
+            push!(code.args, :(cachesim_store_range(5))); # cachesim
         else
             push!(code.args, Expr(:(=), :element_matrix, :(zeros(refel.Np*$dofsper, refel.Np*$dofsper)))); # allocate matrix
+            push!(code.args, :(cachesim_store_range(4))); # cachesim
         end
     end
     
     result = nothing; # Will hold the returned expression
     if typeof(var) <: Array # multivar
         for vi=1:length(var)
-            # Add terms into full matrix according to testind/trialind
-            # Each component/dof should have one expression so that submatrix is only modified once.
-            if lorr == LHS
-                #comps = length(var.symvar.vals);
-                comps = dofsper;
-                submatrices = Array{Any,2}(undef, comps, comps);
-                for smi=1:length(submatrices)
-                    submatrices[smi] = nothing;
-                end
-                for i=1:length(terms[vi])
-                    ti = test_ind[vi][i][1] + offset_ind[vi];
-                    tj = trial_ind[vi][i][1];
-                    
-                    if submatrices[ti, tj] === nothing
-                        submatrices[ti, tj] = terms[vi][i];
-                    else
-                        addexpr = :(a+b);
-                        addexpr.args[2] = submatrices[ti, tj];
-                        addexpr.args[3] = terms[vi][i];
-                        submatrices[ti, tj] = addexpr;
-                    end
-                end
+            # add terms into full matrix according to testind/trialind
+            for i=1:length(terms[vi])
+                ti = test_ind[vi][i][1]-1 + offset_ind[vi];
+                tj = trial_ind[vi][i][1]-1;
                 
-                for cj=1:comps
-                    for ci=1:comps
-                        if !(submatrices[ci, cj] === nothing)
-                            ti = ci-1;
-                            tj = cj-1;
-                            sti = :($ti*refel.Np + 1);
-                            eni = :(($ti + 1)*refel.Np);
-                            stj = :($tj*refel.Np + 1);
-                            enj = :(($tj + 1)*refel.Np);
-                            
-                            push!(code.args, Expr(:(+=), :(element_matrix[$sti:$eni, $stj:$enj]), submatrices[ci, cj]));
-                        end
-                    end
+                sti = :($ti*refel.Np + 1);
+                eni = :(($ti + 1)*refel.Np);
+                stj = :($tj*refel.Np + 1);
+                enj = :(($tj + 1)*refel.Np);
+                
+                if lorr == LHS
+                    push!(code.args, Expr(:(+=), :(element_matrix[$sti:$eni, $stj:$enj]), terms[vi][i]));
+                    push!(code.args, :(cachesim_load_range(4, $sti:$eni, $stj:$enj))); # cachesim
+                    push!(code.args, :(cachesim_store_range(4, $sti:$eni, $stj:$enj))); # cachesim
+                else
+                    push!(code.args, Expr(:(+=), :(element_vector[$sti:$eni]), terms[vi][i]));
+                    push!(code.args, :(cachesim_load_range(5, $sti:$eni))); # cachesim
+                    push!(code.args, :(cachesim_store_range(5, $sti:$eni))); # cachesim
                 end
-                
-                result = :element_matrix;
-                
-            else #RHS
-                #comps = length(var.symvar.vals);
-                comps = dofsper;
-                submatrices = Array{Any,1}(undef, comps);
-                for smi=1:length(submatrices)
-                    submatrices[smi] = nothing;
-                end
-                for i=1:length(terms[vi])
-                    ti = test_ind[vi][i][1] + offset_ind[vi];
-                    
-                    if submatrices[ti] === nothing
-                        submatrices[ti] = terms[vi][i];
-                    else
-                        addexpr = :(a+b);
-                        addexpr.args[2] = submatrices[ti];
-                        addexpr.args[3] = terms[vi][i];
-                        submatrices[ti] = addexpr;
-                    end
-                end
-                
-                for ci=1:comps
-                    if !(submatrices[ci] === nothing)
-                        ti = ci-1;
-                        sti = :($ti*refel.Np + 1);
-                        eni = :(($ti + 1)*refel.Np);
-                        
-                        push!(code.args, Expr(:(+=), :(element_vector[$sti:$eni]), submatrices[ci]));
-                    end
-                end
-                
-                result = :element_vector;
-                
             end
         end
-        #     # add terms into full matrix according to testind/trialind
-        #     for i=1:length(terms[vi])
-        #         ti = test_ind[vi][i][1]-1 + offset_ind[vi];
-        #         tj = trial_ind[vi][i][1]-1;
-                
-        #         sti = :($ti*refel.Np + 1);
-        #         eni = :(($ti + 1)*refel.Np);
-        #         stj = :($tj*refel.Np + 1);
-        #         enj = :(($tj + 1)*refel.Np);
-        #         #submat = Symbol("element_matrix_"*string(var[vi].symbol));
-        #         #subvec = Symbol("element_vector_"*string(var[vi].symbol));
-                
-        #         if lorr == LHS
-        #             push!(code.args, Expr(:(+=), :(element_matrix[$sti:$eni, $stj:$enj]), terms[vi][i]));
-        #         else
-        #             push!(code.args, Expr(:(+=), :(element_vector[$sti:$eni]), terms[vi][i]));
-        #         end
-        #     end
-        # end
-        # if lorr == LHS
-        #     result = :element_matrix;
-        # else
-        #     result = :element_vector;
-        # end
+        if lorr == LHS
+            result = :element_matrix;
+        else
+            result = :element_vector;
+        end
     else
         if length(terms) > 1
             if var.type == SCALAR # Only one component
@@ -427,19 +377,18 @@ function generate_code_layer_julia(symex, var, lorr)
                         ti = test_ind[i][1];
                         tj = trial_ind[i][1];
                         
-                        if submatrices[ti, tj] === nothing
-                            submatrices[ti, tj] = terms[i];
+                        if submatrices[i][j] === nothing
+                            submatrices[i][j] = terms[i];
                         else
                             addexpr = :(a+b);
-                            addexpr.args[2] = submatrices[ti, tj];
+                            addexpr.args[2] = submatrices[i][j];
                             addexpr.args[3] = terms[i];
-                            submatrices[ti, tj] = addexpr;
                         end
                     end
                     
                     for cj=1:comps
                         for ci=1:comps
-                            if !(submatrices[ci, cj] === nothing)
+                            if !(submatrices[ci][cj] === nothing)
                                 ti = ci-1;
                                 tj = cj-1;
                                 sti = :($ti*refel.Np + 1);
@@ -447,7 +396,9 @@ function generate_code_layer_julia(symex, var, lorr)
                                 stj = :($tj*refel.Np + 1);
                                 enj = :(($tj + 1)*refel.Np);
                                 
-                                push!(code.args, Expr(:(+=), :(element_matrix[$sti:$eni, $stj:$enj]), submatrices[ci, cj]));
+                                push!(code.args, Expr(:(+=), :(element_matrix[$sti:$eni, $stj:$enj]), submatrices[ci][cj]));
+                                push!(code.args, :(cachesim_load_range(4, $sti:$eni, $stj:$enj))); # cachesim
+                                push!(code.args, :(cachesim_store_range(4, $sti:$eni, $stj:$enj))); # cachesim
                             end
                         end
                     end
@@ -463,13 +414,12 @@ function generate_code_layer_julia(symex, var, lorr)
                     for i=1:length(terms)
                         ti = test_ind[i][1];
                         
-                        if submatrices[ti] === nothing
-                            submatrices[ti] = terms[i];
+                        if submatrices[i] === nothing
+                            submatrices[i] = terms[i];
                         else
                             addexpr = :(a+b);
-                            addexpr.args[2] = submatrices[ti];
+                            addexpr.args[2] = submatrices[i];
                             addexpr.args[3] = terms[i];
-                            submatrices[ti] = addexpr;
                         end
                     end
                     
@@ -480,35 +430,14 @@ function generate_code_layer_julia(symex, var, lorr)
                             eni = :(($ti + 1)*refel.Np);
                             
                             push!(code.args, Expr(:(+=), :(element_vector[$sti:$eni]), submatrices[ci]));
+                            push!(code.args, :(cachesim_load_range(5, $sti:$eni))); # cachesim
+                            push!(code.args, :(cachesim_store_range(5, $sti:$eni))); # cachesim
                         end
                     end
                     
                     result = :element_vector;
                     
                 end
-                # # add terms into full matrix according to testind/trialind
-                # tmp = :(a+b);
-                # tmp.args = [:+];
-                # for i=1:length(terms)
-                #     ti = test_ind[i][1]-1;
-                #     tj = trial_ind[i][1]-1;
-                    
-                #     st = :($ti*refel.Np + 1);
-                #     en = :(($ti + 1)*refel.Np);
-                    
-                #     if lorr == LHS
-                #         push!(code.args, Expr(:(+=), :(element_matrix[$st:$en, $st:$en]), terms[i]));
-                #     else
-                #         push!(code.args, Expr(:(+=), :(element_vector[$st:$en]), terms[i]));
-                #     end
-                    
-                # end
-                # if lorr == LHS
-                #     result = :element_matrix;
-                # else
-                #     result = :element_vector;
-                # end
-                
             end
         else# one term (one variable)
             result = terms[1];
@@ -523,7 +452,7 @@ end
 
 # Changes the symbolic layer term into a code layer term
 # also records derivative and coefficient needs
-function process_term_julia(sterm, var, lorr, offset_ind=0)
+function process_term_cachesim(sterm, var, lorr, offset_ind=0)
     term = copy(sterm);
     need_derivative = false;
     needed_coef = [];
@@ -552,60 +481,43 @@ function process_term_julia(sterm, var, lorr, offset_ind=0)
     # Separate factors into test/trial/coefficient parts
     coef_facs = [];
     coef_inds = [];
-    coef_derivs = [];
-    coef_expr_facs = [];
     for i=1:length(factors)
         if typeof(factors[i]) <: Number
             push!(coef_facs, factors[i]);
             push!(coef_inds, -1);
-            push!(coef_derivs, [nothing, "", ""]);
             
         elseif typeof(factors[i]) == Expr && factors[i].head === :call
             # These should both be purely coefficient/known expressions. 
             if factors[i].args[1] === :./
                 # The second arg should be 1, the third should not contain an unknown or test symbol
                 # The denominator expression needs to be processed completely
-                (piece, nd, nc, nci, ncd) = process_known_expr_julia(factors[i].args[3]);
+                (piece, nd, nc, nci, ncd) = process_known_expr_cachesim(factors[i].args[3]);
                 need_derivative = need_derivative || nd;
                 append!(needed_coef, nc);
                 append!(needed_coef_ind, nci);
                 append!(needed_coef_deriv, ncd);
                 factors[i].args[3] = piece;
-                push!(coef_expr_facs, factors[i]);
-                #push!(coef_inds, 0);
+                push!(coef_facs, factors[i]);
+                push!(coef_inds, 0);
                 
             elseif factors[i].args[1] === :.^
                 # The second arg is the thing raised
-                (piece1, nd, nc, nci, ncd) = process_known_expr_julia(factors[i].args[2]);
+                (piece1, nd, nc, nci, ncd) = process_known_expr_cachesim(factors[i].args[2]);
                 need_derivative = need_derivative || nd;
                 append!(needed_coef, nc);
                 append!(needed_coef_ind, nci);
                 append!(needed_coef_deriv, ncd);
                 factors[i].args[2] = piece1;
                 # Do the same for the power just in case
-                (piece2, nd, nc, nci, ncd) = process_known_expr_julia(factors[i].args[3]);
+                (piece2, nd, nc, nci, ncd) = process_known_expr_cachesim(factors[i].args[3]);
                 need_derivative = need_derivative || nd;
                 append!(needed_coef, nc);
                 append!(needed_coef_ind, nci);
                 append!(needed_coef_deriv, ncd);
                 factors[i].args[3] = piece2;
                 
-                push!(coef_expr_facs, factors[i]);
-                #push!(coef_inds, 0);
-            elseif factors[i].args[1] === :sqrt
-                factors[i].args[1] = :.^
-                # The second arg is the thing sqrted
-                (piece1, nd, nc, nci, ncd) = process_known_expr_julia(factors[i].args[2]);
-                need_derivative = need_derivative || nd;
-                append!(needed_coef, nc);
-                append!(needed_coef_ind, nci);
-                append!(needed_coef_deriv, ncd);
-                factors[i].args[2] = piece1;
-                # add a 1/2 power argument
-                push!(factors[i].args, 1/2);
-                
-                push!(coef_expr_facs, factors[i]);
-                #push!(coef_inds, 0);
+                push!(coef_facs, factors[i]);
+                push!(coef_inds, 0);
             end
             
         else
@@ -672,22 +584,13 @@ function process_term_julia(sterm, var, lorr, offset_ind=0)
                     ind = index[1];
                 end
                 # Check for derivative mods
-                if typeof(v) == Symbol && !(v ===:dt)
-                    if length(mods) > 0
-                        need_derivative = true;
-                        
-                        push!(needed_coef_deriv, [v, mods[1], mods[1][2]]);
-                        
-                    else
-                        push!(needed_coef_deriv, [v, "", ""]);
-                    end
-                    push!(needed_coef, v);
-                    push!(needed_coef_ind, ind);
+                if length(mods) > 0 && typeof(v) == Symbol && !(v ===:dt)
+                    need_derivative = true;
                     
-                    push!(coef_derivs, needed_coef_deriv[end]);
+                    push!(needed_coef_deriv, [v, mods[1], mods[1][2]]);
                     
-                else
-                    push!(coef_derivs, [nothing, "", ""]);
+                elseif !(v ===:dt)
+                    push!(needed_coef_deriv, [v, "", ""]);
                 end
                 
                 push!(coef_facs, v);
@@ -708,6 +611,8 @@ function process_term_julia(sterm, var, lorr, offset_ind=0)
             tmp = coef_facs[j];
             #println("coef_facs: "*string(tmp)*" : "*string(typeof(tmp)));
             if typeof(tmp) == Symbol && !(tmp ===:dt)
+                push!(needed_coef, tmp);
+                push!(needed_coef_ind, coef_inds[j]);
                 ind = get_coef_index(coef_facs[j]);
                 if ind >= 0
                     tag = string(ind);
@@ -715,23 +620,12 @@ function process_term_julia(sterm, var, lorr, offset_ind=0)
                     tag = string(tmp);
                 end
                 #derivatives of coefficients
-                tag = coef_derivs[j][2] * tag;
+                tag = needed_coef_deriv[length(needed_coef)][2] * tag;
                 tmps = "coef_"*tag*"_"*string(coef_inds[j]);
                 tmp = Symbol(tmps);
                 
             end
             if j>1
-                coef_part = :($coef_part .* $tmp);
-            else
-                coef_part = tmp;
-            end
-        end
-    end
-    
-    if length(coef_expr_facs) > 0
-        for j=1:length(coef_expr_facs)
-            tmp = coef_expr_facs[j];
-            if !(coef_part === nothing)
                 coef_part = :($coef_part .* $tmp);
             else
                 coef_part = tmp;
@@ -756,12 +650,12 @@ function process_term_julia(sterm, var, lorr, offset_ind=0)
         else
             term = :($test_part * diagm($weight_part) * $trial_part);
         end
-        
-        if neg
-            negex = :(-a);
-            negex.args[2] = copy(term);
-            term = negex;
-        end
+    end
+    
+    if neg
+        negex = :(-a);
+        negex.args[2] = copy(term);
+        term = negex;
     end
     
     return (term, need_derivative, needed_coef, needed_coef_ind, needed_coef_deriv, test_component, trial_component);
@@ -770,7 +664,7 @@ end
 # Special processing for sub expressions of known things.(denominators, sqrt, etc.)
 # It should only contain knowns/coeficients, so just replace symbols (f -> coef_0_1)
 # And return the needed coefficient info
-function process_known_expr_julia(ex)
+function process_known_expr_cachesim(ex)
     need_derivative = false;
     needed_coef = [];
     needed_coef_ind = [];
@@ -834,7 +728,7 @@ function process_known_expr_julia(ex)
     elseif typeof(ex) == Expr
         newex = copy(ex);
         for i=1:length(ex.args)
-            (piece, nd, nc, nci, ncd) = process_known_expr_julia(ex.args[i]);
+            (piece, nd, nc, nci, ncd) = process_known_expr_cachesim(ex.args[i]);
             newex.args[i] = piece;
             need_derivative = need_derivative || nd;
             append!(needed_coef, nc);
@@ -868,7 +762,7 @@ function separate_terms(ex)
     return terms;
 end
 
-# Parses symengine terms into julia expressions
+# Parses symengine terms into cachesim expressions
 function terms_to_expr(symex)
     terms = [];
     sz = size(symex);
@@ -882,10 +776,6 @@ function terms_to_expr(symex)
         #TODO
         printerr("sorry. still need to implement code layer for tensors.")
     end
-    
-    # for i=1:length(terms)
-    #     convert_sqrt_to_power(terms[i]);
-    # end
     
     return terms;
 end
@@ -918,11 +808,6 @@ function separate_factors(ex)
             divex = :(1 ./ a);
             divex.args[3] = ex.args[3];
             push!(factors, divex);
-            
-        elseif ex.args[1] === :sqrt
-            ex.args[1] = :.^ ;
-            push!(ex.args, 0.5);
-            factors = [ex];
             
         elseif ex.args[1] === :- && length(ex.args) == 2
             # strip off negetive and place on first factor
@@ -1104,3 +989,4 @@ function extract_symbols(ex)
     
     return (index, var, mods);
 end
+
