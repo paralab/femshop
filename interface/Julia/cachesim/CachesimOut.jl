@@ -10,10 +10,7 @@ if use_lib
     using .Jpycachesim
     
 else
-    println("Not using the cachesim library. Change use_lib in CachesimOut.jl to use.");
-    println("Instead, writing access sequence to cachesim_output.out");
-    println("Analyze with cachesim_read.py");
-    output = open("cachesim/cachesim_output.out","w");
+    
 end
 
 addr_offset = 0;
@@ -95,7 +92,10 @@ function init_cachesimout(n, refel, dof, vars)
     if use_lib
         pcs_get_cachesim_from_file("cachesim/cachedef"); # Just to test things. Should be set later by user.
     else
-        
+        println("Not using the cachesim library. Change use_lib in CachesimOut.jl to use.");
+        println("Instead, writing access sequence to cachesim_output.out");
+        println("Analyze with cachesim_read.py");
+        output = open("cachesim/cachesim_output.out","w");
     end
     
 end
