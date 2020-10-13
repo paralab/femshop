@@ -1,19 +1,33 @@
 #=
 Use the symbolic layer expressions to generate the FEM code
 =#
-function generate_code_layer(ex, var, lorr)
-    if language == 0 || language == JULIA
-        return generate_code_layer_julia(ex, var, lorr);
-    elseif language == CPP
-        return generate_code_layer_dendro(ex, var, lorr);
-    elseif language == MATLAB
-        return generate_code_layer_homg(ex, var, lorr);
-    end
-end
 
 # External code gen in these similar files
 include("generate_code_layer_dendro.jl");
 include("generate_code_layer_homg.jl");
+include("generate_code_layer_cachesim.jl");
+
+function generate_code_layer(ex, var, lorr)
+    if use_cachesim
+        if language == 0 || language == JULIA
+            return generate_code_layer_cachesim(ex, var, lorr);
+        elseif language == CPP
+            printerr("Using cachesim. Not generating external code.")
+            return "";
+        elseif language == MATLAB
+            printerr("Using cachesim. Not generating external code.")
+            return "";
+        end
+    else
+        if language == 0 || language == JULIA
+            return generate_code_layer_julia(ex, var, lorr);
+        elseif language == CPP
+            return generate_code_layer_dendro(ex, var, lorr);
+        elseif language == MATLAB
+            return generate_code_layer_homg(ex, var, lorr);
+        end
+    end
+end
 
 # Julia and utils are in this file
 

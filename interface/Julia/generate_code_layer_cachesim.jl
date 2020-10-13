@@ -49,11 +49,13 @@ function generate_code_layer_cachesim(symex, var, lorr)
     if prob.time_dependent
         push!(code.args, :(dt = args[7])); # dt for time dependent problems
     end
-    push!(code.args, :((detJ, J) = geometric_factors_cachesim(refel, x)));
+    #push!(code.args, :((detJ, J) = geometric_factors(refel, x)));
     
-    push!(code.args, :(wgdetj = refel.wg .* detJ));
-    push!(code.args, :(cachesim_load_range(8))); # cachesim
-    push!(code.args, :(cachesim_load_range(9))); # cachesim
+    #push!(code.args, :(wgdetj = refel.wg .* detJ));
+    push!(code.args, :(Femshop.cachesim_store_range(13))); # cachesim
+    push!(code.args, :(Femshop.cachesim_store_range(14))); # cachesim
+    push!(code.args, :(Femshop.cachesim_store_range(15))); # cachesim
+    push!(code.args, :(Femshop.cachesim_store_range(16))); # cachesim
     
     need_derivative = false;
     needed_coef = [];
@@ -133,32 +135,31 @@ function generate_code_layer_cachesim(symex, var, lorr)
     
     # If derivatives are needed, prepare the appropriate matrices
     if need_derivative
+        push!(code.args, :(Femshop.cachesim_load_range(13))); # cachesim
+        push!(code.args, :(Femshop.cachesim_load_range(14))); # cachesim
+        push!(code.args, :(Femshop.cachesim_load_range(15))); # cachesim
+        push!(code.args, :(Femshop.cachesim_load_range(16))); # cachesim
         if config.dimension == 1
-            push!(code.args, :((RQ1,RD1) = build_deriv_matrix_cachesim(refel, J)));
-            push!(code.args, :(TRQ1 = RQ1'));
-            # push!(code.args, Expr(:(=), :Q1matrix, :(refel.Qr)));
-            # push!(code.args, Expr(:(=), :D1matrix, :(refel.Ddr)));
+            #push!(code.args, :((RQ1,RD1) = build_deriv_matrix(refel, J)));
+            #push!(code.args, :(TRQ1 = RQ1'));
+            push!(code.args, :(Femshop.cachesim_load_range(7))); # cachesim
+            push!(code.args, :(Femshop.cachesim_load_range(10))); # cachesim
         elseif config.dimension == 2
-            push!(code.args, :((RQ1,RQ2,RD1,RD2) = build_deriv_matrix_cachesim(refel, J)));
-            push!(code.args, :((TRQ1,TRQ2) = (RQ1',RQ2')));
-            # push!(code.args, Expr(:(=), :R1matrix, :([diagm(J.rx) diagm(J.sx)])));
-            # push!(code.args, Expr(:(=), :Q1matrix, :([refel.Qr ; refel.Qs])));
-            # push!(code.args, Expr(:(=), :D1matrix, :([refel.Ddr ; refel.Dds])));
-            # push!(code.args, Expr(:(=), :R2matrix, :([diagm(J.ry) diagm(J.sy)])));
-            # push!(code.args, Expr(:(=), :Q2matrix, :([refel.Qr ; refel.Qs])));
-            # push!(code.args, Expr(:(=), :D2matrix, :([refel.Ddr ; refel.Dds])));
+            # push!(code.args, :((RQ1,RQ2,RD1,RD2) = build_deriv_matrix(refel, J)));
+            # push!(code.args, :((TRQ1,TRQ2) = (RQ1',RQ2')));
+            push!(code.args, :(Femshop.cachesim_load_range(7))); # cachesim
+            push!(code.args, :(Femshop.cachesim_load_range(8))); # cachesim
+            push!(code.args, :(Femshop.cachesim_load_range(10))); # cachesim
+            push!(code.args, :(Femshop.cachesim_load_range(11))); # cachesim
         elseif config.dimension == 3
-            push!(code.args, :((RQ1,RQ2,RQ3,RD1,RD2,RD3) = build_deriv_matrix_cachesim(refel, J)));
-            push!(code.args, :((TRQ1,TRQ2,TRQ3) = (RQ1',RQ2',RQ3')));
-            # push!(code.args, Expr(:(=), :R1matrix, :([diagm(J.rx) diagm(J.sx) diagm(J.tx)])));
-            # push!(code.args, Expr(:(=), :Q1matrix, :([refel.Qr ; refel.Qs ; refel.Qt])));
-            # push!(code.args, Expr(:(=), :D1matrix, :([refel.Ddr ; refel.Dds ; refel.Ddt])));
-            # push!(code.args, Expr(:(=), :R2matrix, :([diagm(J.ry) diagm(J.sy) diagm(J.ty)])));
-            # push!(code.args, Expr(:(=), :Q2matrix, :([refel.Qr ; refel.Qs ; refel.Qt])));
-            # push!(code.args, Expr(:(=), :D2matrix, :([refel.Ddr ; refel.Dds ; refel.Ddt])));
-            # push!(code.args, Expr(:(=), :R3matrix, :([diagm(J.rz) diagm(J.sz) diagm(J.tz)])));
-            # push!(code.args, Expr(:(=), :Q3matrix, :([refel.Qr ; refel.Qs ; refel.Qt])));
-            # push!(code.args, Expr(:(=), :D3matrix, :([refel.Ddr ; refel.Dds ; refel.Ddt])));
+            # push!(code.args, :((RQ1,RQ2,RQ3,RD1,RD2,RD3) = build_deriv_matrix(refel, J)));
+            # push!(code.args, :((TRQ1,TRQ2,TRQ3) = (RQ1',RQ2',RQ3')));
+            push!(code.args, :(Femshop.cachesim_load_range(7))); # cachesim
+            push!(code.args, :(Femshop.cachesim_load_range(8))); # cachesim
+            push!(code.args, :(Femshop.cachesim_load_range(9))); # cachesim
+            push!(code.args, :(Femshop.cachesim_load_range(10))); # cachesim
+            push!(code.args, :(Femshop.cachesim_load_range(11))); # cachesim
+            push!(code.args, :(Femshop.cachesim_load_range(12))); # cachesim
         end
     end
     
@@ -235,24 +236,24 @@ function generate_code_layer_cachesim(symex, var, lorr)
                     tmpb = :(a.func());
                     tmpb.args[1].args[1]= tmpn;
                     append!(tmpb.args, cargs);
-                    push!(code.args, Expr(:(=), tmpc, :(zeros(refel.Np)))); # allocate coef_n
+                    #push!(code.args, Expr(:(=), tmpc, :(zeros(refel.Np)))); # allocate coef_n
                     cssymb = Symbol(tmps*"csa");
-                    push!(code.args, :($cssymb = add_cachesim_tmp_array())); # cachesim
-                    push!(code.args, :(cachesim_store_range($cssymb))); # cachesim
+                    push!(code.args, :($cssymb = Femshop.add_cachesim_tmp_array())); # cachesim
+                    push!(code.args, :(Femshop.cachesim_store_range($cssymb))); # cachesim
                     push!(cloopin.args, Expr(:(=), tmpv, tmpb)); # add it to the loop
                 elseif ctype == 3
                     # variable values -> coef_n = variable.values
+                    csarrayind = 17+cval;
                     if variables[cval].type == SCALAR
                         tmpb = :(copy(Femshop.variables[$cval].values[gbl])); 
+                        push!(code.args, :(Femshop.cachesim_load_range($csarrayind, gbl))); # cachesim
                     else
                         compo = needed_coef_ind[i];
                         tmpb = :(copy(Femshop.variables[$cval].values[gbl, $compo]));
+                        push!(code.args, :(Femshop.cachesim_load_range($csarrayind, gbl, [$compo]))); # cachesim
                     end
                     
-                    push!(code.args, Expr(:(=), tmpc, tmpb));
-                    cssymb = Symbol(tmps*"csa");
-                    push!(code.args, :($cssymb = add_cachesim_tmp_array())); # cachesim
-                    push!(code.args, :(cachesim_store_range($cssymb))); # cachesim
+                    #push!(code.args, Expr(:(=), tmpc, tmpb));
                 end
                 
             end# number?
@@ -261,7 +262,7 @@ function generate_code_layer_cachesim(symex, var, lorr)
         # Write the loop that computes coefficient values
         if length(cloopin.args) > 0
             cloop.args[2] = cloopin;
-            push!(code.args, cloop); # add loop to code
+            #push!(code.args, cloop); # add loop to code
         end
         
         # Apply derivatives after the initializing loop
@@ -286,7 +287,7 @@ function generate_code_layer_cachesim(symex, var, lorr)
                 #dmatq = Symbol("D"*needed_coef_deriv[i][3]*"matrix");
                 #tmpb= :(length($tmpc) == 1 ? 0 : $dmatr * $dmatq * $tmpc);
                 
-                push!(code.args, Expr(:(=), tmpc, tmpb));
+                #push!(code.args, Expr(:(=), tmpc, tmpb));
             else
                 # derivatives of constant coefficients should be zero
                 # TODO
@@ -318,11 +319,11 @@ function generate_code_layer_cachesim(symex, var, lorr)
     
     if dofsper > 1
         if lorr == RHS
-            push!(code.args, Expr(:(=), :element_vector, :(zeros(refel.Np*$dofsper)))); # allocate vector
-            push!(code.args, :(cachesim_store_range(5))); # cachesim
+            #push!(code.args, Expr(:(=), :element_vector, :(zeros(refel.Np*$dofsper)))); # allocate vector
+            push!(code.args, :(Femshop.cachesim_store_range(5))); # cachesim
         else
-            push!(code.args, Expr(:(=), :element_matrix, :(zeros(refel.Np*$dofsper, refel.Np*$dofsper)))); # allocate matrix
-            push!(code.args, :(cachesim_store_range(4))); # cachesim
+            #push!(code.args, Expr(:(=), :element_matrix, :(zeros(refel.Np*$dofsper, refel.Np*$dofsper)))); # allocate matrix
+            push!(code.args, :(Femshop.cachesim_store_range(4))); # cachesim
         end
     end
     
@@ -340,13 +341,13 @@ function generate_code_layer_cachesim(symex, var, lorr)
                 enj = :(($tj + 1)*refel.Np);
                 
                 if lorr == LHS
-                    push!(code.args, Expr(:(+=), :(element_matrix[$sti:$eni, $stj:$enj]), terms[vi][i]));
-                    push!(code.args, :(cachesim_load_range(4, $sti:$eni, $stj:$enj))); # cachesim
-                    push!(code.args, :(cachesim_store_range(4, $sti:$eni, $stj:$enj))); # cachesim
+                    #push!(code.args, Expr(:(+=), :(element_matrix[$sti:$eni, $stj:$enj]), terms[vi][i]));
+                    #push!(code.args, :(Femshop.cachesim_load_range(4, $sti:$eni, $stj:$enj))); # cachesim
+                    #push!(code.args, :(Femshop.cachesim_store_range(4, $sti:$eni, $stj:$enj))); # cachesim
                 else
-                    push!(code.args, Expr(:(+=), :(element_vector[$sti:$eni]), terms[vi][i]));
-                    push!(code.args, :(cachesim_load_range(5, $sti:$eni))); # cachesim
-                    push!(code.args, :(cachesim_store_range(5, $sti:$eni))); # cachesim
+                    #push!(code.args, Expr(:(+=), :(element_vector[$sti:$eni]), terms[vi][i]));
+                    #push!(code.args, :(Femshop.cachesim_load_range(5, $sti:$eni))); # cachesim
+                    #push!(code.args, :(Femshop.cachesim_store_range(5, $sti:$eni))); # cachesim
                 end
             end
         end
@@ -396,9 +397,9 @@ function generate_code_layer_cachesim(symex, var, lorr)
                                 stj = :($tj*refel.Np + 1);
                                 enj = :(($tj + 1)*refel.Np);
                                 
-                                push!(code.args, Expr(:(+=), :(element_matrix[$sti:$eni, $stj:$enj]), submatrices[ci][cj]));
-                                push!(code.args, :(cachesim_load_range(4, $sti:$eni, $stj:$enj))); # cachesim
-                                push!(code.args, :(cachesim_store_range(4, $sti:$eni, $stj:$enj))); # cachesim
+                                #push!(code.args, Expr(:(+=), :(element_matrix[$sti:$eni, $stj:$enj]), submatrices[ci][cj]));
+                                push!(code.args, :(Femshop.cachesim_load_range(4, $sti:$eni, $stj:$enj))); # cachesim
+                                push!(code.args, :(Femshop.cachesim_store_range(4, $sti:$eni, $stj:$enj))); # cachesim
                             end
                         end
                     end
@@ -429,9 +430,9 @@ function generate_code_layer_cachesim(symex, var, lorr)
                             sti = :($ti*refel.Np + 1);
                             eni = :(($ti + 1)*refel.Np);
                             
-                            push!(code.args, Expr(:(+=), :(element_vector[$sti:$eni]), submatrices[ci]));
-                            push!(code.args, :(cachesim_load_range(5, $sti:$eni))); # cachesim
-                            push!(code.args, :(cachesim_store_range(5, $sti:$eni))); # cachesim
+                            #push!(code.args, Expr(:(+=), :(element_vector[$sti:$eni]), submatrices[ci]));
+                            push!(code.args, :(Femshop.cachesim_load_range(5, $sti:$eni))); # cachesim
+                            push!(code.args, :(Femshop.cachesim_store_range(5, $sti:$eni))); # cachesim
                         end
                     end
                     
@@ -444,8 +445,10 @@ function generate_code_layer_cachesim(symex, var, lorr)
         end
     end
     
+    push!(code.args, :(Femshop.remove_all_tmp_arrays()));
     
     # At this point everything is packed into terms[1]
+    result = 0;
     push!(code.args, Expr(:return, result));
     return code;
 end

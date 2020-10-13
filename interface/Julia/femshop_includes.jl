@@ -42,7 +42,7 @@ include("time_steppers.jl");
 #include("nonlinear.jl");
 
 # Femshop submodules
-include("CachesimOut.jl");
+include("cachesim/CachesimOut.jl");
 using .CachesimOut
 include("SymbolicParser.jl")
 using .SymbolicParser
