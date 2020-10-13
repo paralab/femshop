@@ -4,7 +4,7 @@ export init_cachesimout, take_available_addr_range, add_cachesim_array, add_cach
         cachesim_load_range, cachesim_store_range, cachesim_load, cachesim_store, build_cache_level, build_cache
 export CachesimArray
 
-use_lib = false;
+use_lib = true;
 if use_lib
     include("Jpycachesim.jl");
     using .Jpycachesim
