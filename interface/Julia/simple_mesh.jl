@@ -24,6 +24,7 @@ function simple_line_mesh(nx, bn, interval)
         bids = [1]; # for one BID
     end
     loc2glb = zeros(Int, nel,Np)# local to global index map for each element's nodes
+    glbvertex = zeros(Int, nel,2);# local to global for vertices
     scale = interval[2]-interval[1];
     h = scale/(nx-1);               # uniformly divided
 
@@ -35,6 +36,9 @@ function simple_line_mesh(nx, bn, interval)
     # Elements are ordered the same way
     for ei=1:(nx-1)
         x1 = interval[1] + (ei-1)*h; # left vertex
+        glbvertex[ei,1] = (ei-1)*(Np-1) + 1;
+        glbvertex[ei,2] = ei*(Np-1) + 1;
+        
         for ni=1:Np-1
             gi = (ei-1)*(Np-1) + ni; # global index of this node
             x[gi,1] = x1 .+ h*0.5 .* (refel.r[ni] + 1); # coordinates of this node
@@ -70,7 +74,7 @@ function simple_line_mesh(nx, bn, interval)
     end
 
     mesh = MeshData(Nv, xv, ind, nel, el, ones(nel), 2*ones(nel)); # MeshData struct
-    grid = Grid(x, bdry, bdryel, bdrynorm, bids, loc2glb);
+    grid = Grid(x, bdry, bdryel, bdrynorm, bids, loc2glb, glbvertex);
 
     return (mesh, refel, grid);
 end
@@ -104,6 +108,7 @@ function simple_quad_mesh(nx, bn, interval)
     end
 
     loc2glb = zeros(Int, nel,Np)# local to global index map for each element's nodes
+    glbvertex = zeros(Int, nel,4);# local to global for vertices
     
     scale = interval[2]-interval[1];
     h = scale/(nx-1); # uniformly divided
@@ -123,6 +128,11 @@ function simple_quad_mesh(nx, bn, interval)
     for j=1:(nx-1)
         for i=1:(nx-1)
             ei = i + (j-1)*(nx-1); # element index
+            glbvertex[ei,1] = ((j-1)*(n1d-1))*rowsize + (i-1)*(n1d-1) + 1;
+            glbvertex[ei,2] = ((j-1)*(n1d-1))*rowsize + i*(n1d-1) + 1;
+            glbvertex[ei,3] = (j*(n1d-1))*rowsize + (i-1)*(n1d-1) + 1;
+            glbvertex[ei,4] = (j*(n1d-1))*rowsize + i*(n1d-1) + 1;
+            
             x1 = [interval[1] + (i-1)*h ; interval[1] + (j-1)*h]; # southwest corner
             for jj=1:n1d-1
                 row = (j-1)*(n1d-1) + jj;
@@ -297,7 +307,7 @@ function simple_quad_mesh(nx, bn, interval)
 
 
     mesh = MeshData(Nv, xv, ind, nel, el, 3*ones(nel), 4*ones(nel)); # MeshData struct
-    grid = Grid(x, bdry, bdryel, bdrynorm, bids, loc2glb);
+    grid = Grid(x, bdry, bdryel, bdrynorm, bids, loc2glb, glbvertex);
 
     return (mesh, refel, grid);
 end
@@ -325,6 +335,7 @@ function simple_hex_mesh(nx, bn, interval)
         push!(bids,i);
     end
     loc2glb = zeros(Int, nel, Np)# local to global index map for each element's nodes
+    glbvertex = zeros(Int, nel,8);# local to global for vertices
     
     scale = interval[2]-interval[1];
     h = 1/(nx-1); # uniformly divided
@@ -359,6 +370,15 @@ function simple_hex_mesh(nx, bn, interval)
         for j=1:(nx-1) # element indices
             for i=1:(nx-1)
                 ei = i + (j-1)*(nx-1) + (k-1)*(nx-1)*(nx-1); # element index
+                glbvertex[ei,1] = (k-1)*(n1d-1)*slicesize + (j-1)*(n1d-1)*rowsize + (i-1)*(n1d-1) + 1;
+                glbvertex[ei,2] = (k-1)*(n1d-1)*slicesize + (j-1)*(n1d-1)*rowsize + (i)*(n1d-1) + 1;
+                glbvertex[ei,3] = (k-1)*(n1d-1)*slicesize + (j)*(n1d-1)*rowsize + (i-1)*(n1d-1) + 1;
+                glbvertex[ei,4] = (k-1)*(n1d-1)*slicesize + (j)*(n1d-1)*rowsize + (i)*(n1d-1) + 1;
+                glbvertex[ei,5] = (k)*(n1d-1)*slicesize + (j-1)*(n1d-1)*rowsize + (i-1)*(n1d-1) + 1;
+                glbvertex[ei,6] = (k)*(n1d-1)*slicesize + (j-1)*(n1d-1)*rowsize + (i)*(n1d-1) + 1;
+                glbvertex[ei,7] = (k)*(n1d-1)*slicesize + (j)*(n1d-1)*rowsize + (i-1)*(n1d-1) + 1;
+                glbvertex[ei,8] = (k)*(n1d-1)*slicesize + (j)*(n1d-1)*rowsize + (i)*(n1d-1) + 1;
+                
                 for kk=1:n1d-1
                     slice = (k-1)*(n1d-1) + kk;
                     for jj=1:n1d-1 # elemental node indices
@@ -784,7 +804,7 @@ function simple_hex_mesh(nx, bn, interval)
     end
 
     mesh = MeshData(Nv, xv, indexorder, nel, el, 5*ones(nel), 8*ones(nel)); # MeshData struct
-    grid = Grid(x, bdry, bdryel, bdrynorm, bids, loc2glb);
+    grid = Grid(x, bdry, bdryel, bdrynorm, bids, loc2glb, glbvertex);
 
     return (mesh, refel, grid);
 end

@@ -82,21 +82,21 @@ function assemble_cachesim(var, bilinear, linear, t=0.0, dt=0.0)
     A = 0;
     
     allnodes_id = add_cachesim_array(size(grid_data.allnodes),8);
-    vertexnodes_id = add_cachesim_array(size(mesh_data.nodes),8);
     
     # The elemental assembly loop
     for e=1:nel
-        nv = mesh_data.nv[e];
-        gis = zeros(Int, nv);
-        for vi=1:nv
-            gis[vi] = mesh_data.invind[mesh_data.elements[e,vi]]; # mesh indices of element's vertices
-        end
-
-        vx = mesh_data.nodes[gis,:];        # coordinates of element's vertices
+        # nv = mesh_data.nv[e];
+        # gis = zeros(Int, nv);
+        # for vi=1:nv
+        #     gis[vi] = mesh_data.invind[mesh_data.elements[e,vi]]; # mesh indices of element's vertices
+        # end
+        # vx = mesh_data.nodes[gis,:];        # coordinates of element's vertices
+        
+        gis = grid_data.glbvertex[e,:];
+        vx = grid_data.allnodes[gis,:];         # coordinates of element's vertices
         glb = grid_data.loc2glb[e,:];                 # global indices of this element's nodes for extracting values from var arrays
         xe = grid_data.allnodes[glb[:],:];  # coordinates of this element's nodes for evaluating coefficient functions
-        cachesim_load_range(vertexnodes_id, gis, 1:refel.dim);
-        cachesim_load_range(allnodes_id, 1:refel.dim, glb[:]);
+        cachesim_load_range(allnodes_id, glb[:], 1:refel.dim);
         
         
         # The linear part. Compute the elemental linear part for each dof

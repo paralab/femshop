@@ -1,32 +1,74 @@
 # Apply boundary conditions to the system
 
+# This is just to speed things up (huge improvement)
+function is_in_rows(k, rows)
+    # rows are sorted
+    b = 1;
+    e = length(rows);
+    c = Int(round((e+1)/2));
+    while e-b > 1
+        if k == rows[c]
+            return true;
+        elseif k > rows[c]
+            b=c;
+        else
+            e=c;
+        end
+        c = Int(round((b+e)/2));
+    end
+    return k==rows[b] || k==rows[e];
+end
+
 # zeros the rows and puts a 1 on the diagonal
 function identity_rows(A, rows, N)
     if issparse(A)
         (I, J, V) = findnz(A);
+        eN = length(I);
+        newI = zeros(Int,eN);
+        newJ = zeros(Int,eN);
+        newV = zeros(eN);
+        newind = 0;
         (M,N) = size(A);
-        topush = [];
-        for i=1:length(rows)
-            ind = rows[i];
-            gotit = false;
-            for k in 1:length(I)
-                if I[k] == ind
-                    if J[k] == ind
-                        V[k] = 1;
-                        gotit = true;
-                    else
-                        V[k] = 0;
-                    end
-                end
-            end
-            if !gotit
-                push!(topush, ind);
+        
+        sort!(rows);
+        # Remove bdry row elements
+        for k in 1:length(I)
+            isbdry = is_in_rows(I[k], rows);
+            if !isbdry
+                newind = newind+1;
+                newI[newind] = I[k];
+                newJ[newind] = J[k];
+                newV[newind] = V[k];
             end
         end
-        append!(I, topush);
-        append!(J, topush);
-        append!(V, ones(length(topush)));
-        return sparse(I,J,V, M,N);
+        
+        # Add diogonal 1s
+        rn = length(rows);
+        if newind + rn <= eN
+            for i=1:rn
+                newind = newind+1;
+                newI[newind] = rows[i];
+                newJ[newind] = rows[i];
+                newV[newind] = 1.0;
+            end
+            newI = newI[1:newind];
+            newJ = newJ[1:newind];
+            newV = newV[1:newind];
+        else
+            toadd = rn - (eN-newind);
+            for i=1:(eN-newind)
+                newind = newind+1;
+                newI[newind] = rows[i];
+                newJ[newind] = rows[i];
+                newV[newind] = 1.0;
+            end
+            append!(newI, rows[toadd:rn]);
+            append!(newJ, rows[toadd:rn]);
+            append!(newV, ones(toadd));
+        end
+        
+        return sparse(newI,newJ,newV, M,N);
+        
     else
         for i=1:length(rows)
             A[rows[i],:] = zeros(N);
