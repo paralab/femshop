@@ -409,8 +409,8 @@ function insert_bilinear!(AI, AJ, AV, Astart, ael, glb, dof, Ndofs)
             
             #a[indi, indj] = a[indi, indj] + ael[indi2, indj2];
             
-            for jj=1:NP
-                offset = Astart + (jj-1 + Np*(dj-1))*NP*Ndofs + Np*(di-1);
+            for jj=1:Np
+                offset = Astart + (jj-1 + Np*(dj-1))*Np*Ndofs + Np*(di-1) - 1;
                 for ii=1:Np
                     AI[offset + ii] = indi[ii];
                     AJ[offset + ii] = indj[jj];
