@@ -58,15 +58,21 @@ T = 1
 
 
 # Write the weak form
-@coefficient(f, "x^(-4)")
-@coefficient(ts, "0.01")
-@coefficient(h, "0.03125")
-@coefficient(mu, "0.01")
-# tauM = (1.0/sqrt(4.0/dt^2+sqrt(u^2+v^2)/h^2+36*0.01^2/h^4))
-# tauC = (h^2*sqrt(4.0/dt^2+sqrt(u^2+v^2)/h^2+36*0.01^2/h^4))
-@weakForm(du, "w*(Dt(du) + (u*deriv(du,1)+v*deriv(du,2))) - deriv(w,1)*dp + mu*dot(grad(w), grad(du)) + (f^2)*(u*deriv(w,1)+v*deriv(w,2))*(Dt(du) + (u*deriv(du,1)+v*deriv(du,2)) + deriv(dp,1))")
+@coefficient(mu, 0.01)
+@coefficient(dt, 0.01)
+@coefficient(h, 1.0/32)
+@coefficient(coe1, 4.0)
+@coefficient(coe2, 36.0)
 
-solve([du], [u, v, p], nonlinear=true);
+@parameter(tauM, "1.0 ./ sqrt(4.0 ./ dt ./ dt+sqrt(u*u+v*v) ./ h ./ h+36*mu*mu ./ h ./ h ./ h ./ h)")
+@parameter(tauC, "h*h*sqrt(4.0 ./ dt ./ dt+sqrt(u*u+v*v) ./ h ./ h+36*mu*mu ./ h ./ h ./ h ./ h)")
+#@parameter(tauC, "(h.^2./tauM")
+
+@weakForm([du, dv], ["w*Dt(du)", "w*Dt(dv)"])
+
+#@weakForm([du, dv, dp], ["w*(Dt(du) + (u*deriv(du,1)+v*deriv(du,2))) - deriv(w,1)*dp + mu*dot(grad(w), grad(du)) + tauM*(u*deriv(w,1)+v*deriv(w,2))*(Dt(du) + (u*deriv(du,1)+v*deriv(du,2)) + deriv(dp,1)) - (w*(Dt(u) + (u*deriv(u,1)+v*deriv(u,2))) - deriv(w,1)*p + mu*dot(grad(w), grad(u)) + tauM*(u*deriv(w,1)+v*deriv(w,2))*(Dt(u) + (u*deriv(u,1)+v*deriv(u,2)) + deriv(p,1)))", "w*(Dt(dv) + (u*deriv(dv,1)+v*deriv(dv,2))) - deriv(w,2)*dp + mu*dot(grad(w), grad(dv)) + tauM*(u*deriv(w,1)+v*deriv(w,2))*( Dt(dv) + (u*deriv(dv,1)+v*deriv(dv,2)) + deriv(dp,2) ) - (w*(Dt(v) + (u*deriv(v,1)+v*deriv(v,2))) - deriv(w,2)*p + mu*dot(grad(w), grad(v)) + tauM*(u*deriv(w,1)+v*deriv(w,2))*( Dt(v) + (u*deriv(v,1)+v*deriv(v,2)) + deriv(p,2) ))", "w*(deriv(du,1)+deriv(dv,2)) + tauC*(deriv(w,1)*( Dt(du) + (u*deriv(du,1)+v*deriv(du,2)) + deriv(dp,1) ) + deriv(w,2)*( Dt(dv) + (u*deriv(dv,1)+v*deriv(dv,2)) + deriv(dp,v) )) - (w*(deriv(u,1)+deriv(v,2)) + tauC*(deriv(w,1)*( Dt(u) + (u*deriv(u,1)+v*deriv(u,2)) + deriv(p,1) ) + deriv(w,2)*( Dt(v) + (u*deriv(v,1)+v*deriv(v,2)) + deriv(p,v) )))"])
+
+solve([du, dv], [u, v], nonlinear=true);
 
 #analytical
 #=
