@@ -22,7 +22,7 @@ function linear_solve_cachesim(var, bilinear, linear, stepper=nothing)
         # one variable
         dofs_per_node = length(var.symvar.vals);
     end
-    init_cachesimout(N1, refel, dofs_per_node, variables);
+    init_cachesimout(N1, refel, mesh_data.nel, dofs_per_node, variables);
     
     if prob.time_dependent && !(stepper === nothing)
         #TODO time dependent coefficients
@@ -80,24 +80,22 @@ function assemble_cachesim(var, bilinear, linear, t=0.0, dt=0.0)
     
     b = 0;
     A = 0;
+    AI = 0;
+    AJ = 0;
+    AV = 0;
     
     allnodes_id = add_cachesim_array(size(grid_data.allnodes),8);
     
-    # The elemental assembly loop
-    for e=1:nel
-        # nv = mesh_data.nv[e];
-        # gis = zeros(Int, nv);
-        # for vi=1:nv
-        #     gis[vi] = mesh_data.invind[mesh_data.elements[e,vi]]; # mesh indices of element's vertices
-        # end
-        # vx = mesh_data.nodes[gis,:];        # coordinates of element's vertices
-        
+    #  Elemental loop follows elemental ordering
+    for e=elemental_order;
         gis = grid_data.glbvertex[e,:];
         vx = grid_data.allnodes[gis,:];         # coordinates of element's vertices
         glb = grid_data.loc2glb[e,:];                 # global indices of this element's nodes for extracting values from var arrays
         xe = grid_data.allnodes[glb[:],:];  # coordinates of this element's nodes for evaluating coefficient functions
+        cachesim_load_range(allnodes_id, gis[:], 1:refel.dim);
         cachesim_load_range(allnodes_id, glb[:], 1:refel.dim);
         
+        Astart = (e-1)*Np*dofs_per_node*Np*dofs_per_node + 1; # The segment of AI, AJ, AV for this element
         
         # The linear part. Compute the elemental linear part for each dof
         rhsargs = (var, xe, glb, refel, RHS, t, dt);
@@ -111,9 +109,10 @@ function assemble_cachesim(var, bilinear, linear, t=0.0, dt=0.0)
 
             bilinchunk = bilinear.func(lhsargs); # the elemental bilinear part
             #A[glb, glb] .+= bilinchunk;         # This will be very inefficient for sparse A
-            cachesim_load_range(1, glb, glb);
+            Arange = Astart:(Astart + Np*Np*dofs_per_node*dofs_per_node);
+            cachesim_load_range(1, Arange, 1:3);
             cachesim_load_range(4);
-            cachesim_store_range(1, glb, glb);
+            cachesim_store_range(1, Arange, 1:3);
             
         elseif typeof(var) == Variable
             # only one variable, but more than one dof
@@ -121,15 +120,17 @@ function assemble_cachesim(var, bilinear, linear, t=0.0, dt=0.0)
             insert_linear_cachesim!(b, linchunk, glb, 1:dofs_per_node, dofs_per_node);
 
             bilinchunk = bilinear.func(lhsargs);
-            insert_bilinear_cachesim!(A, bilinchunk, glb, 1:dofs_per_node, dofs_per_node);
+            insert_bilinear_cachesim!(AI, AJ, AV, Astart, bilinchunk, glb, 1:dofs_per_node, dofs_per_node);
         else
             linchunk = linear.func(rhsargs);
             insert_linear_cachesim!(b, linchunk, glb, 1:dofs_per_node, dofs_per_node);
 
             bilinchunk = bilinear.func(lhsargs);
-            insert_bilinear_cachesim!(A, bilinchunk, glb, 1:dofs_per_node, dofs_per_node);
+            insert_bilinear_cachesim!(AI, AJ, AV, Astart, bilinchunk, glb, 1:dofs_per_node, dofs_per_node);
         end
     end
+    
+    cachesim_load_range(1);
     
     # Boundary conditions are not considered
 
@@ -200,19 +201,24 @@ function insert_linear_cachesim!(b, bel, glb, dof, Ndofs)
     end
 end
 
-function insert_bilinear_cachesim!(a, ael, glb, dof, Ndofs)
+function insert_bilinear_cachesim!(AI, AJ, AV, Astart, ael, glb, dof, Ndofs)
+    Np = length(glb);
     # group nodal dofs
-    for di=1:length(dof)
-        indi = glb.*Ndofs .- (Ndofs-dof[di]);
-        indi2 = ((di-1)*length(glb)+1):(di*length(glb));
-        for dj=1:length(dof)
-            indj = glb.*Ndofs .- (Ndofs-dof[dj]);
-            indj2 = ((dj-1)*length(glb)+1):(dj*length(glb));
-
-            #a[indi, indj] = a[indi, indj] + ael[indi2, indj2];
-            cachesim_load_range(1,indi, indj);
-            cachesim_load_range(4,indi2, indj2);
-            cachesim_store_range(1,indi, indj);
+    for dj=1:length(dof)
+        indj = glb.*Ndofs .- (Ndofs-dof[dj]);
+        indj2 = ((dj-1)*Np+1):(dj*Np);
+        for di=1:length(dof)
+            indi = glb.*Ndofs .- (Ndofs-dof[di]);
+            indi2 = ((di-1)*Np+1):(di*Np);
+            
+            for jj=1:Np
+                offset = Astart + (jj-1 + Np*(dj-1))*Np*Ndofs + Np*(di-1) - 1;
+                Arange = (offset+1):(offset + Np);
+                cachesim_load_range(1, Arange, 1:3);
+                cachesim_load_range(4, indi2, indj2);
+                cachesim_store_range(1, Arange, 1:3);
+            end
         end
     end
+    
 end

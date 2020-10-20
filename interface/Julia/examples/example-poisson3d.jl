@@ -1,7 +1,5 @@
 #=
-# 1D Poisson, Dirichlet bc
-# CG, Linear element
-# Simplest test possible
+# 3D Poisson, Dirichlet bc
 =#
 if !@isdefined(Femshop)
     include("../Femshop.jl");
