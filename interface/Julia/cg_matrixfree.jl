@@ -194,13 +194,15 @@ function elem_matvec(x, bilinear, dofs_per_node, var, t = 0.0, dt = 0.0)
     
     Ax = zeros(size(x));
     for e=1:nel
-        nv = mesh_data.nv[e];
-        gis = zeros(Int, nv);
-        for vi=1:nv
-            gis[vi] = mesh_data.invind[mesh_data.elements[e,vi]]; # mesh indices of element's vertices
-        end
+        # nv = mesh_data.nv[e];
+        # gis = zeros(Int, nv);
+        # for vi=1:nv
+        #     gis[vi] = mesh_data.invind[mesh_data.elements[e,vi]]; # mesh indices of element's vertices
+        # end
+        # vx = mesh_data.nodes[gis,:];        # coordinates of element's vertices
         
-        vx = mesh_data.nodes[gis,:];        # coordinates of element's vertices
+        gis = grid_data.glbvertex[e,:];
+        vx = grid_data.allnodes[gis,:];         # coordinates of element's vertices
         glb = grid_data.loc2glb[e,:];                 # global indices of this element's nodes for extracting values from var arrays
         xe = grid_data.allnodes[glb[:],:];  # coordinates of this element's nodes for evaluating coefficient functions
         

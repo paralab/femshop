@@ -31,7 +31,7 @@ function eval_res(nl, formfunc)
 end
 
 function newton(nl,formjac, formfunc, nlvar)
-	debug = false;
+	debug = true;
 	eval_res(nl, formfunc);
 	init_res = norm(nl.res);
 	if (init_res < nl.atol)

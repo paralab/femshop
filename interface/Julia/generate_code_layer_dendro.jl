@@ -30,20 +30,7 @@ function generate_code_layer_dendro(symex, var, lorr)
         #TODO
     end
     
-    
-    
     # Process the terms turning them into the code layer
-    # cindex = 0;
-    # for i=1:length(terms)
-    #     (codeterm, der, coe) = process_term_dendro(terms[i], cindex, length(terms), i, var, lorr);
-    #     need_derivative = need_derivative || der;
-    #     push!(term_derivative, der);
-    #     append!(needed_coef, coe);
-    #     cindex = length(needed_coef);
-    #     push!(code_terms, codeterm);
-    # end
-    # Process the terms turning them into the code layer
-    #code_terms = [];
     preloop_terms = [];
     inloop_terms = [];
     postloop_terms = [];
@@ -411,9 +398,5 @@ DENDRO_TENSOR_AIIX_APPLY_ELEM(nrp,Q1d,imV2,"*out_name*");\n";
     DENDRO_TENSOR_AIIX_APPLY_ELEM(nrp,Q1d,imV2,"*out_name*");\n delete rhscoefvec;\n";
     end
     
-    # Put the pieces together
-    #term = trial_part * "\n" * wcloop * "\n" * test_part;
-    
-    #return (term, need_derivative, needed_coef, needed_coef_ind, test_component, trial_component);
     return (trial_part, body, test_part, need_derivative, needed_coef, needed_coef_ind, test_component, trial_component);
 end

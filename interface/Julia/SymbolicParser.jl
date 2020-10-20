@@ -47,6 +47,10 @@ function *(a::Array{Basic,1}, b::Array{Basic,1})
         # (sigh) This will be an error until I figure it out.
     end
 end
+# import Base.sqrt
+# function sqrt(a::Array{Basic,1})
+#     return a .^ (1//2);
+# end
 
 # Adds a single custom operator
 function add_custom_op(s, handle)
@@ -132,20 +136,25 @@ function sp_parse(ex, var)
     # If there was a time derivative, separate those terms as well
     if timederiv
         dtlhs = copy(lhs);
+        dtrhs = copy(rhs);
         if varcount > 1
             for i=1:length(symex)
                 sz = size(symex[i]);
                 (dtlhs[i],lhs[i]) = split_dt(lhs[i],sz);
+                (dtrhs[i],rhs[i]) = split_dt(rhs[i],sz);
             end
         else
             sz = size(symex);
             (dtlhs,lhs) = split_dt(lhs,sz);
+            (dtrhs,rhs) = split_dt(rhs,sz);
         end
     end
     
     #println("LHS = "*string(lhs));
     #println("RHS = "*string(rhs));
     if timederiv
+        #println("dtLHS = "*string(dtlhs));
+        #println("dtRHS = "*string(dtrhs));
         return ((dtlhs,lhs), rhs);
     else
         return (lhs, rhs);
@@ -174,9 +183,9 @@ function insert_parameters(ex)
         end
         return ex;
     elseif typeof(ex) <:Array
-        result = [];
+        result = copy(ex);
         for i=1:length(ex)
-            push!(result, insert_parameters(ex[i]));
+            result[i] = insert_parameters(ex[i]);
         end
         return result;
     else
@@ -226,9 +235,9 @@ function replace_symbols(ex)
         end
         return ex;
     elseif typeof(ex) <:Array
-        result = [];
+        result = copy(ex);
         for i=1:length(ex)
-            push!(result, replace_symbols(ex[i]));
+            result[i] = replace_symbols(ex[i]);
         end
         return result;
     else
@@ -330,14 +339,15 @@ function get_all_terms(ex)
     end
     
     # At this point ex must be an Expr or symbol or number
-    if !(typeof(ex) == Expr)
-        return [ex];
-    end
     terms = [];
+    if !(typeof(ex) == Expr)
+        push!(terms, ex);
+        return terms;
+    end
     if ex.head === :call
         if ex.args[1] === :+
             for i=2:length(ex.args)
-                terms = [terms; get_all_terms(ex.args[i])];
+                terms = append!(terms, get_all_terms(ex.args[i]));
             end
         elseif ex.args[1] === :-
             # apply -() to minused terms
@@ -357,10 +367,10 @@ function get_all_terms(ex)
                 end
             end
         else
-            terms = [ex];
+            push!(terms, ex);
         end
     else
-        terms = [ex];
+        push!(terms, ex);
     end
     return terms;
 end

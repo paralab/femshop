@@ -191,19 +191,27 @@ function assemble(var, bilinear, linear, t=0.0, dt=0.0)
     Nn = dofs_per_node * N1;
 
     b = zeros(Nn);
-    A = spzeros(Nn, Nn);
+    #A = spzeros(Nn, Nn);
+    AI = zeros(Int, nel*dofs_per_node*Np*dofs_per_node*Np);
+    AJ = zeros(Int, nel*dofs_per_node*Np*dofs_per_node*Np);
+    AV = zeros(nel*dofs_per_node*Np*dofs_per_node*Np);
 
     # The elemental assembly loop
+    loop_time = Base.Libc.time();
     for e=1:nel
-        nv = mesh_data.nv[e];
-        gis = zeros(Int, nv);
-        for vi=1:nv
-            gis[vi] = mesh_data.invind[mesh_data.elements[e,vi]]; # mesh indices of element's vertices
-        end
-
-        vx = mesh_data.nodes[gis,:];        # coordinates of element's vertices
-        glb = grid_data.loc2glb[e,:];                 # global indices of this element's nodes for extracting values from var arrays
-        xe = grid_data.allnodes[glb[:],:];  # coordinates of this element's nodes for evaluating coefficient functions
+        # nv = mesh_data.nv[e];
+        # gis = zeros(Int, nv);
+        # for vi=1:nv
+        #     gis[vi] = mesh_data.invind[mesh_data.elements[e,vi]]; # mesh indices of element's vertices
+        # end
+        # vx = mesh_data.nodes[gis,:];        # coordinates of element's vertices
+        
+        gis = grid_data.glbvertex[e,:];
+        vx = grid_data.allnodes[gis,:];         # coordinates of element's vertices
+        glb = grid_data.loc2glb[e,:];           # global indices of this element's nodes for extracting values from var arrays
+        xe = grid_data.allnodes[glb[:],:];      # coordinates of this element's nodes for evaluating coefficient functions
+        
+        Astart = (e-1)*Np*dofs_per_node*Np*dofs_per_node + 1; # The segment of AI, AJ, AV for this element
 
         # The linear part. Compute the elemental linear part for each dof
         rhsargs = (var, xe, glb, refel, RHS, t, dt);
@@ -213,24 +221,40 @@ function assemble(var, bilinear, linear, t=0.0, dt=0.0)
             b[glb] .+= linchunk;
 
             bilinchunk = bilinear.func(lhsargs); # the elemental bilinear part
-            A[glb, glb] .+= bilinchunk;         # This will be very inefficient for sparse A
+            #A[glb, glb] .+= bilinchunk;         # This will be very inefficient for sparse A
+            for jj=1:Np
+                offset = Astart - 1 + (jj-1)*Np;
+                for ii=1:Np
+                    AI[offset + ii] = glb[ii];
+                    AJ[offset + ii] = glb[jj];
+                    AV[offset + ii] = bilinchunk[ii, jj];
+                end
+            end
+            
         elseif typeof(var) == Variable
             # only one variable, but more than one dof
             linchunk = linear.func(rhsargs);
             insert_linear!(b, linchunk, glb, 1:dofs_per_node, dofs_per_node);
 
             bilinchunk = bilinear.func(lhsargs);
-            insert_bilinear!(A, bilinchunk, glb, 1:dofs_per_node, dofs_per_node);
+            insert_bilinear!(AI, AJ, AV, Astart, bilinchunk, glb, 1:dofs_per_node, dofs_per_node);
         else
             linchunk = linear.func(rhsargs);
             insert_linear!(b, linchunk, glb, 1:dofs_per_node, dofs_per_node);
 
             bilinchunk = bilinear.func(lhsargs);
-            insert_bilinear!(A, bilinchunk, glb, 1:dofs_per_node, dofs_per_node);
+            insert_bilinear!(AI, AJ, AV, Astart, bilinchunk, glb, 1:dofs_per_node, dofs_per_node);
         end
     end
+    loop_time = Base.Libc.time() - loop_time;
+    
+    # Build the sparse A. Uses default + to combine overlaps
+    sparse_time = Base.Libc.time();
+    A = sparse(AI, AJ, AV);
+    sparse_time = Base.Libc.time() - sparse_time;
     
     # Boundary conditions
+    bc_time = Base.Libc.time();
     bidcount = length(grid_data.bids); # the number of BIDs
     if dofs_per_node > 1
         if multivar
@@ -274,7 +298,12 @@ function assemble(var, bilinear, linear, t=0.0, dt=0.0)
             end
         end
     end
-
+    bc_time = Base.Libc.time() - bc_time;
+    
+    log_entry("Elemental loop time:     "*string(loop_time));
+    log_entry("Form sparse matrix time: "*string(sparse_time));
+    log_entry("Boundary condition time: "*string(bc_time));
+    
     return (A, b);
 end
 
@@ -368,18 +397,29 @@ function insert_linear!(b, bel, glb, dof, Ndofs)
     end
 end
 
-function insert_bilinear!(a, ael, glb, dof, Ndofs)
+function insert_bilinear!(AI, AJ, AV, Astart, ael, glb, dof, Ndofs)
+    Np = length(glb);
     # group nodal dofs
-    for di=1:length(dof)
-        indi = glb.*Ndofs .- (Ndofs-dof[di]);
-        indi2 = ((di-1)*length(glb)+1):(di*length(glb));
-        for dj=1:length(dof)
-            indj = glb.*Ndofs .- (Ndofs-dof[dj]);
-            indj2 = ((dj-1)*length(glb)+1):(dj*length(glb));
-
-            a[indi, indj] = a[indi, indj] + ael[indi2, indj2];
+    for dj=1:length(dof)
+        indj = glb.*Ndofs .- (Ndofs-dof[dj]);
+        indj2 = ((dj-1)*Np+1):(dj*Np);
+        for di=1:length(dof)
+            indi = glb.*Ndofs .- (Ndofs-dof[di]);
+            indi2 = ((di-1)*Np+1):(di*Np);
+            
+            #a[indi, indj] = a[indi, indj] + ael[indi2, indj2];
+            
+            for jj=1:Np
+                offset = Astart + (jj-1 + Np*(dj-1))*Np*Ndofs + Np*(di-1) - 1;
+                for ii=1:Np
+                    AI[offset + ii] = indi[ii];
+                    AJ[offset + ii] = indj[jj];
+                    AV[offset + ii] = ael[indi2[ii], indj2[jj]];
+                end
+            end
         end
     end
+    
 end
 
 end #module

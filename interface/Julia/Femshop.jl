@@ -11,7 +11,8 @@ export @language, @domain, @mesh, @solver, @stepper, @functionSpace, @trialFunct
         @outputMesh, @useLog, @finalize
 export init_femshop, set_language, dendro, set_solver, set_stepper, set_matrix_free, reformat_for_stepper, 
         add_mesh, output_mesh, add_test_function, 
-        add_initial_condition, add_boundary_condition, set_rhs, set_lhs, solve, finalize, cachesim
+        add_initial_condition, add_boundary_condition, set_rhs, set_lhs, solve, finalize, cachesim, cachesim_solve, morton_nodes
+export build_cache_level, build_cache
 export sp_parse
 export generate_code_layer
 export Variable, add_variable
@@ -83,6 +84,7 @@ function init_femshop(name="unnamedProject")
     global linears = [];
     global bilinears = [];
     global time_stepper = nothing;
+    global use_cachesim = false;
 end
 
 function set_language(lang, dirpath, name, head="")
@@ -344,8 +346,39 @@ function set_lhs(var, code="")
     end
 end
 
+function cachesim_solve(var, nlvar=nothing; nonlinear=false)
+    if !(gen_files === nothing && (language == JULIA || language == 0))
+        printerr("Cachesim solve is only ready for Julia direct solve");
+    else
+        if typeof(var) <: Array
+            varnames = "["*string(var[1].symbol);
+            for vi=2:length(var)
+                varnames = varnames*", "*string(var[vi].symbol);
+            end
+            varnames = varnames*"]";
+            varind = var[1].index;
+        else
+            varnames = string(var.symbol);
+            varind = var.index;
+        end
+
+        lhs = bilinears[varind];
+        rhs = linears[varind];
+        
+        t = @elapsed(result = CGSolver.linear_solve_cachesim(var, lhs, rhs));
+        log_entry("Generated cachesim ouput for "*varnames*".(took "*string(t)*" seconds)");
+    end
+end
+
 function solve(var, nlvar=nothing; nonlinear=false)
+    if use_cachesim
+        printerr("Use cachesim_solve(var) for generating cachesim output. Try again.");
+        return nothing;
+    end
     # Generate files or solve directly
+    if prob.time_dependent
+        global time_stepper = init_stepper(grid_data.allnodes, time_stepper);
+    end
     if !(gen_files === nothing && (language == JULIA || language == 0))
         generate_main();
         if !(dendro_params === nothing)
@@ -391,11 +424,7 @@ function solve(var, nlvar=nothing; nonlinear=false)
 				if (nonlinear)
                 	t = @elapsed(result = CGSolver.nonlinear_solve(var, nlvar, lhs, rhs));
                 else
-                    if use_cachesim
-                        t = @elapsed(result = CGSolver.linear_solve_cachesim(var, lhs, rhs));
-                    else
-                        t = @elapsed(result = CGSolver.linear_solve(var, lhs, rhs));
-                    end
+                    t = @elapsed(result = CGSolver.linear_solve(var, lhs, rhs));
 				end
 
                 # place the values in the variable value arrays
@@ -440,8 +469,13 @@ function finalize()
 end
 
 function cachesim(use)
+    log_entry("Using cachesim - Only cachesim output will be generated.");
     global use_cachesim = use;
 end
 
+function morton_nodes(n)
+    # t = @elapsed(global grid_data = reorder_grid_morton(grid_data, n));
+    # log_entry("Reordered nodes to Morton. Took "*string(t)*" sec.");
+end
 
 end # module

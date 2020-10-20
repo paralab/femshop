@@ -30,6 +30,7 @@ include("mesh_read.jl");
 include("mesh_write.jl")
 include("grid.jl");
 include("simple_mesh.jl");
+#include("morton_order_nodes.jl");
 
 include("function_utils.jl");
 include("symtype.jl");
@@ -42,7 +43,7 @@ include("time_steppers.jl");
 #include("nonlinear.jl");
 
 # Femshop submodules
-include("CachesimOut.jl");
+include("cachesim/CachesimOut.jl");
 using .CachesimOut
 include("SymbolicParser.jl")
 using .SymbolicParser
