@@ -16,6 +16,8 @@ end
 function init_nonlinear(nl,var,nlvar,bi,li);
 	nl.var = var;
 	nl.nlvar = nlvar;
+	#print("v = \n");
+	#@show nlvar[4].values;
 	nl.bilinear = bi;
 	nl.linear = li;
 end
@@ -27,7 +29,7 @@ end
 function eval_res(nl, formfunc)
 	(A, b) = formfunc(nl.var, nl.bilinear, nl.linear);
 	nl.res = b;#A*nl.var.values - b;
-	#@show b;
+	@show b;
 end
 
 function newton(nl,formjac, formfunc, nlvar)
@@ -52,8 +54,10 @@ function newton(nl,formjac, formfunc, nlvar)
 		#@show nl.var[2].values;
 
 		if typeof(nl.var) <: Array
-			for vi=1:1 #length(nl.var)
+			for vi=1:length(nl.var)
 				components = length(nl.var[vi].symvar.vals);
+				print("components = ", components)
+				stop
 				for compi=1:components
 					nl.var[vi].values[:,compi] = nl.var[vi].values[:,compi]+delta[:];
 				end

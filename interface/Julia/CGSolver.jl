@@ -142,6 +142,10 @@ function nonlinear_solve(var, nlvar, bilinear, linear, stepper=nothing)
 			init_nonlinear(nl, var, nlvar, bilinear, linear);
 			func = assemble;
 			newton(nl, func, func, nlvar);
+			#updata u, v
+			#hard coded
+			nlvar[2] = nlvar[1];
+			nlvar[2] = nlvar[1];
             t += stepper.dt;
         end
         end_t = Base.Libc.time();
@@ -239,6 +243,8 @@ function assemble(var, bilinear, linear, t=0.0, dt=0.0)
             bilinchunk = bilinear.func(lhsargs);
             insert_bilinear!(AI, AJ, AV, Astart, bilinchunk, glb, 1:dofs_per_node, dofs_per_node);
         else
+			
+			#@show(variables[1].values[glb])
             linchunk = linear.func(rhsargs);
             insert_linear!(b, linchunk, glb, 1:dofs_per_node, dofs_per_node);
 
