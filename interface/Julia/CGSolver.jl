@@ -14,7 +14,7 @@ import ..Femshop: JULIA, CPP, MATLAB, SQUARE, IRREGULAR, TREE, UNSTRUCTURED, CG,
             LHS, RHS,
             LINEMESH, QUADMESH, HEXMESH
 import ..Femshop: log_entry, printerr
-import ..Femshop: config, prob, variables, mesh_data, grid_data, refel, time_stepper
+import ..Femshop: config, prob, variables, mesh_data, grid_data, refel, time_stepper, elemental_order
 import ..Femshop: Variable, Coefficient, GenFunction
 import ..Femshop: geometric_factors
 
@@ -199,17 +199,10 @@ function assemble(var, bilinear, linear, t=0.0, dt=0.0)
     AI = zeros(Int, nel*dofs_per_node*Np*dofs_per_node*Np);
     AJ = zeros(Int, nel*dofs_per_node*Np*dofs_per_node*Np);
     AV = zeros(nel*dofs_per_node*Np*dofs_per_node*Np);
-
-    # The elemental assembly loop
+    
     loop_time = Base.Libc.time();
-    for e=1:nel
-        # nv = mesh_data.nv[e];
-        # gis = zeros(Int, nv);
-        # for vi=1:nv
-        #     gis[vi] = mesh_data.invind[mesh_data.elements[e,vi]]; # mesh indices of element's vertices
-        # end
-        # vx = mesh_data.nodes[gis,:];        # coordinates of element's vertices
-        
+    # Elemental loop follows elemental ordering
+    for e=elemental_order;
         gis = grid_data.glbvertex[e,:];
         vx = grid_data.allnodes[gis,:];         # coordinates of element's vertices
         glb = grid_data.loc2glb[e,:];           # global indices of this element's nodes for extracting values from var arrays
@@ -335,9 +328,10 @@ function assemble_rhs_only(var, linear, t=0.0, dt=0.0)
     Nn = dofs_per_node * N1;
 
     b = zeros(Nn);
-
-    for e=1:nel;
-        glb = grid_data.loc2glb[e,:];                 # global indices of this element's nodes for extracting values from var arrays
+    
+    # Elemental loop follows elemental ordering
+    for e=elemental_order;
+        glb = grid_data.loc2glb[e,:];       # global indices of this element's nodes for extracting values from var arrays
         xe = grid_data.allnodes[glb[:],:];  # coordinates of this element's nodes for evaluating coefficient functions
 
         rhsargs = (var, xe, glb, refel, RHS, t, dt);

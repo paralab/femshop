@@ -9,7 +9,7 @@ function printerr(msg)
 end
 
 function init_log(name, dir)
-    global log_file = dir*"\\"*name*".txt";
+    global log_file = dir*"/"*name*".txt";
     global use_log = true;
     file = open(log_file, "w");
     println(file, "######################################");

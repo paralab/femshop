@@ -11,7 +11,8 @@ export @language, @domain, @mesh, @solver, @stepper, @functionSpace, @trialFunct
         @outputMesh, @useLog, @finalize
 export init_femshop, set_language, dendro, set_solver, set_stepper, set_matrix_free, reformat_for_stepper, 
         add_mesh, output_mesh, add_test_function, 
-        add_initial_condition, add_boundary_condition, set_rhs, set_lhs, solve, finalize, cachesim, cachesim_solve, morton_nodes
+        add_initial_condition, add_boundary_condition, set_rhs, set_lhs, solve, finalize, cachesim, cachesim_solve, 
+        morton_nodes, tiled_nodes, tiled_elements
 export build_cache_level, build_cache
 export sp_parse
 export generate_code_layer
@@ -37,6 +38,7 @@ log_line_index = 1;
 mesh_data = nothing;
 grid_data = nothing;
 refel = nothing;
+elemental_order = [];
 #problem variables
 var_count = 0;
 variables = [];
@@ -74,6 +76,7 @@ function init_femshop(name="unnamedProject")
     global mesh_data = nothing;
     global grid_data = nothing;
     global refel = nothing;
+    global elemental_order = [];
     global var_count = 0;
     global variables = [];
     global coefficients = [];
@@ -122,6 +125,8 @@ function add_mesh(mesh)
     else
         global mesh_data = mesh;
     end
+    # set elemental loop ordering
+    global elemental_order = 1:mesh_data.nel;
 
     log_entry("Added mesh with "*string(mesh_data.nx)*" vertices and "*string(mesh_data.nel)*" elements.");
     log_entry("Full grid has "*string(length(grid_data.allnodes))*" nodes.");
@@ -474,8 +479,18 @@ function cachesim(use)
 end
 
 function morton_nodes(n)
-    # t = @elapsed(global grid_data = reorder_grid_morton(grid_data, n));
-    # log_entry("Reordered nodes to Morton. Took "*string(t)*" sec.");
+    t = @elapsed(global grid_data = reorder_grid_morton(grid_data, n));
+    log_entry("Reordered nodes to Morton. Took "*string(t)*" sec.");
+end
+
+function tiled_nodes(griddim, tiledim)
+    t = @elapsed(global grid_data = reorder_grid_tiled(grid_data, griddim, tiledim));
+    log_entry("Reordered nodes to tiled. Took "*string(t)*" sec.");
+end
+
+function tiled_elements(griddim, tiledim)
+    global elemental_order = get_tiled_order(config.dimension, griddim, tiledim, false);
+    log_entry("Reordered elements to tiled("*string(tiledim)*").");
 end
 
 end # module

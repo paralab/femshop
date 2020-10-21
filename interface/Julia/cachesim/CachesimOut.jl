@@ -23,6 +23,7 @@ Np=0;# number of elemental nodes
 Nn=0;# number of global dofs
 Nd=0;# number of elemental dofs
 Nv=0;# number of global vertices
+Nel = 0;# number of elements
 
 # A special nonexistant array that also has an identifier, fake address range, size
 mutable struct CachesimArray
@@ -40,12 +41,18 @@ mutable struct CachesimArray
     )
 end
 
-function init_cachesimout(n, refel, dof, vars)
+function init_cachesimout(n, refel, nel, dof, vars)
+    global addr_offset = 0;
+    global geofac_set = false;
+    global arrays = [];
+    global tmparrays = [];
+    global tmpflags = [];
+    
     global N = n; # number of global nodes
     global Nn = N*dof; # number of global dof
     global Nd = refel.Np*dof; # elemental dof
     global Np = refel.Np; # number of elemental nodes
-    
+    global Nel = nel; # number of elements
     #=
     The arrays are indexed as such:
     1 A
@@ -67,7 +74,7 @@ function init_cachesimout(n, refel, dof, vars)
     17 w
     18+ variable values, then everything else
     =#
-    push!(arrays, CachesimArray(1, [1], 8));
+    push!(arrays, CachesimArray(1, [Nel*Nd*Nd, 3], 8));
     push!(arrays, CachesimArray(2, [Nn], 8));
     push!(arrays, CachesimArray(3, [Nn], 8));
     push!(arrays, CachesimArray(4, [Nd, Nd], 8));
@@ -95,7 +102,7 @@ function init_cachesimout(n, refel, dof, vars)
         println("Not using the cachesim library. Change use_lib in CachesimOut.jl to use.");
         println("Instead, writing access sequence to cachesim_output.out");
         println("Analyze with cachesim_read.py");
-        output = open("cachesim/cachesim_output.out","w");
+        global output = open("cachesim/cachesim_output.out","w");
     end
     
 end

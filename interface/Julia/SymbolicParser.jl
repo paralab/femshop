@@ -168,9 +168,9 @@ function insert_parameters(ex)
         for p in parameters
             if ex === p.symbol
                 if p.type == SCALAR
-                    return p.value[1];
+                    return insert_parameters(p.value[1]);
                 else
-                    return p.value;
+                    return insert_parameters(p.value);
                 end
             end
         end
