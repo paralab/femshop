@@ -237,7 +237,6 @@ function assemble(var, bilinear, linear, t=0.0, dt=0.0)
             insert_bilinear!(AI, AJ, AV, Astart, bilinchunk, glb, 1:dofs_per_node, dofs_per_node);
         else
 			
-			#@show(variables[1].values[glb])
             linchunk = linear.func(rhsargs);
             insert_linear!(b, linchunk, glb, 1:dofs_per_node, dofs_per_node);
 

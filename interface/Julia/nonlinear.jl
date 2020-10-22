@@ -29,7 +29,7 @@ end
 function eval_res(nl, formfunc)
 	(A, b) = formfunc(nl.var, nl.bilinear, nl.linear);
 	nl.res = b;#A*nl.var.values - b;
-	@show b;
+	@show A;
 end
 
 function newton(nl,formjac, formfunc, nlvar)

@@ -36,8 +36,8 @@ T = 1
 @timeInterval(T)                    # (start, end) using this sets problem to time dependent
 #@initial(u, "y > 0.9 ? 1 : 0")  # initial condition needed if time dependent
 #@initial(uold, "y > 0.9 ? 1 : 0")  # initial condition needed if time dependent
-@initial(u, "y")  # initial condition needed if time dependent
-@initial(uold, "y")  # initial condition needed if time dependent
+@initial(u, "100*y")  # initial condition needed if time dependent
+@initial(uold, "100*y")  # initial condition needed if time dependent
 @initial(du, "0")  # initial condition needed if time dependent
 @initial(v, "0")  # initial condition needed if time dependent
 @initial(vold, "0")  # initial condition needed if time dependent
