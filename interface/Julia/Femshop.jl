@@ -380,7 +380,7 @@ function solve(var, nlvar=nothing; nonlinear=false)
         printerr("Use cachesim_solve(var) for generating cachesim output. Try again.");
         return nothing;
     end
-	@show(var[1].index)
+	#@show(var[1].index)
     # Generate files or solve directly
     if prob.time_dependent
         global time_stepper = init_stepper(grid_data.allnodes, time_stepper);
