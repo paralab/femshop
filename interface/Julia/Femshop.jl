@@ -296,9 +296,9 @@ function add_boundary_condition(var, bid, type, ex, nfuns)
         prob.bc_func[var.index, bid] = vals;
     else
         if typeof(ex) == String
-            prob.bc_func[var.index, bid] = genfunctions[end];
+            prob.bc_func[var.index, bid] = [genfunctions[end]];
         else
-            prob.bc_func[var.index, bid] = ex;
+            prob.bc_func[var.index, bid] = [ex];
         end
     end
     prob.bc_type[var.index, bid] = type;

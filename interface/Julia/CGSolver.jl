@@ -293,9 +293,9 @@ function assemble(var, bilinear, linear, t=0.0, dt=0.0)
     else
         for bid=1:bidcount
             if prob.bc_type[var.index, bid] == DIRICHLET
-                (A, b) = dirichlet_bc(A, b, prob.bc_func[var.index, bid], grid_data.bdry[bid], t);
+                (A, b) = dirichlet_bc(A, b, prob.bc_func[var.index, bid][1], grid_data.bdry[bid], t);
             elseif prob.bc_type[var.index, bid] == NEUMANN
-                (A, b) = neumann_bc(A, b, prob.bc_func[var.index, bid], grid_data.bdry[bid], bid, t);
+                (A, b) = neumann_bc(A, b, prob.bc_func[var.index, bid][1], grid_data.bdry[bid], bid, t);
             else
                 printerr("Unsupported boundary condition type: "*prob.bc_type[var.index, bid]);
             end
@@ -383,7 +383,7 @@ function assemble_rhs_only(var, linear, t=0.0, dt=0.0)
         end
     else
         for bid=1:bidcount
-            b = dirichlet_bc_rhs_only(b, prob.bc_func[var.index, bid], grid_data.bdry[bid], t);
+            b = dirichlet_bc_rhs_only(b, prob.bc_func[var.index, bid][1], grid_data.bdry[bid], t);
         end
     end
 
