@@ -11,9 +11,9 @@ init_femshop("heat2d");
 @useLog("heat2dlog")
 
 # Set up the configuration (order doesn't matter)
-@domain(2, SQUARE, UNSTRUCTURED)    # dimension, geometry, decomposition
+@domain(2, SQUARE, UNIFORM_GRID)    # dimension, geometry, decomposition
 @solver(CG)                         # DG, CG, etc.
-@functionSpace(LEGENDRE, 2)         # function, order (or use testFunction and trialFunction)
+@functionSpace(LEGENDRE, 4)         # function, order (or use testFunction and trialFunction)
 @nodes(LOBATTO)                     # elemental node arrangement
 @stepper(CRANK_NICHOLSON)            # time stepper (optional second arg is CFL#)
 
@@ -31,15 +31,15 @@ T = 1;
 @boundary(u, 1, DIRICHLET, 0)
 
 # Write the weak form
-@coefficient(f, "0.2*sin(6*pi*x)*sin(6*pi*y)")
+@coefficient(f, "0.5*sin(6*pi*x)*sin(6*pi*y)")
 @weakForm(u, "Dt(u*v) + 0.01 * dot(grad(u),grad(v)) - f*v")
 
 solve(u);
 
 # solution is stored in the variable's "values"
-using Plots
-pyplot();
-display(plot(Femshop.grid_data.allnodes[:,1], Femshop.grid_data.allnodes[:,2], u.values, st = :surface))
+# using Plots
+# pyplot();
+# display(plot(Femshop.grid_data.allnodes[:,1], Femshop.grid_data.allnodes[:,2], u.values, st = :surface))
 
 # check
 log_dump_config(Femshop.config);

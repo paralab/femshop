@@ -5,7 +5,7 @@ module CGSolver
 
 export init_cgsolver, solve, nonlinear_solve
 
-import ..Femshop: JULIA, CPP, MATLAB, SQUARE, IRREGULAR, TREE, UNSTRUCTURED, CG, DG, HDG,
+import ..Femshop: JULIA, CPP, MATLAB, SQUARE, IRREGULAR, UNIFORM_GRID, TREE, UNSTRUCTURED, CG, DG, HDG,
             NODAL, MODAL, LEGENDRE, UNIFORM, GAUSS, LOBATTO, NONLINEAR_NEWTON,
             NONLINEAR_SOMETHING, EULER_EXPLICIT, EULER_IMPLICIT, CRANK_NICHOLSON, RK4, LSRK4,
             ABM4, OURS, PETSC, VTK, RAW_OUTPUT, CUSTOM_OUTPUT, DIRICHLET, NEUMANN, ROBIN,
@@ -16,7 +16,7 @@ import ..Femshop: JULIA, CPP, MATLAB, SQUARE, IRREGULAR, TREE, UNSTRUCTURED, CG,
 import ..Femshop: log_entry, printerr
 import ..Femshop: config, prob, variables, mesh_data, grid_data, refel, time_stepper, elemental_order
 import ..Femshop: Variable, Coefficient, GenFunction
-import ..Femshop: geometric_factors
+import ..Femshop: geometric_factors, build_deriv_matrix
 
 using LinearAlgebra, SparseArrays
 
@@ -203,19 +203,42 @@ function assemble(var, bilinear, linear, t=0.0, dt=0.0)
     AJ = zeros(Int, nel*dofs_per_node*Np*dofs_per_node*Np);
     AV = zeros(nel*dofs_per_node*Np*dofs_per_node*Np);
     
+    # Stiffness and mass are precomputed for uniform grid meshes
+    if config.mesh_type == UNIFORM_GRID && config.geometry == SQUARE
+        glb = grid_data.loc2glb[1,:];
+        xe = grid_data.allnodes[glb[:],:];
+        (detJ, J) = geometric_factors(refel, xe);
+        wgdetj = refel.wg .* detJ;
+        if config.dimension == 1
+            (RQ1, RD1) = build_deriv_matrix(refel, J);
+            TRQ1 = RQ1';
+            stiffness = [(TRQ1 * diagm(wgdetj) * RQ1)];
+        elseif config.dimension == 2
+            (RQ1, RQ2, RD1, RD2) = build_deriv_matrix(refel, J);
+            (TRQ1, TRQ2) = (RQ1', RQ2');
+            stiffness = [(TRQ1 * diagm(wgdetj) * RQ1) , (TRQ2 * diagm(wgdetj) * RQ2)];
+        else
+            (RQ1, RQ2, RQ3, RD1, RD2, RD3) = build_deriv_matrix(refel, J);
+            (TRQ1, TRQ2, TRQ3) = (RQ1', RQ2', RQ3');
+            stiffness = [(TRQ1 * diagm(wgdetj) * RQ1) , (TRQ2 * diagm(wgdetj) * RQ2) , (TRQ3 * diagm(wgdetj) * RQ3)];
+        end
+        mass = (refel.Q)' * diagm(wgdetj) * refel.Q;
+    else
+        stiffness = 0;
+        mass = 0;
+    end
+    
     loop_time = Base.Libc.time();
     # Elemental loop follows elemental ordering
     for e=elemental_order;
-        gis = grid_data.glbvertex[e,:];
-        vx = grid_data.allnodes[gis,:];         # coordinates of element's vertices
         glb = grid_data.loc2glb[e,:];           # global indices of this element's nodes for extracting values from var arrays
         xe = grid_data.allnodes[glb[:],:];      # coordinates of this element's nodes for evaluating coefficient functions
         
         Astart = (e-1)*Np*dofs_per_node*Np*dofs_per_node + 1; # The segment of AI, AJ, AV for this element
 
         # The linear part. Compute the elemental linear part for each dof
-        rhsargs = (var, xe, glb, refel, RHS, t, dt);
-        lhsargs = (var, xe, glb, refel, LHS, t, dt);
+        rhsargs = (var, xe, glb, refel, RHS, t, dt, stiffness, mass);
+        lhsargs = (var, xe, glb, refel, LHS, t, dt, stiffness, mass);
         if dofs_per_node == 1
             linchunk = linear.func(rhsargs);  # get the elemental linear part
             b[glb] .+= linchunk;
@@ -330,12 +353,37 @@ function assemble_rhs_only(var, linear, t=0.0, dt=0.0)
 
     b = zeros(Nn);
     
+    # Stiffness and mass are precomputed for uniform grid meshes
+    if config.mesh_type == UNIFORM_GRID && config.geometry == SQUARE
+        glb = grid_data.loc2glb[1,:];
+        xe = grid_data.allnodes[glb[:],:];
+        (detJ, J) = geometric_factors(refel, xe);
+        wgdetj = refel.wg .* detJ;
+        if config.dimension == 1
+            (RQ1, RD1) = build_deriv_matrix(refel, J);
+            TRQ1 = RQ1';
+            stiffness = [(TRQ1 * diagm(wgdetj) * RQ1)];
+        elseif config.dimension == 2
+            (RQ1, RQ2, RD1, RD2) = build_deriv_matrix(refel, J);
+            (TRQ1, TRQ2) = (RQ1', RQ2');
+            stiffness = [(TRQ1 * diagm(wgdetj) * RQ1) , (TRQ2 * diagm(wgdetj) * RQ2)];
+        else
+            (RQ1, RQ2, RQ3, RD1, RD2, RD3) = build_deriv_matrix(refel, J);
+            (TRQ1, TRQ2, TRQ3) = (RQ1', RQ2', RQ3');
+            stiffness = [(TRQ1 * diagm(wgdetj) * RQ1) , (TRQ2 * diagm(wgdetj) * RQ2) , (TRQ3 * diagm(wgdetj) * RQ3)];
+        end
+        mass = (refel.Q)' * diagm(wgdetj) * refel.Q;
+    else
+        stiffness = 0;
+        mass = 0;
+    end
+    
     # Elemental loop follows elemental ordering
     for e=elemental_order;
         glb = grid_data.loc2glb[e,:];       # global indices of this element's nodes for extracting values from var arrays
         xe = grid_data.allnodes[glb[:],:];  # coordinates of this element's nodes for evaluating coefficient functions
-
-        rhsargs = (var, xe, glb, refel, RHS, t, dt);
+        
+        rhsargs = (var, xe, glb, refel, RHS, t, dt, stiffness, mass);
 
         #linchunk = linear.func(args);  # get the elemental linear part
         if dofs_per_node == 1

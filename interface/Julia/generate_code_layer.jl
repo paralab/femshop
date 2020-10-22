@@ -48,6 +48,13 @@ function generate_code_layer_julia(symex, var, lorr)
     if prob.time_dependent
         push!(code.args, :(dt = args[7])); # dt for time dependent problems
     end
+    
+    # A trick for uniform grids to avoid repeated work
+    if config.mesh_type == UNIFORM_GRID && config.geometry == SQUARE
+        push!(code.args, :(stiffness = args[8])); # dt for time dependent problems
+        push!(code.args, :(mass = args[9])); # dt for time dependent problems
+    end
+    
     push!(code.args, :((detJ, J) = geometric_factors(refel, x)));
     push!(code.args, :(wgdetj = refel.wg .* detJ));
     
@@ -543,6 +550,7 @@ end
 function process_term_julia(sterm, var, lorr, offset_ind=0)
     term = copy(sterm);
     need_derivative = false;
+    need_derivative_for_coefficient = false;
     needed_coef = [];
     needed_coef_ind = [];
     needed_coef_deriv = [];
@@ -692,6 +700,7 @@ function process_term_julia(sterm, var, lorr, offset_ind=0)
                 if typeof(v) == Symbol && !(v ===:dt)
                     if length(mods) > 0
                         need_derivative = true;
+                        need_derivative_for_coefficient = false;
                         
                         push!(needed_coef_deriv, [v, mods[1], mods[1][2]]);
                         
@@ -758,20 +767,57 @@ function process_term_julia(sterm, var, lorr, offset_ind=0)
     
     # If there's no test part this is probably a denominator expression being processed and should only contain coefficients/knowns
     if test_part === nothing
-        
-        
+        #
+        #
     else
         term = test_part;
         if !(coef_part === nothing)
             if lorr == LHS
                 term = :($test_part * (diagm($weight_part .* $coef_part) * $trial_part));
             else # RHS
-                term = :($test_part * ($weight_part .* ($trial_part * $coef_part)));
-                #term = :($test_part * (diagm($weight_part) * ($trial_part * $coef_part)));
+                # Stiffness and mass are precomputed for uniform grid meshes
+                if config.mesh_type == UNIFORM_GRID && config.geometry == SQUARE
+                    if test_part == :(refel.Q') && weight_part === :wgdetj && trial_part == :(refel.Q)
+                        term = :(mass * $coef_part);
+                        need_derivative = need_derivative_for_coefficient;
+                    elseif test_part === :TRQ1 && weight_part === :wgdetj && trial_part === :RQ1
+                        term = :(stiffness[1] * $coef_part);
+                        need_derivative = need_derivative_for_coefficient;
+                    elseif test_part === :TRQ2 && weight_part === :wgdetj && trial_part === :RQ2
+                        term = :(stiffness[2] * $coef_part);
+                        need_derivative = need_derivative_for_coefficient;
+                    elseif test_part === :TRQ3 && weight_part === :wgdetj && trial_part === :RQ3
+                        term = :(stiffness[3] * $coef_part);
+                        need_derivative = need_derivative_for_coefficient;
+                    else
+                        term = :($test_part * ($weight_part .* ($trial_part * $coef_part)));
+                    end
+                else
+                    term = :($test_part * ($weight_part .* ($trial_part * $coef_part)));
+                end
             end
             
         else
-            term = :($test_part * diagm($weight_part) * $trial_part);
+            # Stiffness and mass are precomputed for uniform grid meshes
+            if config.mesh_type == UNIFORM_GRID && config.geometry == SQUARE
+                if test_part == :(refel.Q') && weight_part === :wgdetj && trial_part == :(refel.Q)
+                    term = :(mass);
+                    need_derivative = false;
+                elseif test_part === :TRQ1 && weight_part === :wgdetj && trial_part === :RQ1
+                    term = :(stiffness[1]);
+                    need_derivative = false;
+                elseif test_part === :TRQ2 && weight_part === :wgdetj && trial_part === :RQ2
+                    term = :(stiffness[2]);
+                    need_derivative = false;
+                elseif test_part === :TRQ3 && weight_part === :wgdetj && trial_part === :RQ3
+                    term = :(stiffness[3]);
+                    need_derivative = false;
+                else
+                    term = :($test_part * diagm($weight_part) * $trial_part);
+                end
+            else
+                term = :($test_part * diagm($weight_part) * $trial_part);
+            end
         end
         
         if neg

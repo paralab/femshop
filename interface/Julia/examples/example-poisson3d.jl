@@ -14,7 +14,7 @@ n = 10;
 ord = 3;
 
 # Set up the configuration (order doesn't matter)
-@domain(3, SQUARE, UNSTRUCTURED)    # dimension, geometry, decomposition
+@domain(3, SQUARE, UNIFORM_GRID)    # dimension, geometry, decomposition
 @solver(CG)                         # DG, CG, etc.
 @functionSpace(LEGENDRE, ord)         # function, order (or use testFunction and trialFunction)
 @nodes(LOBATTO)                     # elemental node arrangement

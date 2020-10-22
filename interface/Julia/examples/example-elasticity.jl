@@ -14,9 +14,9 @@ n = 10;
 ord = 2;
 
 # Set up the configuration (order doesn't matter)
-@domain(3)                          # dimension
+@domain(3, SQUARE, UNIFORM_GRID)    # dimension, geometry, decomposition
 @solver(CG)                         # Use CG solver
-@functionSpace(LEGENDRE, ord)         # basis function, order
+@functionSpace(LEGENDRE, ord)       # basis function, order
 @nodes(LOBATTO)                     # elemental node arrangement
 
 # Specify the problem
@@ -40,24 +40,24 @@ println("solving")
 solve(u);
 println("solved")
 
-using Plots
-pyplot();
-N = n*ord+1;
-half = Int(round(N/2));
-range = (N*N*half+1):(N*N*(half+1));
-hair = (N*N*half+1):(N*N*half+N);
-#display(plot(Femshop.grid_data.allnodes[hair,1], u.values[hair,3], reuse=false))
-#display(plot(Femshop.grid_data.allnodes[range,1], Femshop.grid_data.allnodes[range,2], u.values[range,3], st=:surface, reuse=false))
-bent = u.values[hair,3];
-tmp = copy(bent);
-xpos = Femshop.grid_data.allnodes[hair,1];
-slope = 0;
-for i=2:length(bent)
-    change = tmp[i]-tmp[i-1];
-    bent[i] = bent[i-1] + slope + change;
-    global slope = (bent[i] - bent[i-1]);
-end
-display(plot(Femshop.grid_data.allnodes[hair,1], bent, reuse=false, marker=:circle))
+# using Plots
+# pyplot();
+# N = n*ord+1;
+# half = Int(round(N/2));
+# range = (N*N*half+1):(N*N*(half+1));
+# hair = (N*N*half+1):(N*N*half+N);
+# #display(plot(Femshop.grid_data.allnodes[hair,1], u.values[hair,3], reuse=false))
+# #display(plot(Femshop.grid_data.allnodes[range,1], Femshop.grid_data.allnodes[range,2], u.values[range,3], st=:surface, reuse=false))
+# bent = u.values[hair,3];
+# tmp = copy(bent);
+# xpos = Femshop.grid_data.allnodes[hair,1];
+# slope = 0;
+# for i=2:length(bent)
+#     change = tmp[i]-tmp[i-1];
+#     bent[i] = bent[i-1] + slope + change;
+#     global slope = (bent[i] - bent[i-1]);
+# end
+# display(plot(Femshop.grid_data.allnodes[hair,1], bent, reuse=false, marker=:circle))
 
 # check
 log_dump_config();
