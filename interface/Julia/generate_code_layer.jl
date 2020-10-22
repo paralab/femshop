@@ -259,7 +259,7 @@ function generate_code_layer_julia(symex, var, lorr)
         end
         
         # Apply derivatives after the initializing loop
-        # Will look like: coef_i_j = Rnmatrix * Qnmatrix * coef_i_j
+        # Will look like: coef_i_j = RDn * coef_i_j
         for i=1:length(needed_coef_deriv)
             if length(needed_coef_deriv[i][2]) > 0 && !(typeof(needed_coef[i]) <: Number || needed_coef[i] === :dt)
                 cind = get_coef_index(needed_coef[i]);
@@ -280,7 +280,10 @@ function generate_code_layer_julia(symex, var, lorr)
                 #dmatq = Symbol("D"*needed_coef_deriv[i][3]*"matrix");
                 #tmpb= :(length($tmpc) == 1 ? 0 : $dmatr * $dmatq * $tmpc);
                 
+                #push!(code.args, :(println( $tmpc )));
                 push!(code.args, Expr(:(=), tmpc, tmpb));
+                #push!(code.args, :(println( $tmpc )));
+                #push!(code.args, :(println("-----------------------------------------------------------------------------")));
             else
                 # derivatives of constant coefficients should be zero
                 # TODO

@@ -22,19 +22,19 @@ function init_nonlinear(nl,var,nlvar,bi,li);
 	nl.linear = li;
 end
 
-function eval_jac(nl, formjac)
-	 (nl.jac, b) = formjac(nl.var, nl.bilinear, nl.linear);
+function eval_jac(nl, formjac, t, dt)
+	 (nl.jac, b) = formjac(nl.var, nl.bilinear, nl.linear, t, dt);
 end
 
-function eval_res(nl, formfunc)
-	(A, b) = formfunc(nl.var, nl.bilinear, nl.linear);
+function eval_res(nl, formfunc, t, dt)
+	b = formfunc(nl.var, nl.linear, t, dt);
 	nl.res = b;#A*nl.var.values - b;
-	@show A;
+	#@show A;
 end
 
-function newton(nl,formjac, formfunc, nlvar)
+function newton(nl,formjac, formfunc, nlvar, t=0, dt=0)
 	debug = true;
-	eval_res(nl, formfunc);
+	eval_res(nl, formfunc, t, dt);
 	init_res = norm(nl.res);
 	if (init_res < nl.atol)
 		if debug print("\ninitial residual = ", init_res, ", already converged\n"); end
@@ -44,7 +44,7 @@ function newton(nl,formjac, formfunc, nlvar)
 
 	i = 0;
 	while (i < nl.max_iter)
-		eval_jac(nl, formjac);
+		eval_jac(nl, formjac, t, dt);
 		delta = - nl.jac \ nl.res;
 		#@show delta
 		# place the values in the variable value arrays
@@ -54,12 +54,25 @@ function newton(nl,formjac, formfunc, nlvar)
 		#@show nl.var[2].values;
 
 		if typeof(nl.var) <: Array
+			# for vi=1:length(nl.var)
+			# 	components = length(nl.var[vi].symvar.vals);
+			# 	for compi=1:components
+			# 		nl.var[vi].values[:,compi] = nl.var[vi].values[:,compi]+delta[:];
+			# 	end
+			# end
+			tmp = 0;
+			totalcomponents = 0;
+			for vi=1:length(nl.var)
+				totalcomponents = totalcomponents + length(nl.nlvar[vi].symvar.vals);
+			end
 			for vi=1:length(nl.var)
 				components = length(nl.var[vi].symvar.vals);
 				print("components = ", components)
 				stop
 				for compi=1:components
-					nl.var[vi].values[:,compi] = nl.var[vi].values[:,compi]+delta[:];
+					nl.var[vi].values[:,compi] = delta[(compi+tmp):totalcomponents:end];
+					nl.nlvar[vi].values[:,compi] = nl.nlvar[vi].values[:,compi]+delta[(compi+tmp):totalcomponents:end];
+					tmp = tmp + 1;
 				end
 			end
 		else
@@ -69,6 +82,7 @@ function newton(nl,formjac, formfunc, nlvar)
 			#print("\nsymvar = ", nl.var.symvar, "\n");
 			#print("\nvals = ", nl.var.symvar.vals, "\n");
 			for compi=1:components
+				nl.var.values[:,compi] =  delta[compi:components:end];
 				nl.nlvar.values[:,compi] =  nl.nlvar.values[:,compi]+delta[compi:components:end];
 			end
 		end
@@ -76,7 +90,7 @@ function newton(nl,formjac, formfunc, nlvar)
 		nlvar = nl.nlvar;
 		#@show(nlvar.values)
 		i = i+1;
-		eval_res(nl, formfunc);
+		eval_res(nl, formfunc, t, dt);
 		curr_res = norm(nl.res);
 		if debug print(i,"th iteration residual = ", curr_res, "\n");end
 		if (curr_res < nl.atol || curr_res/init_res < nl.rtol)

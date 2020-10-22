@@ -34,10 +34,10 @@ num_elem = 32;
 
 T = 1
 @timeInterval(T)                    # (start, end) using this sets problem to time dependent
-#@initial(u, "y > 0.9 ? 1 : 0")  # initial condition needed if time dependent
-#@initial(uold, "y > 0.9 ? 1 : 0")  # initial condition needed if time dependent
-@initial(u, "100*y")  # initial condition needed if time dependent
-@initial(uold, "100*y")  # initial condition needed if time dependent
+@initial(u, "y > 0.9 ? 1 : 0")  # initial condition needed if time dependent
+@initial(uold, "y > 0.9 ? 1 : 0")  # initial condition needed if time dependent
+#@initial(u, "100*y")  # initial condition needed if time dependent
+#@initial(uold, "100*y")  # initial condition needed if time dependent
 @initial(du, "0")  # initial condition needed if time dependent
 @initial(v, "0")  # initial condition needed if time dependent
 @initial(vold, "0")  # initial condition needed if time dependent
@@ -84,12 +84,11 @@ T = 1
 
 #@weakForm([du, dv], ["w*Dt(du)", "w*Dt(dv)"])
 
-#@weakForm([du, dv, dp], ["w*(Dt(du) + (u*deriv(du,1)+v*deriv(du,2))) - deriv(w,1)*dp + mu*dot(grad(w), grad(du)) + tauM*(u*deriv(w,1)+v*deriv(w,2))*(Dt(du) + (u*deriv(du,1)+v*deriv(du,2)) + deriv(dp,1)) - (w*((u-uold) ./ dtc + (u*deriv(u,1)+v*deriv(u,2))) - deriv(w,1)*p + mu*dot(grad(w), grad(u)) + tauM*(u*deriv(w,1)+v*deriv(w,2))*((u-uold) ./ dtc + (u*deriv(u,1)+v*deriv(u,2)) + deriv(p,1)))", 
-@weakForm([du, dv, dp], ["w*(Dt(du)) - (w*u)",
+@weakForm([du, dv, dp], ["w*(Dt(du) + (u*deriv(du,1)+v*deriv(du,2))) - deriv(w,1)*dp + mu*dot(grad(w), grad(du)) + tauM*(u*deriv(w,1)+v*deriv(w,2))*(Dt(du) + (u*deriv(du,1)+v*deriv(du,2)) + deriv(dp,1)) - (w*((u-uold) ./ dtc + (u*deriv(u,1)+v*deriv(u,2))) - deriv(w,1)*p + mu*dot(grad(w), grad(u)) + tauM*(u*deriv(w,1)+v*deriv(w,2))*((u-uold) ./ dtc + (u*deriv(u,1)+v*deriv(u,2)) + deriv(p,1)))", 
                          "w*(Dt(dv) + (u*deriv(dv,1)+v*deriv(dv,2))) - deriv(w,2)*dp + mu*dot(grad(w), grad(dv)) + tauM*(u*deriv(w,1)+v*deriv(w,2))*( Dt(dv) + (u*deriv(dv,1)+v*deriv(dv,2)) + deriv(dp,2) ) - (w*((v-vold) ./ dtc + (u*deriv(v,1)+v*deriv(v,2))) - deriv(w,2)*p + mu*dot(grad(w), grad(v)) + tauM*(u*deriv(w,1)+v*deriv(w,2))*((v-vold) ./ dtc + (u*deriv(v,1)+v*deriv(v,2)) + deriv(p,2) ))", 
                          "w*(deriv(du,1)+deriv(dv,2)) + tauC*(deriv(w,1)*( (u-uold) ./ dtc + (u*deriv(du,1)+v*deriv(du,2)) + deriv(dp,1) ) + deriv(w,2)*( (v-vold) ./ dtc + (u*deriv(dv,1)+v*deriv(dv,2)) + deriv(dp,2) )) - (w*(deriv(u,1)+deriv(v,2)) + tauC*(deriv(w,1)*( (u-uold) ./ dtc + (u*deriv(u,1)+v*deriv(u,2)) + deriv(p,1) ) + deriv(w,2)*( (v-vold) ./ dtc + (u*deriv(v,1)+v*deriv(v,2)) + deriv(p,2) )))"])
 
-solve([du, dv, dp], [u, v, p, uold, vold], nonlinear=true);
+solve([du, dv, dp], [u, v, p], nonlinear=true);
 
 #analytical
 #=

@@ -380,6 +380,7 @@ function solve(var, nlvar=nothing; nonlinear=false)
         printerr("Use cachesim_solve(var) for generating cachesim output. Try again.");
         return nothing;
     end
+	@show(var[1].index)
     # Generate files or solve directly
     if prob.time_dependent
         global time_stepper = init_stepper(grid_data.allnodes, time_stepper);
@@ -433,7 +434,7 @@ function solve(var, nlvar=nothing; nonlinear=false)
 				end
 
                 # place the values in the variable value arrays
-                if typeof(var) <: Array
+                if typeof(var) <: Array && length(result) > 1
                     tmp = 0;
                     totalcomponents = 0;
                     for vi=1:length(var)
@@ -446,7 +447,7 @@ function solve(var, nlvar=nothing; nonlinear=false)
                             tmp = tmp + 1;
                         end
                     end
-                else
+                elseif length(result) > 1
                     components = length(var.symvar.vals);
                     for compi=1:components
                         var.values[:,compi] = result[compi:components:end];
