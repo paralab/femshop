@@ -133,15 +133,14 @@ end
 function nonlinear_solve(var, nlvar, bilinear, linear, stepper=nothing)
     if prob.time_dependent && !(stepper === nothing)
         #TODO time dependent coefficients
-
+        
         log_entry("Beginning "*string(stepper.Nsteps)*" time steps.");
         t = 0;
         start_t = Base.Libc.time();
-		nl = nonlinear(100, 1e-12, 1e-12);
+        nl = nonlinear(100, 1e-12, 1e-12);
+        init_nonlinear(nl, var, nlvar, bilinear, linear);
         for i=1:stepper.Nsteps
-			init_nonlinear(nl, var, nlvar, bilinear, linear);
-			func = assemble;
-			newton(nl, func, func, nlvar);
+			newton(nl, assemble, assemble_rhs_only, nlvar, t, stepper.dt);
             t += stepper.dt;
         end
         end_t = Base.Libc.time();
@@ -154,18 +153,26 @@ function nonlinear_solve(var, nlvar, bilinear, linear, stepper=nothing)
     			println(f, ii)
   			end
 		end # the file f is automatically closed after this block finishes
-        return nlvar.values;
+        #return nlvar.values;
+        return [];
 
     else
-        assemble_t = @elapsed((A, b) = assemble(var, bilinear, linear));
-        sol_t = @elapsed(sol = A\b);
+        start_t = Base.Libc.time();
+        nl = nonlinear(100, 1e-12, 1e-12);
+        init_nonlinear(nl, var, nlvar, bilinear, linear);
+        newton(nl, assemble, assemble_rhs_only, nlvar);
+        end_t = Base.Libc.time();
 
-        log_entry("Assembly took "*string(assemble_t)*" seconds");
-        log_entry("Linear solve took "*string(sol_t)*" seconds");
-        #display(A);
-        #display(b);
-        #display(sol);
-        return sol;
+        log_entry("Solve took "*string(end_t-start_t)*" seconds");
+        
+		outfile = "nonlinear_sol.txt"
+		open(outfile, "w") do f
+  			for ii in nlvar.values
+    			println(f, ii)
+  			end
+		end # the file f is automatically closed after this block finishes
+        #return nlvar.values;
+        return [];
     end
 end
 
