@@ -142,8 +142,8 @@ function nonlinear_solve(var, nlvar, bilinear, linear, stepper=nothing)
         for i=1:stepper.Nsteps
 			newton(nl, assemble, assemble_rhs_only, nlvar, t, stepper.dt);
             t += stepper.dt;
-			nlvar[2] = nlvar[1];
-			nlvar[2] = nlvar[1];
+			nlvar[4] = nlvar[1];
+			nlvar[5] = nlvar[2];
         end
         end_t = Base.Libc.time();
 
@@ -393,10 +393,17 @@ end
 # Inset the single dof into the greater construct
 function insert_linear!(b, bel, glb, dof, Ndofs)
     # group nodal dofs
+	#@show(dof)
+	#@show(Ndofs)
     for d=1:length(dof)
         ind = glb.*Ndofs .- (Ndofs-dof[d]);
         ind2 = ((d-1)*length(glb)+1):(d*length(glb));
 
+		#@show(ind2)
+		#@show(ind)
+		#@show(bel[ind2])
+		#@show(glb)
+		#@show(b[ind])
         b[ind] = b[ind] + bel[ind2];
     end
 end

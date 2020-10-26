@@ -46,7 +46,9 @@ function newton(nl,formjac, formfunc, nlvar, t=0, dt=0)
 	while (i < nl.max_iter)
 		eval_jac(nl, formjac, t, dt);
 		delta = - nl.jac \ nl.res;
-		#@show delta
+		@show nl.res
+		@show(length(nl.res))
+		stop
 		# place the values in the variable value arrays
 
 		#print("\nlength(nl.var) = ", length(nl.var), "\n");
@@ -64,11 +66,11 @@ function newton(nl,formjac, formfunc, nlvar, t=0, dt=0)
 			totalcomponents = 0;
 			for vi=1:length(nl.var)
 				totalcomponents = totalcomponents + length(nl.nlvar[vi].symvar.vals);
+				#@show(totalcomponents)
 			end
 			for vi=1:length(nl.var)
 				components = length(nl.var[vi].symvar.vals);
-				print("components = ", components)
-				stop
+				#@show(components)
 				for compi=1:components
 					nl.var[vi].values[:,compi] = delta[(compi+tmp):totalcomponents:end];
 					nl.nlvar[vi].values[:,compi] = nl.nlvar[vi].values[:,compi]+delta[(compi+tmp):totalcomponents:end];

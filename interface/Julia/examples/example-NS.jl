@@ -13,12 +13,12 @@ init_femshop("NS");
 # Set up the configuration (order doesn't matter)
 @domain(2, SQUARE, UNSTRUCTURED)    # dimension, geometry, decomposition
 @solver(CG)                         # DG, CG, etc.
-@functionSpace(LEGENDRE, 2)         # function, order (or use testFunction and trialFunction)
+@functionSpace(LEGENDRE, 1)         # function, order (or use testFunction and trialFunction)
 @nodes(LOBATTO)                     # elemental node arrangement
 @stepper(EULER_IMPLICIT)            # time stepper (optional second arg is CFL#)
 
 # Specify the problem
-num_elem = 32;
+num_elem = 16;
 @mesh(QUADMESH, num_elem, 4)                   # .msh file or generate our own
 
 @variable(u)                        # same as @variable(u, SCALAR)
@@ -34,10 +34,8 @@ num_elem = 32;
 
 T = 1
 @timeInterval(T)                    # (start, end) using this sets problem to time dependent
-@initial(u, "y > 0.9 ? 1 : 0")  # initial condition needed if time dependent
-@initial(uold, "y > 0.9 ? 1 : 0")  # initial condition needed if time dependent
-#@initial(u, "100*y")  # initial condition needed if time dependent
-#@initial(uold, "100*y")  # initial condition needed if time dependent
+@initial(u, "y > 0.99 ? 1 : 0")  # initial condition needed if time dependent
+@initial(uold, "y > 0.99 ? 1 : 0")  # initial condition needed if time dependent
 @initial(du, "0")  # initial condition needed if time dependent
 @initial(v, "0")  # initial condition needed if time dependent
 @initial(vold, "0")  # initial condition needed if time dependent
@@ -50,45 +48,43 @@ T = 1
 #@boundary(v, 1, DIRICHLET, 0)
 @boundary(dv, 1, DIRICHLET, 0)
 #@boundary(p, 1, DIRICHLET, 0)
-#@boundary(dp, 1, DIRICHLET, 0)
+@boundary(dp, 1, ROBIN, 0)
 #@boundary(u, 2, DIRICHLET, 0)
 @boundary(du, 2, DIRICHLET, 0)
 #@boundary(v, 2, DIRICHLET, 0)
 @boundary(dv, 2, DIRICHLET, 0)
 #@boundary(p, 2, DIRICHLET, 0)
-#@boundary(dp, 2, DIRICHLET, 0)
+@boundary(dp, 2, ROBIN, 0)
 #@boundary(u, 3, DIRICHLET, 0)
 @boundary(du, 3, DIRICHLET, 0)
 #@boundary(v, 3, DIRICHLET, 0)
 @boundary(dv, 3, DIRICHLET, 0)
 #@boundary(p, 3, DIRICHLET, 0)
-#@boundary(dp, 3, DIRICHLET, 0)
+@boundary(dp, 3, ROBIN, 0)
 #@boundary(u, 4, DIRICHLET, 1)
 @boundary(du, 4, DIRICHLET, 0)
 #@boundary(v, 4, DIRICHLET, 0)
 @boundary(dv, 4, DIRICHLET, 0)
 #@boundary(p, 4, DIRICHLET, 0)
-#@boundary(dp, 4, DIRICHLET, 0)
+@boundary(dp, 4, ROBIN, 0)
 
 
 # Write the weak form
 @coefficient(mu, 0.01)
 @coefficient(dtc, 0.01)
-@coefficient(h, 1.0/32)
+@coefficient(h, 1.0 / 16)
 @coefficient(coe1, 4.0)
 @coefficient(coe2, 36.0)
 
-@parameter(tauM, "1.0 ./ (coe1 ./ dtc ./ dtc+ (u*u+v*v) .^ 0.5 ./ h ./ h+coe2*mu*mu ./ h ./ h ./ h ./ h) .^ 0.5")
-@parameter(tauC, "h*h* (coe1 ./ dtc ./ dtc+ (u*u+v*v) .^ 0.5 ./ h ./ h+coe2*mu*mu ./ h ./ h ./ h ./ h) .^ 0.5")
+@parameter(tauM, "1.0 ./ (coe1 ./ dtc ./ dtc+ (u*u+v*v) ./ h ./ h+coe2*mu*mu ./ h ./ h ./ h ./ h) .^ 0.5")
+@parameter(tauC, "h*h* (coe1 ./ dtc ./ dtc+ (u*u+v*v) ./ h ./ h+coe2*mu*mu ./ h ./ h ./ h ./ h) .^ 0.5")
 #@parameter(tauC, "(h.^2 ./ tauM")
 
-#@weakForm([du, dv], ["w*Dt(du)", "w*Dt(dv)"])
-
-@weakForm([du, dv, dp], ["w*(Dt(du) + (u*deriv(du,1)+v*deriv(du,2))) - deriv(w,1)*dp + mu*dot(grad(w), grad(du)) + tauM*(u*deriv(w,1)+v*deriv(w,2))*(Dt(du) + (u*deriv(du,1)+v*deriv(du,2)) + deriv(dp,1)) - (w*((u-uold) ./ dtc + (u*deriv(u,1)+v*deriv(u,2))) - deriv(w,1)*p + mu*dot(grad(w), grad(u)) + tauM*(u*deriv(w,1)+v*deriv(w,2))*((u-uold) ./ dtc + (u*deriv(u,1)+v*deriv(u,2)) + deriv(p,1)))", 
-                         "w*(Dt(dv) + (u*deriv(dv,1)+v*deriv(dv,2))) - deriv(w,2)*dp + mu*dot(grad(w), grad(dv)) + tauM*(u*deriv(w,1)+v*deriv(w,2))*( Dt(dv) + (u*deriv(dv,1)+v*deriv(dv,2)) + deriv(dp,2) ) - (w*((v-vold) ./ dtc + (u*deriv(v,1)+v*deriv(v,2))) - deriv(w,2)*p + mu*dot(grad(w), grad(v)) + tauM*(u*deriv(w,1)+v*deriv(w,2))*((v-vold) ./ dtc + (u*deriv(v,1)+v*deriv(v,2)) + deriv(p,2) ))", 
-                         "w*(deriv(du,1)+deriv(dv,2)) + tauC*(deriv(w,1)*( (u-uold) ./ dtc + (u*deriv(du,1)+v*deriv(du,2)) + deriv(dp,1) ) + deriv(w,2)*( (v-vold) ./ dtc + (u*deriv(dv,1)+v*deriv(dv,2)) + deriv(dp,2) )) - (w*(deriv(u,1)+deriv(v,2)) + tauC*(deriv(w,1)*( (u-uold) ./ dtc + (u*deriv(u,1)+v*deriv(u,2)) + deriv(p,1) ) + deriv(w,2)*( (v-vold) ./ dtc + (u*deriv(v,1)+v*deriv(v,2)) + deriv(p,2) )))"])
-
-solve([du, dv, dp], [u, v, p], nonlinear=true);
+@weakForm([du, dv, dp], ["w*(Dt(du) + (u*deriv(du,1)+v*deriv(du,2))) - deriv(w,1)*dp + mu*dot(grad(w), grad(du)) + tauM*(u*deriv(w,1)+v*deriv(w,2))*(Dt(du) + (u*deriv(du,1)+v*deriv(du,2)) + deriv(dp,1)) + (w*((u-uold) ./ dtc + (u*deriv(u,1)+v*deriv(u,2))) - deriv(w,1)*p + mu*dot(grad(w), grad(u)) + tauM*(u*deriv(w,1)+v*deriv(w,2))*((u-uold) ./ dtc + (u*deriv(u,1)+v*deriv(u,2)) + deriv(p,1)))", 
+                         "w*(Dt(dv) + (u*deriv(dv,1)+v*deriv(dv,2))) - deriv(w,2)*dp + mu*dot(grad(w), grad(dv)) + tauM*(u*deriv(w,1)+v*deriv(w,2))*(Dt(dv) + (u*deriv(dv,1)+v*deriv(dv,2)) + deriv(dp,2)) + (w*((v-vold) ./ dtc + (u*deriv(v,1)+v*deriv(v,2))) - deriv(w,2)*p + mu*dot(grad(w), grad(v)) + tauM*(u*deriv(w,1)+v*deriv(w,2))*((v-vold) ./ dtc + (u*deriv(v,1)+v*deriv(v,2)) + deriv(p,2)))", 
+	                     "w*(deriv(du,1)+deriv(dv,2)) + tauC*(deriv(w,1)*( Dt(du) + (u*deriv(du,1)+v*deriv(du,2)) + deriv(dp,1) ) + deriv(w,2)*( Dt(dv) + (u*deriv(dv,1)+v*deriv(dv,2)) + deriv(dp,2) )) + (w*(deriv(u,1)+deriv(v,2)) + tauC*(deriv(w,1)*( (u-uold) ./ dtc + (u*deriv(u,1)+v*deriv(u,2)) + deriv(p,1) ) + deriv(w,2)*( (v-vold) ./ dtc + (u*deriv(v,1)+v*deriv(v,2)) + deriv(p,2) )))"])
+						  
+solve([du, dv, dp], [u, v, p, uold, vold], nonlinear=true);
 
 #analytical
 #=
