@@ -30,7 +30,7 @@ include("mesh_read.jl");
 include("mesh_write.jl")
 include("grid.jl");
 include("simple_mesh.jl");
-include("morton_ordering.jl");
+include("recursive_ordering.jl");
 include("tiled_ordering.jl");
 
 include("function_utils.jl");

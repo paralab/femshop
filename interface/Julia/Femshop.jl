@@ -12,7 +12,7 @@ export @language, @domain, @mesh, @solver, @stepper, @functionSpace, @trialFunct
 export init_femshop, set_language, dendro, set_solver, set_stepper, set_matrix_free, reformat_for_stepper, 
         add_mesh, output_mesh, add_test_function, 
         add_initial_condition, add_boundary_condition, set_rhs, set_lhs, solve, finalize, cachesim, cachesim_solve, 
-        morton_nodes, tiled_nodes, tiled_elements
+        morton_nodes, hilbert_nodes, tiled_nodes, morton_elements, hilbert_elements, tiled_elements
 export build_cache_level, build_cache
 export sp_parse
 export generate_code_layer
@@ -380,7 +380,6 @@ function solve(var, nlvar=nothing; nonlinear=false)
         printerr("Use cachesim_solve(var) for generating cachesim output. Try again.");
         return nothing;
     end
-	#@show(var[1].index)
     # Generate files or solve directly
     if prob.time_dependent
         global time_stepper = init_stepper(grid_data.allnodes, time_stepper);
@@ -479,9 +478,24 @@ function cachesim(use)
     global use_cachesim = use;
 end
 
-function morton_nodes(n)
-    t = @elapsed(global grid_data = reorder_grid_morton(grid_data, n));
+function morton_nodes(griddim)
+    t = @elapsed(global grid_data = reorder_grid_recursive(grid_data, griddim, MORTON_ORDERING));
     log_entry("Reordered nodes to Morton. Took "*string(t)*" sec.");
+end
+
+function morton_elements(griddim)
+    global elemental_order = get_recursive_order(MORTON_ORDERING, config.dimension, griddim);
+    log_entry("Reordered elements to Morton.");
+end
+
+function hilbert_nodes(griddim)
+    t = @elapsed(global grid_data = reorder_grid_recursive(grid_data, griddim, HILBERT_ORDERING));
+    log_entry("Reordered nodes to Hilbert. Took "*string(t)*" sec.");
+end
+
+function hilbert_elements(griddim)
+    global elemental_order = get_recursive_order(HILBERT_ORDERING, config.dimension, griddim);
+    log_entry("Reordered elements to Hilbert.");
 end
 
 function tiled_nodes(griddim, tiledim)
@@ -490,7 +504,7 @@ function tiled_nodes(griddim, tiledim)
 end
 
 function tiled_elements(griddim, tiledim)
-    global elemental_order = get_tiled_order(config.dimension, griddim, tiledim, false);
+    global elemental_order = get_tiled_order(config.dimension, griddim, tiledim, true);
     log_entry("Reordered elements to tiled("*string(tiledim)*").");
 end
 
