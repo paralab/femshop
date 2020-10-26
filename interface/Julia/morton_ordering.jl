@@ -1,18 +1,21 @@
-# Builds a 3D morton ordering of the nodes
-# Assumes the grid is (2^N)^3
-# Also assumes first node and last node are at opposing extremes to compute bounding box if not given.
-# Returns the order in which nodes shall be indexed.
-export reorder_grid_morton
+#=
+# Builds a Morton ordering of a 2D or 3D grid
+# Assumes the grid is (2^N)^d
+# Returns the global order in which objects shall be indexed.
+# example: 2D, N=2
+#     11  12  15  16
+#      9  10  13  14
+#      3   4   7  8
+#      1   2   5  6
+# Invert=true will give  [1, 2, 5, 6, 3, 4,...] (encode?) result[i] = lexical index
+# Invert=false will give [1, 2, 5, 6, 3, 4,...] (decode?) result[i] = morton index
+# bad example...
+=#
+export reorder_grid_morton, get_morton_order
 
-function morton_order_nodes_3d(nodes, N, invert = false)
+function morton_order_3d(N, invert = false)
     nnodes = (2^N)^3;
-    if !(size(nodes,1) == nnodes)
-        println("Number of nodes must be like (2^N)^3 for morton");
-        return 1:size(nodes,1);
-    end
-    
-    # Since node locations could be non-uniform, assign each an integer location
-    lexorder = zeros(Int,size(nodes));
+    lexorder = zeros(Int,nnodes);
     twoN = 2^N;
     for k=1:twoN
         for j=1:twoN
@@ -87,7 +90,14 @@ end
 function reorder_grid_morton(grid, N)
     dim = size(grid.allnodes,2);
     nel = size(grid.loc2glb,1);
-    morton = morton_order_nodes_3d(grid.allnodes, N, true);
+    
+    nnodes = (2^N)^dim;
+    if !(size(grid.allnodes,1) == nnodes)
+        println("Number of nodes must be like (2^N)^D for morton. Using lexical instead.");
+        return 1:size(grid.allnodes,1);
+    end
+    
+    morton = get_morton_order(dim, N, true);
     
     newnodes = zeros(size(grid.allnodes));
     newbdry = copy(grid.bdry);
@@ -116,4 +126,14 @@ function reorder_grid_morton(grid, N)
     end
     
     return Femshop.Grid(newnodes, newbdry, grid.bdryelem, grid.bdrynorm, grid.bids, newloc2glb, newglbvertex);
+end
+
+function get_morton_order(dim, N, invert = true)
+    if dim == 3
+        return morton_order_3d(N, invert);
+    elseif dim == 2
+        return morton_order_2d(N, invert);
+    else
+        return 1:griddim[1]; # 1D doesn't make sense
+    end
 end

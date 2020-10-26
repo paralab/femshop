@@ -26,7 +26,7 @@ macro useLog(name, dir)
 end
 
 # Sets dimension, domain shape, discretization type
-macro domain(dims) return :(@domain($dims, SQUARE, GRID)) end
+macro domain(dims) return :(@domain($dims, SQUARE, UNIFORM_GRID)) end
 macro domain(dims, geometry, mesh)
     return esc(quote
         Femshop.config.dimension = $dims;

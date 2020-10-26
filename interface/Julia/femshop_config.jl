@@ -12,7 +12,7 @@ mutable struct Femshop_config
     # Domain
     dimension::Int          # 1,2,3,4
     geometry::String        # square, irregular
-    mesh_type::String       # unstructured, tree
+    mesh_type::String       # unstructured, tree, grid
 
     # FEM details
     solver_type::String     # cg, dg, hdg
@@ -38,7 +38,7 @@ mutable struct Femshop_config
     Femshop_config() = new(
         1,
         SQUARE,
-        UNSTRUCTURED,
+        UNIFORM_GRID,
         CG,
         LEGENDRE,
         LEGENDRE,
