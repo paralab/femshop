@@ -419,6 +419,8 @@ function solve(var, nlvar=nothing; nonlinear=false)
             
             if prob.time_dependent
                 global time_stepper = init_stepper(grid_data.allnodes, time_stepper);
+				Femshop.time_stepper.dt = 0.05;
+				Femshop.time_stepper.Nsteps = 200;
 				if (nonlinear)
                 	t = @elapsed(result = CGSolver.nonlinear_solve(var, nlvar, lhs, rhs, time_stepper));
 				else
