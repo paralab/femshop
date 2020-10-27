@@ -17,4 +17,17 @@
 - [Per-Olaf Perrson](http://persson.berkeley.edu/), UC Berkeley
 - [Hari Sundar](http://www.cs.utah.edu/~hari/), University of Utah
 
-Testing testing
+## Learn more
+
+* See [the femshop wiki](https://github.com/paralab/femshop/wiki) to learn what it does and how to use it.
+* Explore examples (coming soon).
+
+## Get it
+
+1. Install a current version of Julia(1.3 or newer).
+2. Clone [the femshop repository](https://github.com/paralab/femshop).
+3. Include the main module as shown. (package manager support is not yet ready, but planned)
+```
+include("Femshop.jl");
+using .Femshop
+``
