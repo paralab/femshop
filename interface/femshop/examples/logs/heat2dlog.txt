@@ -1,0 +1,112 @@
+######################################
+# Femshop Log for: heat2d
+######################################
+
+1.	Set time stepper to crank-nicholson
+2.	Building simple quad mesh with nx*nx elements, nx=10
+3.	Added mesh with 121 vertices and 100 elements.
+4.	Full grid has 3362 nodes.
+5.	Grid building took 0.0114867 seconds
+6.	Added variable: u of type: scalar
+7.	Set test function symbol: v of type: scalar
+8.	Generated function: genfunction_0
+9.	Initial condition for u : GenFunction("genfunction_0", "x=0,y=0,z=0,t=0", "abs(x-0.5)+abs(y-0.5) < 0.2 ? 1 : 0", :(if abs(x - 0.5) + abs(y - 0.5) < 0.2
+      1
+  else
+      0
+  end), genfunction_0)
+10.	Boundary condition: var=u bid=1 type=Dirichlet val=0
+11.	Generated function: genfunction_1
+12.	Added coefficient f : 0.5*sin(6*pi*x)*sin(6*pi*y)
+13.	Making weak form for variable(s): u
+14.	Weak form, input: Dt(u*v) + 0.01 * dot(grad(u),grad(v)) - f*v
+15.	Weak form, symbolic layer: Dt(Array[SymEngine.Basic[_v_1*_u_1]]) + Array[SymEngine.Basic[0.01*D1__u_1*D1__v_1, 0.01*D2__u_1*D2__v_1]] = Array[SymEngine.Basic[_v_1*_f_1]]
+16.	Weak form, modified for time stepping: Array{SymEngine.Basic,1}[[_v_1*_u_1, 0.005*dt*D1__u_1*D1__v_1, 0.005*dt*D2__u_1*D2__v_1]] = Array{SymEngine.Basic,1}[[dt*_v_1*_f_1, _v_1*_u_1, -0.005*dt*D1__u_1*D1__v_1, -0.005*dt*D2__u_1*D2__v_1]]
+17.	Weak form, symbolic layer:
+lhs = _v_1*_u_1 + 0.005*dt*D1__u_1*D1__v_1 + 0.005*dt*D2__u_1*D2__v_1
+rhs = dt*_v_1*_f_1 + _v_1*_u_1 + -0.005*dt*D1__u_1*D1__v_1 + -0.005*dt*D2__u_1*D2__v_1
+18.	Weak form, code layer: LHS = begin
+    var = args[1]
+    x = args[2]
+    gbl = args[3]
+    refel = args[4]
+    borl = args[5]
+    time = args[6]
+    dt = args[7]
+    (detJ, J) = geometric_factors(refel, x)
+    wgdetj = refel.wg .* detJ
+    (RQ1, RQ2, RD1, RD2) = build_deriv_matrix(refel, J)
+    (TRQ1, TRQ2) = (RQ1', RQ2')
+    return (refel.Q)' * diagm(wgdetj) * refel.Q + TRQ1 * (diagm(wgdetj .* (0.005 .* dt)) * RQ1) + TRQ2 * (diagm(wgdetj .* (0.005 .* dt)) * RQ2)
+end 
+  RHS = begin
+    var = args[1]
+    x = args[2]
+    gbl = args[3]
+    refel = args[4]
+    borl = args[5]
+    time = args[6]
+    dt = args[7]
+    (detJ, J) = geometric_factors(refel, x)
+    wgdetj = refel.wg .* detJ
+    (RQ1, RQ2, RD1, RD2) = build_deriv_matrix(refel, J)
+    (TRQ1, TRQ2) = (RQ1', RQ2')
+    coef_0_1 = zeros(refel.Np)
+    coef_u_1 = copy((Femshop.variables[1]).values[gbl])
+    coef_D1u_1 = copy((Femshop.variables[1]).values[gbl])
+    coef_D2u_1 = copy((Femshop.variables[1]).values[gbl])
+    for coefi = 1:refel.Np
+        coef_0_1[coefi] = (Femshop.genfunctions[2]).func(x[coefi, 1], x[coefi, 2], 0, time)
+    end
+    coef_D1u_1 = if length(coef_D1u_1) == 1
+            0
+        else
+            RD1 * coef_D1u_1
+        end
+    coef_D2u_1 = if length(coef_D2u_1) == 1
+            0
+        else
+            RD2 * coef_D2u_1
+        end
+    return (refel.Q)' * (wgdetj .* (refel.Q * (dt .* coef_0_1))) + (refel.Q)' * (wgdetj .* (refel.Q * coef_u_1)) + TRQ1 * (wgdetj .* (refel.Q * ((-0.005 .* dt) .* coef_D1u_1))) + TRQ2 * (wgdetj .* (refel.Q * ((-0.005 .* dt) .* coef_D2u_1)))
+end
+19.	Generated function: genfunction_2
+20.	Generated function: genfunction_3
+21.	Built initial conditions for: u
+22.	Assembly took 0.5156478 seconds
+23.	Beginning 232.0 time steps.
+24.	Solve took 15.742000102996826 seconds
+25.	Solved for u.(took 16.371715699 seconds)
+26.	Dumping configuration:
+27.		dimension = 2
+28.		geometry = square
+29.		mesh_type = unstructured
+30.		solver_type = CG
+31.		trial_function = Legendre
+32.		test_function = Legendre
+33.		elemental_nodes = Lobatto
+34.		quadrature = Gauss
+35.		p_adaptive = false
+36.		basis_order_min = 4
+37.		basis_order_max = 4
+38.		linear = true
+39.		t_adaptive = false
+40.		stepper = crank-nicholson
+41.		linalg_matrixfree = false
+42.		linalg_matfree_max = 1
+43.		linalg_matfree_tol = 1.0
+44.		linalg_backend = ours
+45.		output_format = vtk
+46.	Dumping problem:
+47.		bc_type = ["Dirichlet"]
+48.		bid = [1]
+49.		bc_func = Any[0]
+50.		time_dependent = true
+51.		end_time = 1.0
+52.		initial = Any[GenFunction("genfunction_0", "x=0,y=0,z=0,t=0", "abs(x-0.5)+abs(y-0.5) < 0.2 ? 1 : 0", :(if abs(x - 0.5) + abs(y - 0.5) < 0.2
+      1
+  else
+      0
+  end), genfunction_0)]
+53.		lhs_time_deriv = Bool[]
+54.	Completed. Closing Log.
