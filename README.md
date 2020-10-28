@@ -7,7 +7,7 @@
 ### Team
 
 - [Tan Bui-Thanh](http://users.ices.utexas.edu/~tanbui/), University of Texas at Austin
-- [Clint Dawson](https://www.ae.utexas.edu/faculty/faculty-directory/dawson), University of Texas at Austin
+- [Clint Dawson](https://www.ae.utexas.edu/people/faculty/faculty-directory/dawson), University of Texas at Austin
 - [Krzysztof Fidkowski](https://aero.engin.umich.edu/people/krzysztof-fidkowski/), Univeristy of Michigan
 - [Matthew Flatt](http://www.cs.utah.edu/~mflatt), University of Utah
 - [Baskar Ganapathysubramanian](https://www.me.iastate.edu/bglab/baskar-ganapathysubramanian/), Iowa State University
