@@ -10,8 +10,8 @@
 - [Clint Dawson](https://www.ae.utexas.edu/faculty/faculty-directory/dawson), University of Texas at Austin
 - [Krzysztof Fidkowski](https://aero.engin.umich.edu/people/krzysztof-fidkowski/), Univeristy of Michigan
 - [Matthew Flatt](http://www.cs.utah.edu/~mflatt), University of Utah
+- [Baskar Ganapathysubramanian](https://www.me.iastate.edu/bglab/baskar-ganapathysubramanian/), Iowa State University
 - [Frank Giraldo](https://frankgiraldo.wixsite.com/mysite), Naval Postgraduate School
-- [Jay Gopalakrishnan](http://web.pdx.edu/~gjay/), Portland State University
 - [David Kopriva](https://www.math.fsu.edu/~kopriva/), San Diego State University
 - [Cuong Nguyen](http://www.mit.edu/~cuongng/Site/Home.html), MIT
 - [Per-Olaf Perrson](http://persson.berkeley.edu/), UC Berkeley
