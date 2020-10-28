@@ -120,12 +120,14 @@ function linear_solve(var, bilinear, linear, stepper=nothing)
     else
         assemble_t = @elapsed((A, b) = assemble(var, bilinear, linear));
         sol_t = @elapsed(sol = A\b);
-
+        
         log_entry("Assembly took "*string(assemble_t)*" seconds");
         log_entry("Linear solve took "*string(sol_t)*" seconds");
         #display(A);
         #display(b);
         #display(sol);
+        # I want to look at A
+        # global Amat = A;
         return sol;
     end
 end
@@ -269,7 +271,6 @@ function assemble(var, bilinear, linear, t=0.0, dt=0.0)
             bilinchunk = bilinear.func(lhsargs);
             insert_bilinear!(AI, AJ, AV, Astart, bilinchunk, glb, 1:dofs_per_node, dofs_per_node);
         else
-			
             linchunk = linear.func(rhsargs);
             insert_linear!(b, linchunk, glb, 1:dofs_per_node, dofs_per_node);
 
@@ -449,17 +450,10 @@ end
 # Inset the single dof into the greater construct
 function insert_linear!(b, bel, glb, dof, Ndofs)
     # group nodal dofs
-	#@show(dof)
-	#@show(Ndofs)
     for d=1:length(dof)
         ind = glb.*Ndofs .- (Ndofs-dof[d]);
         ind2 = ((d-1)*length(glb)+1):(d*length(glb));
 
-		#@show(ind2)
-		#@show(ind)
-		#@show(bel[ind2])
-		#@show(glb)
-		#@show(b[ind])
         b[ind] = b[ind] + bel[ind2];
     end
 end
