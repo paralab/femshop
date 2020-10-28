@@ -46,9 +46,10 @@ function newton(nl,formjac, formfunc, nlvar, t=0, dt=0)
 	while (i < nl.max_iter)
 		eval_jac(nl, formjac, t, dt);
 		delta = - nl.jac \ nl.res;
-		@show nl.res
-		@show(length(nl.res))
-		stop
+		#@show nl.jac
+		#@show nl.res
+		#@show(delta)
+		#stop
 		# place the values in the variable value arrays
 
 		#print("\nlength(nl.var) = ", length(nl.var), "\n");

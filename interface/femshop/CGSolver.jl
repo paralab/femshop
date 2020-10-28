@@ -139,22 +139,35 @@ function nonlinear_solve(var, nlvar, bilinear, linear, stepper=nothing)
         log_entry("Beginning "*string(stepper.Nsteps)*" time steps.");
         t = 0;
         start_t = Base.Libc.time();
-        nl = nonlinear(100, 1e-12, 1e-12);
+        nl = nonlinear(100, 1e-9, 1e-9);
         init_nonlinear(nl, var, nlvar, bilinear, linear);
         for i=1:stepper.Nsteps
+			println("solve for time step ", i);
 			newton(nl, assemble, assemble_rhs_only, nlvar, t, stepper.dt);
             t += stepper.dt;
+			nlvar[4].values = copy(nlvar[1].values);
+			nlvar[5].values = copy(nlvar[2].values);
+			if (i % 10 ==0)
+				outfile = string("LD_u_",i);
+				open(outfile, "w") do f
+					for ii=1:length(nlvar[1].values)
+						println(f, nlvar[1].values[ii])
+					end
+					close(f)
+				end
+				outfile = string("LD_v_",i);
+				open(outfile, "w") do f
+					for ii=1:length(nlvar[2].values)
+						println(f, nlvar[2].values[ii])
+					end
+					close(f)
+				end
+			end
         end
         end_t = Base.Libc.time();
 
         log_entry("Solve took "*string(end_t-start_t)*" seconds");
         #display(sol);
-		outfile = "nonlinear_sol.txt"
-		open(outfile, "w") do f
-  			for ii in nlvar.values
-    			println(f, ii)
-  			end
-		end # the file f is automatically closed after this block finishes
         #return nlvar.values;
         return [];
 
@@ -167,12 +180,6 @@ function nonlinear_solve(var, nlvar, bilinear, linear, stepper=nothing)
 
         log_entry("Solve took "*string(end_t-start_t)*" seconds");
         
-		outfile = "nonlinear_sol.txt"
-		open(outfile, "w") do f
-  			for ii in nlvar.values
-    			println(f, ii)
-  			end
-		end # the file f is automatically closed after this block finishes
         #return nlvar.values;
         return [];
     end
@@ -323,6 +330,9 @@ function assemble(var, bilinear, linear, t=0.0, dt=0.0)
             end
         end
     end
+
+	A = identity_rows(A, [3], length(b));
+	b[3] = 0;	
     bc_time = Base.Libc.time() - bc_time;
     
     log_entry("Elemental loop time:     "*string(loop_time));
