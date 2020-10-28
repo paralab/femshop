@@ -158,7 +158,8 @@ function dirichlet_bc(A, b, val, bdryind, t=0, dofind = 1, totaldofs = 1)
         bdry = (bdry .- 1) .* totaldofs .+ dofind;
     end
     A = identity_rows(A, bdry, N);
-    
+    #@show(bdry)
+	#@show(N) 
     b = dirichlet_bc_rhs_only(b, val, bdryind, t, dofind, totaldofs); # how convenient
     
     return (A, b);
