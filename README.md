@@ -14,7 +14,7 @@
 - [Frank Giraldo](https://frankgiraldo.wixsite.com/mysite), Naval Postgraduate School
 - [David Kopriva](https://www.math.fsu.edu/~kopriva/), San Diego State University
 - [Cuong Nguyen](http://www.mit.edu/~cuongng/Site/Home.html), MIT
-- [Per-Olaf Perrson](http://persson.berkeley.edu/), UC Berkeley
+- [Per-Olof Perrson](http://persson.berkeley.edu/), UC Berkeley
 - [Hari Sundar](http://www.cs.utah.edu/~hari/), University of Utah
 
 ## Learn more
