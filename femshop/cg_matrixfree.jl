@@ -4,7 +4,7 @@ Functions used by the CGSolver for matrix free solutions.
 
 # Note: This uses the conjugate gradient iterative method,
 # which assumes an SPD matrix.
-function solve_matrix_free_sym(var, bilinear, linear, stepper=nothing)
+function solve_matrix_free_sym(var, bilinear, linear, stepper=nothing, t=0, dt=0)
     start_time = time_ns();
     tol = config.linalg_matfree_tol;
     maxiters = config.linalg_matfree_max;
@@ -36,7 +36,7 @@ function solve_matrix_free_sym(var, bilinear, linear, stepper=nothing)
         #TODO
     else
         # Use regular rhs assembly
-        b = assemble_rhs_only(var, linear, 0, 0);
+        b = assemble_rhs_only(var, linear, t, dt);
         normb = norm(b, Inf);
         
         x = zeros(Nn);
@@ -53,7 +53,8 @@ function solve_matrix_free_sym(var, bilinear, linear, stepper=nothing)
         while iter < maxiters && err > tol
             iter = iter+1;
             
-            Ap = elem_matvec(p,bilinear, dofs_per_node, var);
+            Ap = elem_matvec(p,bilinear, dofs_per_node, var, t, dt);
+            
             alpha = dot(r0,r0) / dot(p,Ap);
             
             x = x .+ alpha.*p;
@@ -74,16 +75,14 @@ function solve_matrix_free_sym(var, bilinear, linear, stepper=nothing)
         log_entry("Converged to "*string(err)*" in "*string(iter)*" iterations");
         
         total_time = time_ns() - start_time;
-        log_entry("Linear solve took "*string(total_time/1e9)*" seconds");
+        log_entry("Matrix-free solve took "*string(total_time/1e9)*" seconds");
         
         return x;
     end
-    
-    
 end
 
 # Note: This uses the stabilized biconjugate gradient method which works for nonsymmetric matrices
-function solve_matrix_free_asym(var, bilinear, linear, stepper=nothing)
+function solve_matrix_free_asym(var, bilinear, linear, stepper=nothing, t=0, dt=0)
     start_time = time_ns();
     tol = config.linalg_matfree_tol;
     maxiters = config.linalg_matfree_max;
@@ -110,7 +109,7 @@ function solve_matrix_free_asym(var, bilinear, linear, stepper=nothing)
         #TODO
     else
         # Use regular rhs assembly
-        b = assemble_rhs_only(var, linear, 0, 0);
+        b = assemble_rhs_only(var, linear, t, dt);
         normb = norm(b, Inf);
         
         x = zeros(Nn);
@@ -133,12 +132,12 @@ function solve_matrix_free_asym(var, bilinear, linear, stepper=nothing)
             beta = (rho1*alpha) / (rho0*w0);
             p = r0 + beta*(p - w0*Ap);
             
-            Ap = elem_matvec(p,bilinear, dofs_per_node, var);
+            Ap = elem_matvec(p,bilinear, dofs_per_node, var, t, dt);
             
             alpha = rho1/dot(rs,Ap);
             s = r0 - alpha*Ap;
             
-            As = elem_matvec(s,bilinear, dofs_per_node, var);
+            As = elem_matvec(s,bilinear, dofs_per_node, var, t, dt);
             
             w1 = dot(s,As) / dot(As,As);
             x = x + alpha*p + w1*s;
@@ -245,26 +244,38 @@ function elem_matvec(x, bilinear, dofs_per_node, var, t = 0.0, dt = 0.0)
     bidcount = length(grid_data.bids); # the number of BIDs
     if dofs_per_node > 1
         if multivar
-            # d = 0;
-            # for vi=1:length(var)
-            #     for compo=1:length(var[vi].symvar.vals)
-            #         d = d + 1;
-            #         for bid=1:bidcount
-            #             Ax = dirichlet_bc_matfree(Ax, x, grid_data.bdry[bid], d, dofs_per_node);
-            #         end
-            #     end
-            # end
-            for bid=1:bidcount
-                Ax = dirichlet_bc_matfree(Ax, x, grid_data.bdry[bid], 1:dofs_per_node, dofs_per_node);
+            d = 0;
+            for vi=1:length(var)
+                for compo=1:length(var[vi].symvar.vals)
+                    d = d + 1;
+                    for bid=1:bidcount
+                        if prob.bc_type[var[vi].index, bid] == NO_BC
+                            # do nothing
+                        else
+                            Ax = dirichlet_bc_matfree(Ax, x, grid_data.bdry[bid], d, dofs_per_node);
+                        end
+                    end
+                end
             end
+            # for bid=1:bidcount
+            #     Ax = dirichlet_bc_matfree(Ax, x, grid_data.bdry[bid], 1:dofs_per_node, dofs_per_node);
+            # end
         else
             for bid=1:bidcount
-                Ax = dirichlet_bc_matfree(Ax, x, grid_data.bdry[bid], 1:dofs_per_node, dofs_per_node);
+                if prob.bc_type[var.index, bid] == NO_BC
+                    # do nothing
+                else
+                    Ax = dirichlet_bc_matfree(Ax, x, grid_data.bdry[bid], 1:dofs_per_node, dofs_per_node);
+                end
             end
         end
     else
         for bid=1:bidcount
-            Ax = dirichlet_bc_matfree(Ax, x, grid_data.bdry[bid]);
+            if prob.bc_type[var.index, bid] == NO_BC
+                # do nothing
+            else
+                Ax = dirichlet_bc_matfree(Ax, x, grid_data.bdry[bid]);
+            end
         end
     end
     

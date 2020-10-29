@@ -11,7 +11,7 @@ init_femshop("NS");
 @useLog("NSlog")
 
 # Set up the configuration (order doesn't matter)
-@domain(2, SQUARE, UNSTRUCTURED)    # dimension, geometry, decomposition
+@domain(2, SQUARE, UNIFORM_GRID)    # dimension, geometry, decomposition
 @solver(CG)                         # DG, CG, etc.
 @functionSpace(LEGENDRE, 1)         # function, order (or use testFunction and trialFunction)
 @nodes(LOBATTO)                     # elemental node arrangement
@@ -49,25 +49,25 @@ T = 1
 #@boundary(v, 1, DIRICHLET, 0)
 @boundary(dv, 1, DIRICHLET, 0)
 #@boundary(p, 1, DIRICHLET, 0)
-@boundary(dp, 1, ROBIN, 0)
+@boundary(dp, 1, NO_BC, 0)
 #@boundary(u, 2, DIRICHLET, 0)
 @boundary(du, 2, DIRICHLET, 0)
 #@boundary(v, 2, DIRICHLET, 0)
 @boundary(dv, 2, DIRICHLET, 0)
 #@boundary(p, 2, DIRICHLET, 0)
-@boundary(dp, 2, ROBIN, 0)
+@boundary(dp, 2, NO_BC, 0)
 #@boundary(u, 3, DIRICHLET, 0)
 @boundary(du, 3, DIRICHLET, 0)
 #@boundary(v, 3, DIRICHLET, 0)
 @boundary(dv, 3, DIRICHLET, 0)
 #@boundary(p, 3, DIRICHLET, 0)
-@boundary(dp, 3, ROBIN, 0)
+@boundary(dp, 3, NO_BC, 0)
 #@boundary(u, 4, DIRICHLET, 1)
 @boundary(du, 4, DIRICHLET, 0)
 #@boundary(v, 4, DIRICHLET, 0)
 @boundary(dv, 4, DIRICHLET, 0)
 #@boundary(p, 4, DIRICHLET, 0)
-@boundary(dp, 4, ROBIN, 0)
+@boundary(dp, 4, NO_BC, 0)
 
 
 # Write the weak form

@@ -8,7 +8,7 @@ export init_cgsolver, solve, nonlinear_solve
 import ..Femshop: JULIA, CPP, MATLAB, SQUARE, IRREGULAR, UNIFORM_GRID, TREE, UNSTRUCTURED, CG, DG, HDG,
             NODAL, MODAL, LEGENDRE, UNIFORM, GAUSS, LOBATTO, NONLINEAR_NEWTON,
             NONLINEAR_SOMETHING, EULER_EXPLICIT, EULER_IMPLICIT, CRANK_NICHOLSON, RK4, LSRK4,
-            ABM4, OURS, PETSC, VTK, RAW_OUTPUT, CUSTOM_OUTPUT, DIRICHLET, NEUMANN, ROBIN,
+            ABM4, OURS, PETSC, VTK, RAW_OUTPUT, CUSTOM_OUTPUT, DIRICHLET, NEUMANN, ROBIN, NO_BC,
             MSH_V2, MSH_V4,
             SCALAR, VECTOR, TENSOR, SYM_TENSOR,
             LHS, RHS,
@@ -299,6 +299,10 @@ function assemble(var, bilinear, linear, t=0.0, dt=0.0)
                             (A, b) = dirichlet_bc(A, b, prob.bc_func[var[vi].index, bid][compo], grid_data.bdry[bid], t, dofind, dofs_per_node);
                         elseif prob.bc_type[var[vi].index, bid] == NEUMANN
                             (A, b) = neumann_bc(A, b, prob.bc_func[var[vi].index, bid][compo], grid_data.bdry[bid], bid, t, dofind, dofs_per_node);
+                        elseif prob.bc_type[var[vi].index, bid] == ROBIN
+                            printerr("Robin BCs not ready.");
+                        elseif prob.bc_type[var[vi].index, bid] == NO_BC
+                            # do nothing
                         else
                             printerr("Unsupported boundary condition type: "*prob.bc_type[var[vi].index, bid]);
                         end
@@ -313,6 +317,10 @@ function assemble(var, bilinear, linear, t=0.0, dt=0.0)
                         (A, b) = dirichlet_bc(A, b, prob.bc_func[var.index, bid][d], grid_data.bdry[bid], t, dofind, dofs_per_node);
                     elseif prob.bc_type[var.index, bid] == NEUMANN
                         (A, b) = neumann_bc(A, b, prob.bc_func[var.index, bid][d], grid_data.bdry[bid], bid, t, dofind, dofs_per_node);
+                    elseif prob.bc_type[var.index, bid] == ROBIN
+                        printerr("Robin BCs not ready.");
+                    elseif prob.bc_type[var.index, bid] == NO_BC
+                        # do nothing
                     else
                         printerr("Unsupported boundary condition type: "*prob.bc_type[var.index, bid]);
                     end
@@ -325,6 +333,10 @@ function assemble(var, bilinear, linear, t=0.0, dt=0.0)
                 (A, b) = dirichlet_bc(A, b, prob.bc_func[var.index, bid][1], grid_data.bdry[bid], t);
             elseif prob.bc_type[var.index, bid] == NEUMANN
                 (A, b) = neumann_bc(A, b, prob.bc_func[var.index, bid][1], grid_data.bdry[bid], bid, t);
+            elseif prob.bc_type[var.index, bid] == ROBIN
+                printerr("Robin BCs not ready.");
+            elseif prob.bc_type[var.index, bid] == NO_BC
+                # do nothing
             else
                 printerr("Unsupported boundary condition type: "*prob.bc_type[var.index, bid]);
             end
@@ -425,7 +437,11 @@ function assemble_rhs_only(var, linear, t=0.0, dt=0.0)
                 for compo=1:length(var[vi].symvar.vals)
                     dofind = dofind + 1;
                     for bid=1:bidcount
-                        b = dirichlet_bc_rhs_only(b, prob.bc_func[var[vi].index, bid][compo], grid_data.bdry[bid], t, dofind, dofs_per_node);
+                        if prob.bc_type[var[vi].index, bid] == NO_BC
+                            # do nothing
+                        else
+                            b = dirichlet_bc_rhs_only(b, prob.bc_func[var[vi].index, bid][compo], grid_data.bdry[bid], t, dofind, dofs_per_node);
+                        end
                     end
                 end
             end
@@ -434,13 +450,21 @@ function assemble_rhs_only(var, linear, t=0.0, dt=0.0)
                 #rows = ((d-1)*length(glb)+1):(d*length(glb));
                 dofind = d;
                 for bid=1:bidcount
-                    b = dirichlet_bc_rhs_only(b, prob.bc_func[var.index, bid][d], grid_data.bdry[bid], t, d, dofs_per_node);
+                    if prob.bc_type[var.index, bid] == NO_BC
+                        # do nothing
+                    else
+                        b = dirichlet_bc_rhs_only(b, prob.bc_func[var.index, bid][d], grid_data.bdry[bid], t, d, dofs_per_node);
+                    end
                 end
             end
         end
     else
         for bid=1:bidcount
-            b = dirichlet_bc_rhs_only(b, prob.bc_func[var.index, bid][1], grid_data.bdry[bid], t);
+            if prob.bc_type[var.index, bid] == NO_BC
+                # do nothing
+            else
+                b = dirichlet_bc_rhs_only(b, prob.bc_func[var.index, bid][1], grid_data.bdry[bid], t);
+            end
         end
     end
 
