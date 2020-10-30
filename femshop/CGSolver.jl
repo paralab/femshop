@@ -239,7 +239,8 @@ function assemble(var, bilinear, linear, t=0.0, dt=0.0)
     
     loop_time = Base.Libc.time();
     # Elemental loop follows elemental ordering
-    for e=elemental_order;
+    for ei=1:nel
+        e = elemental_order[ei];
         glb = grid_data.loc2glb[e,:];           # global indices of this element's nodes for extracting values from var arrays
         xe = grid_data.allnodes[glb[:],:];      # coordinates of this element's nodes for evaluating coefficient functions
         
@@ -342,9 +343,7 @@ function assemble(var, bilinear, linear, t=0.0, dt=0.0)
             end
         end
     end
-
-	A = identity_rows(A, [3], length(b));
-	b[3] = 0;	
+    
     bc_time = Base.Libc.time() - bc_time;
     
     log_entry("Elemental loop time:     "*string(loop_time));

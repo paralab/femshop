@@ -12,33 +12,28 @@ init_femshop("poisson1d");
 # Try making an optional log
 @useLog("poisson1dlog")
 
-cachesim(true);
-
 # Set up the configuration (order doesn't matter)
-@domain(1)                          # dimension
-@solver(CG)                         # Use CG solver
-@functionSpace(LEGENDRE, 4)         # basis function, order
-@nodes(LOBATTO)                     # elemental node arrangement
+@domain(1)                      # dimension
+@functionSpace(LEGENDRE, 4)     # basis function, order
 
-# Specify the problem
-@mesh(LINEMESH, 5,2)               # build uniform LINEMESH. 2nd arg=# of elements, (optional)3rd arg=# of BIDs
+# Specify the problem (mesh comes first)
+@mesh(LINEMESH, 20)             # build uniform LINEMESH. 2nd arg=# of elements, (optional)3rd arg=# of BIDs
 
-@variable(u)                        # same as @variable(u, SCALAR)
-@testSymbol(v)                      # sets the symbol for a test function
+@variable(u)                    # same as @variable(u, SCALAR)
+@testSymbol(v)                  # sets the symbol for a test function
 
-@boundary(u, 1, DIRICHLET, 0)       # boundary condition for BID 1
-@boundary(u, 2, DIRICHLET, -1)      # and BID 2
+@boundary(u, 1, DIRICHLET, "0")   # boundary condition for BID 1 is Dirichlet with value 0
 
 # Write the weak form 
-@coefficient(f, "-2.25*pi*pi*sin(1.5*pi*x)")
+@coefficient(f, "-100*pi*pi*sin(10*pi*x)*sin(pi*x) - pi*pi*sin(10*pi*x)*sin(pi*x) + 20*pi*pi*cos(10*pi*x)*cos(pi*x)")
 @weakForm(u, "-grad(u)*grad(v) - f*v")
 
 solve(u);
 
-# exact solution is sin(1.5*pi*x)
+# exact solution is sin(10*pi*x)*sin(pi*x)
 # check error
 maxerr = 0;
-exact(x) = sin(1.5*pi*x);
+exact(x) = sin(10*pi*x)*sin(pi*x);
 
 for i=1:size(Femshop.grid_data.allnodes,1)
     x = Femshop.grid_data.allnodes[i,1];
@@ -49,11 +44,11 @@ end
 println("max error = "*string(maxerr));
 
 # solution is stored in the variable's "values"
-#using Plots
-#pyplot();
-#display(plot(Femshop.grid_data.allnodes, u.values, markershape=:circle))
+using Plots
+pyplot();
+display(plot(Femshop.grid_data.allnodes, u.values, markershape=:circle, legend=false))
 
-# check
+# Dump things to the log if desired
 log_dump_config();
 log_dump_prob();
 

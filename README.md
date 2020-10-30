@@ -20,7 +20,7 @@
 ## Learn more
 
 * See [the femshop wiki](https://github.com/paralab/femshop/wiki) to learn what it does and how to use it.
-* Explore examples (coming soon).
+* Explore [examples](examples.md).
 
 ## Get it
 
