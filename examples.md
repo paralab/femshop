@@ -13,12 +13,16 @@ img {float: right;}
 <p> <img src="images/poisson1d.png" alt="poisson1d" width="200">
 The simplest example possible. 1D Poisson with homogeneous Dirichlet boundary. It demonstrates the basics of setting up and solving a problem directly in femshop.
 <br><a href="https://github.com/paralab/femshop/blob/master/femshop/examples/example-poisson1d.jl">example-poisson1d.jl</a>
+<br>
+<br>
 </p>
 
 <h3>Linear Elasticity</h3>
 <p> <img src="images/elasticity.png" alt="elasticity" width="200">
 The linear elasticity example demonstrates vector entities and mixed boundary conditions.
 <br><a href="https://github.com/paralab/femshop/blob/master/femshop/examples/example-elasticity.jl">example-elasticity.jl</a>
+<br>
+<br>
 </p>
 
 <h3>Heat</h3>
@@ -27,6 +31,7 @@ The heat equation demonstrates support for time dependent problems.
 <br><a href="https://github.com/paralab/femshop/blob/master/femshop/examples/example-heat2d.jl">example-heat2d.jl</a>
 <br> 
 <br> 
+<br>
 </p>
 
 <h3>Navier Stokes</h3>
@@ -38,5 +43,5 @@ This 2D lid-driven NS problem demonstrates some of the nonlinear capabilities an
 <br>
 <br>
 <p>
-[Return to home](https://paralab.github.io/femshop)
+<a href="https://paralab.github.io/femshop">Return to home</a>
 </p>
