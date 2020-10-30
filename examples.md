@@ -25,10 +25,18 @@ The linear elasticity example demonstrates vector entities and mixed boundary co
 <p> <img src="images/heat.png" alt="heat" width="200">
 The heat equation demonstrates support for time dependent problems.
 <br><a href="https://github.com/paralab/femshop/blob/master/femshop/examples/example-heat2d.jl">example-heat2d.jl</a>
+<br> 
+<br> 
 </p>
 
 <h3>Navier Stokes</h3>
 <p> <img src="images/NS.png" alt="NS" width="200">
 This 2D lid-driven NS problem demonstrates some of the nonlinear capabilities and the use of parameter entities.
 <br><a href="https://github.com/paralab/femshop/blob/master/femshop/examples/example-NS.jl">example-NS.jl</a>
+</p>
+
+<br>
+<br>
+<p>
+[Return to home](https://paralab.github.io/femshop)
 </p>
