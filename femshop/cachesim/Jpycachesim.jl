@@ -4,13 +4,14 @@ A Julia wrapper for pycachesim.
 module Jpycachesim
 
 # Provided by backend
-export pcs_load, pcs_store, pcs_get_cachesim_from_file, pcs_print_stats
+export pcs_load, pcs_store, pcs_get_cachesim_from_file, pcs_print_stats, pcs_print_stats_simple, pcs_get_stats
 # Provided here
 export pcs_build_cache
 # Structs
 export Cache
 
 cache = nothing;        # A cache is kept globally for convenience. Multiple caches can be managed externally.
+all_cache_ptrs = [];    # Pointers to all constructed caches
 
 # define structs
 include("pcs_structs.jl");
@@ -32,6 +33,30 @@ end
 
 function pcs_print_stats(c=cache)
     ccall((:printStats, "./cachesim/backend.so"), Cvoid, (Ptr{Cache},), c);
+end
+
+function pcs_print_stats_simple(c=cache)
+    (miss, hit) = pcs_get_stats(c);
+    for i=1:length(miss)
+        println("L"*string(i)*": miss = "*string(miss[i])*" hit = "*string(hit[i])*" total = "*string(miss[i]+hit[i]));
+    end
+end
+
+function pcs_get_stats(c=cache)
+    # return arrays for misses and hits for each level
+    nlevels = 0;
+    misses = [];
+    hits = [];
+    tmpc = c;
+    while Int(tmpc) > 0
+        nlevels = nlevels+1;
+        csh = unsafe_load(tmpc);
+        push!(misses, Int(csh.MISS.count));
+        push!(hits, Int(csh.HIT.count));
+        tmpc = csh.load_from;
+    end
+    
+    return (misses, hits);
 end
 
 function pcs_build_cache(levels)

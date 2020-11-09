@@ -1,7 +1,8 @@
 module CachesimOut
 
 export init_cachesimout, take_available_addr_range, add_cachesim_array, add_cachesim_tmp_array, remove_all_tmp_arrays,
-        cachesim_load_range, cachesim_store_range, cachesim_load, cachesim_store, build_cache_level, build_cache
+        cachesim_load_range, cachesim_store_range, cachesim_load, cachesim_store, build_cache_level, build_cache,
+        build_cache_auto, analyze_cache_with_grid
 export CachesimArray
 
 use_lib = true;
@@ -14,6 +15,7 @@ else
 end
 
 addr_offset = 0;
+line_size = 0;
 geofac_set = false;
 arrays = [];
 tmparrays = [];
@@ -24,6 +26,8 @@ Nn=0;# number of global dofs
 Nd=0;# number of elemental dofs
 Nv=0;# number of global vertices
 Nel = 0;# number of elements
+
+active_cache = nothing; # keep track of the active cache
 
 # A special nonexistant array that also has an identifier, fake address range, size
 mutable struct CachesimArray
@@ -97,7 +101,7 @@ function init_cachesimout(n, refel, nel, dof, vars)
     end
     
     if use_lib
-        pcs_get_cachesim_from_file("cachesim/cachedef"); # Just to test things. Should be set later by user.
+        global active_cache =  pcs_get_cachesim_from_file("cachesim/cachedef"); # Just to test things. Should be set later by user.
     else
         println("Not using the cachesim library. Change use_lib in CachesimOut.jl to use.");
         println("Instead, writing access sequence to cachesim_output.out");
@@ -118,16 +122,53 @@ end
 
 function build_cache(levels)
     if use_lib
-        return pcs_build_cache(levels);
+        global active_cache = pcs_build_cache(levels);
+        global line_size = Int(levels[1].cl_size);
+        return active_cache;
     else
         println("Can't build cache without library.");
     end
 end
 
+# Build a single-level cache with enough capacity to hold el_num*np values
+function build_cache_auto(el_num, grid; bytes_per_val=8, bytes_per_line=64, assoc=1)
+    Np = size(grid.loc2glb,2);
+    nel = size(grid.loc2glb,1);
+    dim = size(grid.allnodes,2);
+    
+    lines = Int(ceil((el_num*Np*bytes_per_val)/bytes_per_line));
+    lines = max(4, lines);
+    
+    # assoc=0 -> fully associative
+    # assoc=1 -> direct mapped
+    if assoc == 0
+        assoc = lines;
+    end
+    assoc = min(assoc, lines);
+    
+    l1 = build_cache_level(1, lines-assoc+1, assoc, bytes_per_line, "LRU");
+    return build_cache([l1]);
+end
+
+function set_active_cache(c)
+    global active_cache = c;
+end
+
+####################################################################################
+
 function add_cachesim_array(sz, elsz)
     id = length(arrays)+1;
     push!(arrays, CachesimArray(id, sz, elsz));
     return id;
+end
+
+function add_cachesim_array_aligned(sz, elsz)
+    # find the offset to align with the next cache line
+    offset = mod(addr_offset, line_size);
+    if offset > 0
+        add_cachesim_array(line_size - offset,1);
+    end
+    return add_cachesim_array(sz, elsz);
 end
 
 function add_cachesim_tmp_array()
@@ -165,6 +206,59 @@ function remove_all_tmp_arrays()
     end
 end
 
+function take_available_addr_range(sz, elsz)
+    range = [0,0];
+    totalsz = sz[1];
+    for i=2:length(sz)
+        totalsz = totalsz*sz[i];
+    end
+    bytesz = totalsz*elsz;
+    
+    global addr_offset;
+    range[1] = addr_offset;
+    range[2] = range[1] + bytesz - 1;
+    addr_offset += bytesz;
+    
+    return range;
+end
+
+function size_tuple_to_array(sz)
+    if typeof(sz) <: Array
+        return sz;
+    elseif typeof(sz) <: Tuple
+        ar = [];
+        for i=1:length(sz)
+            push!(ar,sz[i]);
+        end
+        return ar;
+    elseif typeof(sz) <: Number
+        return [sz];
+    end
+end
+
+function ind_to_addr(id, row, col=0)
+    start = arrays[id].addr[1];
+    elsize = arrays[id].elsize;
+    if col == 0
+        return start + (row-1)*elsize;
+    else
+        colsize = arrays[id].size[1];
+        return start + (col-1)*colsize + (row-1)*elsize;
+    end
+end
+
+function finalize()
+    if use_lib
+        pcs_print_stats();
+    else
+        close(output);
+    end
+end
+
+
+##########################################################################################
+# Interact with cache - load/store
+#
 function cachesim_load_range(id, rows = [], cols = [])
     if length(rows) == 0
         rows = 1:arrays[id].size[1];
@@ -207,7 +301,7 @@ end
 function cachesim_load(id, row, col=0)
     addr = ind_to_addr(id, row, col);
     if use_lib
-        pcs_load(addr,8);
+        pcs_load(addr, 8, active_cache);
     else
         write(output,Int8(0));
         write(output,addr);
@@ -217,7 +311,7 @@ end
 function cachesim_store(id, row, col=0)
     addr = ind_to_addr(id, row, col);
     if use_lib
-        pcs_store(addr,8);
+        pcs_store(addr, 8, active_cache);
     else
         write(output,Int8(1));
         write(output,addr);
@@ -234,7 +328,7 @@ function cachesim_load_sparse(id, range=-1, rowoffset=0)
     for i=1:length(range)
         ad = a.addr[1] + rowoffset + (range[i]-1)*a.elsize;
         if use_lib
-            pcs_load(ad,8);
+            pcs_load(ad, 8, active_cache);
         else
             write(output,Int8(0));
             write(output,ad);
@@ -253,59 +347,104 @@ function cachesim_store_sparse(id, range=-1, rowoffset=0)
     for i=1:length(range)
         ad = a.addr[1] + rowoffset + (range[i]-1)*a.elsize;
         if use_lib
-            pcs_store(ad,8);
+            pcs_store(ad, 8, active_cache);
         else
             write(output,Int8(1));
             write(output,ad);
         end
     end
 end
+#########################################################################################
 
-function take_available_addr_range(sz, elsz)
-    range = [0,0];
-    totalsz = sz[1];
-    for i=2:length(sz)
-        totalsz = totalsz*sz[i];
-    end
-    bytesz = totalsz*elsz;
-    
-    global addr_offset;
-    range[1] = addr_offset;
-    range[2] = range[1] + bytesz - 1;
-    addr_offset += bytesz;
-    
-    return range;
-end
+#########################################
 
-function size_tuple_to_array(sz)
-    if typeof(sz) <: Array
-        return sz;
-    elseif typeof(sz) <: Tuple
-        ar = [];
-        for i=1:length(sz)
-            push!(ar,sz[i]);
+function analyze_cache_with_grid(cache, grid, el_order, dofs)
+    set_active_cache(cache);
+    cshobj = unsafe_load(cache);
+    
+    bytes_per_val = 8;
+    bytes_per_line = Int(cshobj.cl_size);
+    bytes_per_node = bytes_per_val * dofs;
+    
+    nodes_per_line = bytes_per_line / bytes_per_node;
+    
+    np = size(grid.loc2glb,2);
+    dim = size(grid.allnodes,2);
+    nnodes = size(grid.allnodes,1);
+    nel = length(el_order);
+    
+    bigarray = add_cachesim_array_aligned([nnodes*dofs],bytes_per_val);
+    
+    coveredlines = zeros(Int,np*2);
+    lineBins = zeros(Int,np*2);
+    ave_lines = 0;
+    
+    # Loop ever elements
+    for ei=el_order
+        # Find number of lines touched by each element and average
+        lines = 0;
+        # Loop over nodes
+        for ni=1:np
+            tmp = lines;
+            already1 = false;
+            already2 = false;
+            gind = grid.loc2glb[ei,ni];
+            startaddr = (gind-1)*bytes_per_node;
+            endaddr = startaddr + bytes_per_node-1;
+            lin1 = floor(startaddr/bytes_per_line);
+            lin2 = floor(endaddr/bytes_per_line);
+            coveredlines[ni*2-1] = lin1;
+            coveredlines[ni*2] = lin2;
+            # Check if line is already covered
+            for li=1:((ni-1)*2)
+                if coveredlines[li] == lin1
+                    tmp = already1;
+                    already1 = true;
+                end
+                if coveredlines[li] == lin2
+                    tmp = already2;
+                    already2 = true;
+                end
+                if already1 && already2
+                    break;
+                end
+            end
+            if !already1
+                lines = lines+1;
+            end
+            if !already2
+                lines = lines+1;
+            end
+            
+            # do a simple load of this node
+            cachesim_load(bigarray, gind);
         end
-        return ar;
+        # add to totals
+        lineBins[lines] += 1;
+        
     end
-end
-
-function ind_to_addr(id, row, col=0)
-    start = arrays[id].addr[1];
-    elsize = arrays[id].elsize;
-    if col == 0
-        return start + (row-1)*elsize;
-    else
-        colsize = arrays[id].size[1];
-        return start + (col-1)*colsize + (row-1)*elsize;
+    
+    # average
+    for li=1:(np*2)
+        ave_lines = ave_lines + lineBins[li]*li;
     end
-end
-
-function finalize()
-    if use_lib
-        pcs_print_stats();
-    else
-        close(output);
+    ave_lines /= nel;
+    
+    #println("cache # = "*string(cache));
+    
+    println("[lines] - number of elements");
+    for i=1:length(lineBins)
+        if lineBins[i] > 0
+            println("["*string(i)*"] - "*string(lineBins[i]));
+        end
     end
+    
+    println("ave lines/element = "*string(ave_lines));
+    # print some stats
+    (misses, hits) = pcs_get_stats(cache);
+    
+    println("simplified stats:");
+    pcs_print_stats_simple(cache);
 end
 
 end# module

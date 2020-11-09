@@ -34,7 +34,7 @@ end
 
 ########################################################################################################
 
-mutable struct cache_entry
+struct cache_entry
     cl_id::Culong;
 
     dirty::Culong;  # if 0, content is in sync with main memory. if 1, it is not.
@@ -46,7 +46,7 @@ end
 
 ########################################################################################################
 
-mutable struct addr_range 
+struct addr_range 
     # Address range used to communicate consecutive accesses
     # last addr of range is addr+length-1
     addr::Culong;
@@ -55,7 +55,7 @@ end
 
 ########################################################################################################
 
-mutable struct stats
+struct stats
     count::Culonglong;
     byte::Culonglong;
     #cl::Culong; # might be used later
@@ -63,7 +63,7 @@ end
 
 ########################################################################################################
 
-mutable struct Cache
+struct Cache
     name::Cstring;
     sets::Culong;
     ways::Culong;
@@ -90,11 +90,11 @@ mutable struct Cache
     placement::Ptr{cache_entry};
     subblock_bitfield::Ptr{UInt8};
 
-    LOAD::Ptr{stats};
-    STORE::Ptr{stats};
-    HIT::Ptr{stats};
-    MISS::Ptr{stats};
-    EVICT::Ptr{stats};
+    LOAD::stats;
+    STORE::stats;
+    HIT::stats;
+    MISS::stats;
+    EVICT::stats;
 
     verbosity::Cint;
     
@@ -107,6 +107,6 @@ mutable struct Cache
         
         new(cname, sets, ways, cl_size2, 0, cl_size2, 0, replacement_policy_id, 1, 1, 0, 
             load_from, store_to, Ptr{Cache}(), 0, Ptr{cache_entry}(), Ptr{UInt8}(), 
-            Ptr{stats}(), Ptr{stats}(), Ptr{stats}(), Ptr{stats}(), Ptr{stats}(), 0)
+            stats(0,0),stats(0,0),stats(0,0),stats(0,0),stats(0,0), 0)
     );
 end

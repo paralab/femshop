@@ -32,6 +32,7 @@ include("grid.jl");
 include("simple_mesh.jl");
 include("recursive_ordering.jl");
 include("tiled_ordering.jl");
+include("ef_ordering.jl");
 
 include("function_utils.jl");
 include("symtype.jl");

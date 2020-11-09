@@ -12,8 +12,8 @@ export @language, @domain, @mesh, @solver, @stepper, @functionSpace, @trialFunct
 export init_femshop, set_language, dendro, set_solver, set_stepper, set_matrix_free, reformat_for_stepper, 
         add_mesh, output_mesh, add_test_function, 
         add_initial_condition, add_boundary_condition, set_rhs, set_lhs, solve, finalize, cachesim, cachesim_solve, 
-        morton_nodes, hilbert_nodes, tiled_nodes, morton_elements, hilbert_elements, tiled_elements
-export build_cache_level, build_cache
+        morton_nodes, hilbert_nodes, tiled_nodes, morton_elements, hilbert_elements, tiled_elements, ef_nodes
+export build_cache_level, build_cache, build_cache_auto
 export sp_parse
 export generate_code_layer
 export Variable, add_variable
@@ -418,8 +418,6 @@ function solve(var, nlvar=nothing; nonlinear=false)
             
             if prob.time_dependent
                 global time_stepper = init_stepper(grid_data.allnodes, time_stepper);
-				Femshop.time_stepper.dt = 0.05;
-				Femshop.time_stepper.Nsteps = 200;
 				if (nonlinear)
                 	t = @elapsed(result = CGSolver.nonlinear_solve(var, nlvar, lhs, rhs, time_stepper));
 				else
@@ -508,6 +506,11 @@ end
 function tiled_elements(griddim, tiledim)
     global elemental_order = get_tiled_order(config.dimension, griddim, tiledim, true);
     log_entry("Reordered elements to tiled("*string(tiledim)*").");
+end
+
+function ef_nodes()
+    t = @elapsed(global grid_data = reorder_grid_element_first(grid_data, config.basis_order_min, elemental_order));
+    log_entry("Reordered nodes to EF. Took "*string(t)*" sec.");
 end
 
 end # module
