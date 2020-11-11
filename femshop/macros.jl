@@ -300,17 +300,36 @@ macro weakForm(var, ex)
         log_entry("Making weak form for variable(s): "*string(wfvars));
         log_entry("Weak form, input: "*string($ex));
         
-        (lhs_expr, rhs_expr) = sp_parse(wfex, wfvars);
+        result_exprs = sp_parse(wfex, wfvars);
+        if length(result_exprs) == 4
+            (lhs_expr, rhs_expr, lhs_surf_expr, rhs_surf_expr) = result_exprs;
+        else
+            (lhs_expr, rhs_expr) = result_exprs;
+        end
         
         if typeof(lhs_expr) <: Tuple && length(lhs_expr) == 2 # has time derivative
-            log_entry("Weak form, symbolic layer: Dt("*string(lhs_expr[1])*") + "*string(lhs_expr[2])*" = "*string(rhs_expr));
+            if length(result_exprs) == 4
+                log_entry("Weak form, before modifying for time: Dt("*string(lhs_expr[1])*") + "*string(lhs_expr[2])*" + surface("*string(lhs_surf_expr)*") = "*string(rhs_expr)*" + surface("*string(rhs_surf_expr)*")");
+                
+                (newlhs, newrhs) = reformat_for_stepper(lhs_expr, rhs_expr, Femshop.config.stepper);
+                #TODO reformat surface terms
+                
+                log_entry("Weak form, modified for time stepping: "*string(newlhs)*" + surface("*string(lhs_surf_expr)*") = "*string(newrhs)*" + surface("*string(rhs_surf_expr)*")");
+                
+                lhs_expr = newlhs;
+                rhs_expr = newrhs;
+                
+            else
+                log_entry("Weak form, before modifying for time: Dt("*string(lhs_expr[1])*") + "*string(lhs_expr[2])*" = "*string(rhs_expr));
+                
+                (newlhs, newrhs) = reformat_for_stepper(lhs_expr, rhs_expr, Femshop.config.stepper);
+                
+                log_entry("Weak form, modified for time stepping: "*string(newlhs)*" = "*string(newrhs));
+                
+                lhs_expr = newlhs;
+                rhs_expr = newrhs;
+            end
             
-            (newlhs, newrhs) = reformat_for_stepper(lhs_expr, rhs_expr, Femshop.config.stepper);
-            
-            log_entry("Weak form, modified for time stepping: "*string(newlhs)*" = "*string(newrhs));
-            
-            lhs_expr = newlhs;
-            rhs_expr = newrhs;
         end
         
         # make a string for the expression
@@ -326,6 +345,14 @@ macro weakForm(var, ex)
                 for j=2:length(rhs_expr[i])
                     global rhsstring = rhsstring*" + "*string(rhs_expr[i][j]);
                 end
+                if length(result_exprs) == 4
+                    for j=2:length(lhs_surf_expr[i])
+                        global lhsstring = lhsstring*" + surface("*string(lhs_surf_expr[i][j])*")";
+                    end
+                    for j=2:length(rhs_surf_expr[i])
+                        global rhsstring = rhsstring*" + surface("*string(rhs_surf_expr[i][j])*")";
+                    end
+                end
                 lhsstring = lhsstring*"\n";
                 rhsstring = rhsstring*"\n";
             end
@@ -338,13 +365,27 @@ macro weakForm(var, ex)
             for j=2:length(rhs_expr[1])
                 global rhsstring = rhsstring*" + "*string(rhs_expr[1][j]);
             end
+            if length(result_exprs) == 4
+                for j=2:length(lhs_surf_expr[1])
+                    global lhsstring = lhsstring*" + surface("*string(lhs_surf_expr[1][j])*")";
+                end
+                for j=2:length(rhs_surf_expr[1])
+                    global rhsstring = rhsstring*" + surface("*string(rhs_surf_expr[1][j])*")";
+                end
+            end
         end
         log_entry("Weak form, symbolic layer:\n"*string(lhsstring)*"\n"*string(rhsstring));
         
         # change symbolic layer into code layer
         lhs_code = generate_code_layer(lhs_expr, $var, LHS);
         rhs_code = generate_code_layer(rhs_expr, $var, RHS);
-        Femshop.log_entry("Weak form, code layer: LHS = "*string(lhs_code)*" \n  RHS = "*string(rhs_code));
+        if length(result_exprs) == 4
+            lhs_surf_code = generate_code_layer_surface(lhs_surf_expr, $var, LHS);
+            rhs_surf_code = generate_code_layer_surface(rhs_surf_expr, $var, RHS);
+            Femshop.log_entry("Weak form, code layer: LHS = "*string(lhs_code)*"\n  + surface("*string(lhs_surf_code)*") \n  RHS = "*string(rhs_code)*"\n  + surface("*string(rhs_surf_code)*")");
+        else
+            Femshop.log_entry("Weak form, code layer: LHS = "*string(lhs_code)*" \n  RHS = "*string(rhs_code));
+        end
         
         if Femshop.language == JULIA || Femshop.language == 0
             args = "args";
@@ -353,6 +394,16 @@ macro weakForm(var, ex)
             
             @makeFunction(args, string(rhs_code));
             set_rhs($var);
+            
+            if length(result_exprs) == 4
+                args = "args";
+                @makeFunction(args, string(lhs_surf_code));
+                set_lhs_surface($var);
+                
+                @makeFunction(args, string(rhs_surf_code));
+                set_rhs_surface($var);
+            end
+            
         elseif Femshop.language == CPP
             # Don't need to generate any functions
             set_lhs($var, lhs_code);

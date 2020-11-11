@@ -11,11 +11,12 @@ export @language, @domain, @mesh, @solver, @stepper, @functionSpace, @trialFunct
         @outputMesh, @useLog, @finalize
 export init_femshop, set_language, dendro, set_solver, set_stepper, set_matrix_free, reformat_for_stepper, 
         add_mesh, output_mesh, add_test_function, 
-        add_initial_condition, add_boundary_condition, set_rhs, set_lhs, solve, finalize, cachesim, cachesim_solve, 
+        add_initial_condition, add_boundary_condition, set_rhs, set_lhs, set_lhs_surface, set_rhs_surface, solve, 
+        finalize, cachesim, cachesim_solve, 
         morton_nodes, hilbert_nodes, tiled_nodes, morton_elements, hilbert_elements, tiled_elements, ef_nodes
 export build_cache_level, build_cache, build_cache_auto
 export sp_parse
-export generate_code_layer
+export generate_code_layer, generate_code_layer_surface
 export Variable, add_variable
 export Coefficient, add_coefficient
 export Parameter, add_parameter
@@ -50,8 +51,10 @@ genfunc_count = 0;
 genfunctions = [];
 #rhs
 linears = [];
+surface_linears = [];
 #lhs
 bilinears = [];
+surface_bilinears = [];
 #time stepper
 time_stepper = nothing;
 
@@ -86,6 +89,8 @@ function init_femshop(name="unnamedProject")
     global genfunctions = [];
     global linears = [];
     global bilinears = [];
+    global surface_linears = [];
+    global surface_bilinears = [];
     global time_stepper = nothing;
     global use_cachesim = false;
 end
@@ -169,6 +174,8 @@ function add_variable(var)
 
     global linears = [linears; nothing];
     global bilinears = [bilinears; nothing];
+    global surface_linears = [surface_linears; nothing];
+    global surface_bilinears = [surface_bilinears; nothing];
 
     log_entry("Added variable: "*string(var.symbol)*" of type: "*var.type);
 end
@@ -351,6 +358,50 @@ function set_lhs(var, code="")
     end
 end
 
+function set_rhs_surface(var, code="")
+    global surface_linears;
+    if language == 0 || language == JULIA
+        if typeof(var) <:Array
+            for i=1:length(var)
+                surface_linears[var[i].index] = genfunctions[end];
+            end
+        else
+            surface_linears[var.index] = genfunctions[end];
+        end
+        
+    else # external generation
+        if typeof(var) <:Array
+            for i=1:length(var)
+                surface_linears[var[i].index] = code;
+            end
+        else
+            surface_linears[var.index] = code;
+        end
+    end
+end
+
+function set_lhs_surface(var, code="")
+    global surface_bilinears;
+    if language == 0 || language == JULIA
+        if typeof(var) <:Array
+            for i=1:length(var)
+                surface_bilinears[var[i].index] = genfunctions[end];
+            end
+        else
+            surface_bilinears[var.index] = genfunctions[end];
+        end
+        
+    else # external generation
+        if typeof(var) <:Array
+            for i=1:length(var)
+                surface_bilinears[var[i].index] = code;
+            end
+        else
+            surface_bilinears[var.index] = code;
+        end
+    end
+end
+
 function cachesim_solve(var, nlvar=nothing; nonlinear=false)
     if !(gen_files === nothing && (language == JULIA || language == 0))
         printerr("Cachesim solve is only ready for Julia direct solve");
@@ -399,20 +450,21 @@ function solve(var, nlvar=nothing; nonlinear=false)
         #generate_stepper();
         generate_output();
     else
+        if typeof(var) <: Array
+            varnames = "["*string(var[1].symbol);
+            for vi=2:length(var)
+                varnames = varnames*", "*string(var[vi].symbol);
+            end
+            varnames = varnames*"]";
+            varind = var[1].index;
+        else
+            varnames = string(var.symbol);
+            varind = var.index;
+        end
+        
         if config.solver_type == CG
             init_cgsolver();
-            if typeof(var) <: Array
-                varnames = "["*string(var[1].symbol);
-                for vi=2:length(var)
-                    varnames = varnames*", "*string(var[vi].symbol);
-                end
-                varnames = varnames*"]";
-                varind = var[1].index;
-            else
-                varnames = string(var.symbol);
-                varind = var.index;
-            end
-
+            
             lhs = bilinears[varind];
             rhs = linears[varind];
             
@@ -431,7 +483,7 @@ function solve(var, nlvar=nothing; nonlinear=false)
                 else
                     t = @elapsed(result = CGSolver.linear_solve(var, lhs, rhs));
 				end
-
+                
                 # place the values in the variable value arrays
                 if typeof(var) <: Array && length(result) > 1
                     tmp = 0;
@@ -453,8 +505,11 @@ function solve(var, nlvar=nothing; nonlinear=false)
                     end
                 end
             end
-
+            
             log_entry("Solved for "*varnames*".(took "*string(t)*" seconds)");
+            
+        elseif config.solver_type == DG
+            #TODO DG solve
         end
     end
 

@@ -49,6 +49,34 @@ function sym_transpose_op(a)
 end
 
 #########################################################################
+# Special ops for DG
+
+# Surface integral
+function sym_surface_op(ex)
+    newex = copy(ex);
+    SURFACEINTEGRAL = symbols("SURFACEINTEGRAL");
+    if typeof(ex) <: Array
+        for i=1:length(ex)
+            newex[i] = sym_surface_op(newex[i]);
+        end
+    elseif typeof(ex) == Basic
+        return SURF*ex;
+    elseif typeof(ex) <: Number
+        return SURF*ex;
+    end
+    
+    return newex;
+end
+
+function sym_ave_op(ex)
+    return ex;
+end
+
+function sym_jump_op(ex)
+    return ex;
+end
+
+#########################################################################
 # derivative ops
 #########################################################################
 
@@ -222,8 +250,8 @@ function sym_laplacian_op(u)
 end
 
 # Load them into the global arrays
-op_names = [:dot, :inner, :cross, :transpose, :Dt, :deriv, :grad, :div, :curl, :laplacian];
-_handles = [sym_dot_op, sym_inner_op, sym_cross_op, sym_transpose_op, sym_Dt_op, sym_deriv_op, sym_grad_op, sym_div_op, sym_curl_op, sym_laplacian_op];
+op_names = [:dot, :inner, :cross, :transpose, :surface, :ave, :jump, :Dt, :deriv, :grad, :div, :curl, :laplacian];
+_handles = [sym_dot_op, sym_inner_op, sym_cross_op, sym_transpose_op, sym_surface_op, sym_ave_op, sym_jump_op, sym_Dt_op, sym_deriv_op, sym_grad_op, sym_div_op, sym_curl_op, sym_laplacian_op];
 for i=1:length(op_names)
     push!(ops, SymOperator(op_names[i], _handles[i]));
 end

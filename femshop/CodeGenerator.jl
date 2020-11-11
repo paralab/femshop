@@ -6,7 +6,7 @@ module CodeGenerator
 export init_codegenerator, finalize_codegenerator, Genfiles,
         generate_main, generate_config, generate_prob, generate_mesh, generate_genfunction, 
         generate_bilinear, generate_linear, generate_stepper, generate_output,
-        generate_code_layer
+        generate_code_layer, generate_code_layer_surface
 
 import ..Femshop: JULIA, CPP, MATLAB, SQUARE, IRREGULAR, UNIFORM_GRID, TREE, UNSTRUCTURED, CG, DG, HDG,
         NODAL, MODAL, LEGENDRE, UNIFORM, GAUSS, LOBATTO, NONLINEAR_NEWTON,
