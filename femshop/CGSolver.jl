@@ -279,6 +279,21 @@ function assemble(var, bilinear, linear, t=0.0, dt=0.0)
             insert_bilinear!(AI, AJ, AV, Astart, bilinchunk, glb, 1:dofs_per_node, dofs_per_node);
         end
     end
+
+	%for facei = 1:nface
+		%	face = face_order[facei]
+		%	face.side = [left right];
+		%	face.side[1].node_index = [gbid1 gbid2] TODO
+		%	face.side[2].node_index = [gbid3 gbid4] TODO
+		%   face.side[1].normal = -1;
+		%   face.side[2].normal = 1;
+		%   face.side[1].node_value = [a,b] %extract from the global solution vector
+		%   face.side[2].node_value = [c,d]
+			a_ave = ...
+		%	side[1] surface assembly weakform(a_ave, b_ave, ....]*normal[1] -> [glid1 gbid2]
+		%	side[2] surface assembly weakform(a_ave, b_ave, ....]*normal[2] -> [glid3 gbid4]
+		
+
     loop_time = Base.Libc.time() - loop_time;
     
     # Build the sparse A. Uses default + to combine overlaps
