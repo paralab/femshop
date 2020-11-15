@@ -186,7 +186,7 @@ function generate_code_layer_julia(symex, var, lorr)
     ######################################
     # coef_n_i = zeros(refel.Np);
     # for coefi = 1:refel.Np
-    #     coef_n_i[coefi] = a.value[i].func(x[coefi,1], x[coefi,2],x[coefi,3],time);
+    #     coef_n_i[coefi] = a.value[i].func(x[1,coefi], x[2,coefi],x[3,coefi],time);
     # end
     ######################################
     if length(needed_coef) > 0
@@ -194,9 +194,9 @@ function generate_code_layer_julia(symex, var, lorr)
         cloopin = Expr(:block);
         cargs = [:(x[coefi]); 0; 0; :time];
         if config.dimension == 2
-            cargs = [:(x[coefi,1]); :(x[coefi,2]); 0; :time];
+            cargs = [:(x[1,coefi]); :(x[2,coefi]); 0; :time];
         elseif config.dimension == 3
-            cargs = [:(x[coefi,1]); :(x[coefi,2]); :(x[coefi,3]); :time];
+            cargs = [:(x[1,coefi]); :(x[2,coefi]); :(x[3,coefi]); :time];
         end
         
         for i=1:length(needed_coef)
@@ -236,7 +236,7 @@ function generate_code_layer_julia(symex, var, lorr)
                         tmpb = :(copy(Femshop.variables[$cval].values[gbl])); 
                     else
                         compo = needed_coef_ind[i];
-                        tmpb = :(copy(Femshop.variables[$cval].values[gbl, $compo]));
+                        tmpb = :(copy(Femshop.variables[$cval].values[$compo, gbl]));
                     end
                     
                     push!(code.args, Expr(:(=), tmpc, tmpb));

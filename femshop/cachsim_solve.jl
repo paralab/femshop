@@ -7,7 +7,7 @@ function linear_solve_cachesim(var, bilinear, linear, stepper=nothing)
     #     return solve_matrix_free_sym(var, bilinear, linear, stepper);
     #     #return solve_matrix_free_asym(var, bilinear, linear, stepper);
     # end
-    N1 = size(grid_data.allnodes)[1];
+    N1 = size(grid_data.allnodes,2);
     multivar = typeof(var) <: Array;
     if multivar
         # multiple variables being solved for simultaneously
@@ -61,7 +61,7 @@ end
 function assemble_cachesim(var, bilinear, linear, t=0.0, dt=0.0)
     Np = refel.Np;
     nel = mesh_data.nel;
-    N1 = size(grid_data.allnodes)[1];
+    N1 = size(grid_data.allnodes,2);
     multivar = typeof(var) <: Array;
     if multivar
         # multiple variables being solved for simultaneously
@@ -88,10 +88,10 @@ function assemble_cachesim(var, bilinear, linear, t=0.0, dt=0.0)
     
     #  Elemental loop follows elemental ordering
     for e=elemental_order;
-        gis = grid_data.glbvertex[e,:];
-        vx = grid_data.allnodes[gis,:];         # coordinates of element's vertices
-        glb = grid_data.loc2glb[e,:];                 # global indices of this element's nodes for extracting values from var arrays
-        xe = grid_data.allnodes[glb[:],:];  # coordinates of this element's nodes for evaluating coefficient functions
+        gis = grid_data.glbvertex[:,e];
+        vx = grid_data.allnodes[:,gis];         # coordinates of element's vertices
+        glb = grid_data.loc2glb[:,e];                 # global indices of this element's nodes for extracting values from var arrays
+        xe = grid_data.allnodes[:,glb[:]];  # coordinates of this element's nodes for evaluating coefficient functions
         cachesim_load_range(allnodes_id, gis[:], 1:refel.dim);
         cachesim_load_range(allnodes_id, glb[:], 1:refel.dim);
         
@@ -141,7 +141,7 @@ end
 function assemble_rhs_only_cachesim(var, linear, t=0.0, dt=0.0)
     Np = refel.Np;
     nel = mesh_data.nel;
-    N1 = size(grid_data.allnodes)[1];
+    N1 = size(grid_data.allnodes,2);
     multivar = typeof(var) <: Array;
     if multivar
         # multiple variables being solved for simultaneously
@@ -161,8 +161,8 @@ function assemble_rhs_only_cachesim(var, linear, t=0.0, dt=0.0)
     #b = zeros(Nn);
 
     for e=1:nel;
-        glb = grid_data.loc2glb[e,:];                 # global indices of this element's nodes for extracting values from var arrays
-        xe = grid_data.allnodes[glb[:],:];  # coordinates of this element's nodes for evaluating coefficient functions
+        glb = grid_data.loc2glb[:,e];                 # global indices of this element's nodes for extracting values from var arrays
+        xe = grid_data.allnodes[:,glb[:]];  # coordinates of this element's nodes for evaluating coefficient functions
 
         rhsargs = (var, xe, glb, refel, RHS, t, dt);
 

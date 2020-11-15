@@ -164,15 +164,15 @@ macro mesh(m, N, bids, interval)
     return esc(quote
         if $m == LINEMESH
             log_entry("Building simple line mesh with nx elements, nx="*string($N));
-            meshtime = @elapsed(add_mesh(simple_line_mesh($N+1, $bids, $interval)));
+            meshtime = @elapsed(add_mesh(simple_line_mesh($N.+1, $bids, $interval)));
             log_entry("Grid building took "*string(meshtime)*" seconds");
         elseif $m == QUADMESH
             log_entry("Building simple quad mesh with nx*nx elements, nx="*string($N));
-            meshtime = @elapsed(add_mesh(simple_quad_mesh($N+1, $bids, $interval)));
+            meshtime = @elapsed(add_mesh(simple_quad_mesh($N.+1, $bids, $interval)));
             log_entry("Grid building took "*string(meshtime)*" seconds");
         elseif $m == HEXMESH
             log_entry("Building simple hex mesh with nx*nx*nx elements, nx="*string($N));
-            meshtime = @elapsed(add_mesh(simple_hex_mesh($N+1, $bids, $interval)));
+            meshtime = @elapsed(add_mesh(simple_hex_mesh($N.+1, $bids, $interval)));
             log_entry("Grid building took "*string(meshtime)*" seconds");
         end
     end)

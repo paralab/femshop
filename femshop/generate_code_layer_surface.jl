@@ -231,7 +231,7 @@ function generate_code_layer_julia_surface(symex, var, lorr)
                         tmpb = :(copy(Femshop.variables[$cval].values[gbl])); 
                     else
                         compo = needed_coef_ind[i];
-                        tmpb = :(copy(Femshop.variables[$cval].values[gbl, $compo]));
+                        tmpb = :(copy(Femshop.variables[$cval].values[$compo, gbl]));
                     end
                     
                     push!(code.args, Expr(:(=), tmpc, tmpb));

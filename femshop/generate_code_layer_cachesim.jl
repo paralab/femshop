@@ -249,7 +249,7 @@ function generate_code_layer_cachesim(symex, var, lorr)
                         push!(code.args, :(Femshop.cachesim_load_range($csarrayind, gbl))); # cachesim
                     else
                         compo = needed_coef_ind[i];
-                        tmpb = :(copy(Femshop.variables[$cval].values[gbl, $compo]));
+                        tmpb = :(copy(Femshop.variables[$cval].values[$compo, gbl]));
                         push!(code.args, :(Femshop.cachesim_load_range($csarrayind, gbl, [$compo]))); # cachesim
                     end
                     

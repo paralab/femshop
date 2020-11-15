@@ -39,6 +39,7 @@ log_line_index = 1;
 mesh_data = nothing;
 grid_data = nothing;
 refel = nothing;
+face_refel = nothing;
 elemental_order = [];
 #problem variables
 var_count = 0;
@@ -79,6 +80,7 @@ function init_femshop(name="unnamedProject")
     global mesh_data = nothing;
     global grid_data = nothing;
     global refel = nothing;
+    global face_refel = nothing;
     global elemental_order = [];
     global var_count = 0;
     global variables = [];
@@ -126,7 +128,8 @@ function add_mesh(mesh)
     if typeof(mesh) <: Tuple
         global mesh_data = mesh[1];
         global refel = mesh[2];
-        global grid_data = mesh[3];
+        global face_refel = mesh[3];
+        global grid_data = mesh[4];
     else
         global mesh_data = mesh;
     end
@@ -134,7 +137,7 @@ function add_mesh(mesh)
     global elemental_order = 1:mesh_data.nel;
 
     log_entry("Added mesh with "*string(mesh_data.nx)*" vertices and "*string(mesh_data.nel)*" elements.");
-    log_entry("Full grid has "*string(length(grid_data.allnodes))*" nodes.");
+    log_entry("Full grid has "*string(size(grid_data.allnodes,2))*" nodes.");
 end
 
 function output_mesh(file, format)
@@ -155,15 +158,15 @@ function add_variable(var)
     global var_count += 1;
     if language == JULIA || language == 0
         # adjust values arrays
-        N = size(grid_data.allnodes)[1];
+        N = size(grid_data.allnodes,2);
         if var.type == SCALAR
-            var.values = zeros(N);
+            var.values = zeros(1, N);
         elseif var.type == VECTOR
-            var.values = zeros(N, config.dimension);
+            var.values = zeros(config.dimension, N);
         elseif var.type == TENSOR
-            var.values = zeros(N, config.dimension*config.dimension);
+            var.values = zeros(config.dimension*config.dimension, N);
         elseif var.type == SYM_TENSOR
-            var.values = zeros(N, Int((config.dimension*(config.dimension+1))/2));
+            var.values = zeros(Int((config.dimension*(config.dimension+1))/2), N);
         end
     end
     # make SymType
@@ -494,14 +497,14 @@ function solve(var, nlvar=nothing; nonlinear=false)
                     for vi=1:length(var)
                         components = length(var[vi].symvar.vals);
                         for compi=1:components
-                            var[vi].values[:,compi] = result[(compi+tmp):totalcomponents:end];
+                            var[vi].values[compi,:] = result[(compi+tmp):totalcomponents:end];
                             tmp = tmp + 1;
                         end
                     end
                 elseif length(result) > 1
                     components = length(var.symvar.vals);
                     for compi=1:components
-                        var.values[:,compi] = result[compi:components:end];
+                        var.values[compi,:] = result[compi:components:end];
                     end
                 end
             end

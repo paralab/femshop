@@ -15,11 +15,11 @@ init_femshop("poisson2d");
 # Set up the configuration (order doesn't matter)
 @domain(2, SQUARE, UNIFORM_GRID)    # dimension, geometry, decomposition
 @solver(CG)                         # DG, CG, etc.
-@functionSpace(LEGENDRE, 4)         # function, order (or use testFunction and trialFunction)
+@functionSpace(LEGENDRE, 1)         # function, order (or use testFunction and trialFunction)
 @nodes(LOBATTO)                     # elemental node arrangement
 
 # Specify the problem
-@mesh(QUADMESH, 40)                   # .msh file or generate our own
+@mesh(QUADMESH, [20,10], 1, [0,2,0,1])                   # .msh file or generate our own
 
 @variable(u)                        # same as @variable(u, SCALAR)
 
@@ -38,9 +38,9 @@ solve(u);
 maxerr = 0;
 exact(x,y) = sin(pi*x)*sin(pi*y);
 
-for i=1:size(Femshop.grid_data.allnodes,1)
-    x = Femshop.grid_data.allnodes[i,1];
-    y = Femshop.grid_data.allnodes[i,2];
+for i=1:size(Femshop.grid_data.allnodes,2)
+    x = Femshop.grid_data.allnodes[1,i];
+    y = Femshop.grid_data.allnodes[2,i];
     err = abs(u.values[i] - exact(x,y));
     global maxerr;
     maxerr = max(err,maxerr);
@@ -50,7 +50,7 @@ println("max error = "*string(maxerr));
 # solution is stored in the variable's "values"
 # using Plots
 # pyplot();
-# display(plot(Femshop.grid_data.allnodes[:,1], Femshop.grid_data.allnodes[:,2], u.values, st=:surface))
+# display(plot(Femshop.grid_data.allnodes[1,:], Femshop.grid_data.allnodes[2,:], u.values[:], st=:surface))
 
 # check
 log_dump_config();

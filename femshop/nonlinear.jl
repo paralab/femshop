@@ -65,7 +65,7 @@ function newton(nl,formjac, formfunc, nlvar, t=0, dt=0)
 			# for vi=1:length(nl.var)
 			# 	components = length(nl.var[vi].symvar.vals);
 			# 	for compi=1:components
-			# 		nl.var[vi].values[:,compi] = nl.var[vi].values[:,compi]+delta[:];
+			# 		nl.var[vi].values[compi,:] = nl.var[vi].values[compi,:]+delta[:];
 			# 	end
 			# end
 			tmp = 0;
@@ -78,8 +78,8 @@ function newton(nl,formjac, formfunc, nlvar, t=0, dt=0)
 				components = length(nl.var[vi].symvar.vals);
 				#@show(components)
 				for compi=1:components
-					nl.var[vi].values[:,compi] = delta[(compi+tmp):totalcomponents:end];
-					nl.nlvar[vi].values[:,compi] = nl.nlvar[vi].values[:,compi]+delta[(compi+tmp):totalcomponents:end];
+					nl.var[vi].values[compi,:] = delta[(compi+tmp):totalcomponents:end];
+					nl.nlvar[vi].values[compi,:] = nl.nlvar[vi].values[compi,:]+delta[(compi+tmp):totalcomponents:end];
 					tmp = tmp + 1;
 				end
 			end
@@ -90,8 +90,8 @@ function newton(nl,formjac, formfunc, nlvar, t=0, dt=0)
 			#print("\nsymvar = ", nl.var.symvar, "\n");
 			#print("\nvals = ", nl.var.symvar.vals, "\n");
 			for compi=1:components
-				nl.var.values[:,compi] =  delta[compi:components:end];
-				nl.nlvar.values[:,compi] =  nl.nlvar.values[:,compi]+delta[compi:components:end];
+				nl.var.values[compi,:] =  delta[compi:components:end];
+				nl.nlvar.values[compi,:] =  nl.nlvar.values[compi,:]+delta[compi:components:end];
 			end
 		end
 

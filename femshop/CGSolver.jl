@@ -36,24 +36,24 @@ function init_cgsolver()
                 # Set initial condition
                 if typeof(prob.initial[vind]) <: Array
                     for ci=1:length(prob.initial[vind])
-                        for ni=1:size(grid_data.allnodes)[1]
+                        for ni=1:size(grid_data.allnodes,2)
                             if dim == 1
-                                variables[vind].values[ni,ci] = prob.initial[vind][ci].func(grid_data.allnodes[ni],0,0,0);
+                                variables[vind].values[ci,ni] = prob.initial[vind][ci].func(grid_data.allnodes[ni],0,0,0);
                             elseif dim == 2
-                                variables[vind].values[ni,ci] = prob.initial[vind][ci].func(grid_data.allnodes[ni,1],grid_data.allnodes[ni,2],0,0);
+                                variables[vind].values[ci,ni] = prob.initial[vind][ci].func(grid_data.allnodes[1,ni],grid_data.allnodes[2,ni],0,0);
                             elseif dim == 3
-                                variables[vind].values[ni,ci] = prob.initial[vind][ci].func(grid_data.allnodes[ni,1],grid_data.allnodes[ni,2],grid_data.allnodes[ni,3],0);
+                                variables[vind].values[ci,ni] = prob.initial[vind][ci].func(grid_data.allnodes[1,ni],grid_data.allnodes[2,ni],grid_data.allnodes[3,ni],0);
                             end
                         end
                     end
                 else
-                    for ni=1:size(grid_data.allnodes)[1]
+                    for ni=1:size(grid_data.allnodes,2)
                         if dim == 1
                             variables[vind].values[ni] = prob.initial[vind].func(grid_data.allnodes[ni],0,0,0);
                         elseif dim == 2
-                            variables[vind].values[ni] = prob.initial[vind].func(grid_data.allnodes[ni,1],grid_data.allnodes[ni,2],0,0);
+                            variables[vind].values[ni] = prob.initial[vind].func(grid_data.allnodes[1,ni],grid_data.allnodes[2,ni],0,0);
                         elseif dim == 3
-                            variables[vind].values[ni] = prob.initial[vind].func(grid_data.allnodes[ni,1],grid_data.allnodes[ni,2],grid_data.allnodes[ni,3],0);
+                            variables[vind].values[ni] = prob.initial[vind].func(grid_data.allnodes[1,ni],grid_data.allnodes[2,ni],grid_data.allnodes[3,ni],0);
                         end
                     end
                 end
@@ -92,14 +92,14 @@ function linear_solve(var, bilinear, linear, stepper=nothing)
                 for vi=1:length(var)
                     components = length(var[vi].symvar.vals);
                     for compi=1:components
-                        var[vi].values[:,compi] = sol[(compi+tmp):totalcomponents:end];
+                        var[vi].values[compi,:] = sol[(compi+tmp):totalcomponents:end];
                         tmp = tmp + 1;
                     end
                 end
             else
                 components = length(var.symvar.vals);
                 for compi=1:components
-                    var.values[:,compi] = sol[compi:components:end];
+                    var.values[compi,:] = sol[compi:components:end];
                 end
             end
 
@@ -119,6 +119,9 @@ function linear_solve(var, bilinear, linear, stepper=nothing)
 
     else
         assemble_t = @elapsed((A, b) = assemble(var, bilinear, linear));
+        # uncomment to look at A
+        #global Amat = A;
+        
         sol_t = @elapsed(sol = A\b);
         
         log_entry("Assembly took "*string(assemble_t)*" seconds");
@@ -126,8 +129,6 @@ function linear_solve(var, bilinear, linear, stepper=nothing)
         #display(A);
         #display(b);
         #display(sol);
-        # I want to look at A
-        # global Amat = A;
         return sol;
     end
 end
@@ -189,7 +190,7 @@ end
 function assemble(var, bilinear, linear, t=0.0, dt=0.0)
     Np = refel.Np;
     nel = mesh_data.nel;
-    N1 = size(grid_data.allnodes)[1];
+    N1 = size(grid_data.allnodes,2);
     multivar = typeof(var) <: Array;
     if multivar
         # multiple variables being solved for simultaneously
@@ -214,8 +215,8 @@ function assemble(var, bilinear, linear, t=0.0, dt=0.0)
     
     # Stiffness and mass are precomputed for uniform grid meshes
     if config.mesh_type == UNIFORM_GRID && config.geometry == SQUARE
-        glb = grid_data.loc2glb[1,:];
-        xe = grid_data.allnodes[glb[:],:];
+        glb = grid_data.loc2glb[:,1];
+        xe = grid_data.allnodes[:,glb[:]];
         (detJ, J) = geometric_factors(refel, xe);
         wgdetj = refel.wg .* detJ;
         if config.dimension == 1
@@ -241,8 +242,8 @@ function assemble(var, bilinear, linear, t=0.0, dt=0.0)
     # Elemental loop follows elemental ordering
     for ei=1:nel
         e = elemental_order[ei];
-        glb = grid_data.loc2glb[e,:];           # global indices of this element's nodes for extracting values from var arrays
-        xe = grid_data.allnodes[glb[:],:];      # coordinates of this element's nodes for evaluating coefficient functions
+        glb = grid_data.loc2glb[:,e];           # global indices of this element's nodes for extracting values from var arrays
+        xe = grid_data.allnodes[:,glb[:]];      # coordinates of this element's nodes for evaluating coefficient functions
         
         Astart = (e-1)*Np*dofs_per_node*Np*dofs_per_node + 1; # The segment of AI, AJ, AV for this element
 
@@ -357,7 +358,7 @@ end
 function assemble_rhs_only(var, linear, t=0.0, dt=0.0)
     Np = refel.Np;
     nel = mesh_data.nel;
-    N1 = size(grid_data.allnodes)[1];
+    N1 = size(grid_data.allnodes,2);
     multivar = typeof(var) <: Array;
     if multivar
         # multiple variables being solved for simultaneously
@@ -378,8 +379,8 @@ function assemble_rhs_only(var, linear, t=0.0, dt=0.0)
     
     # Stiffness and mass are precomputed for uniform grid meshes
     if config.mesh_type == UNIFORM_GRID && config.geometry == SQUARE
-        glb = grid_data.loc2glb[1,:];
-        xe = grid_data.allnodes[glb[:],:];
+        glb = grid_data.loc2glb[:,1];
+        xe = grid_data.allnodes[:,glb[:]];
         (detJ, J) = geometric_factors(refel, xe);
         wgdetj = refel.wg .* detJ;
         if config.dimension == 1
@@ -403,8 +404,8 @@ function assemble_rhs_only(var, linear, t=0.0, dt=0.0)
     
     # Elemental loop follows elemental ordering
     for e=elemental_order;
-        glb = grid_data.loc2glb[e,:];       # global indices of this element's nodes for extracting values from var arrays
-        xe = grid_data.allnodes[glb[:],:];  # coordinates of this element's nodes for evaluating coefficient functions
+        glb = grid_data.loc2glb[:,e];       # global indices of this element's nodes for extracting values from var arrays
+        xe = grid_data.allnodes[:,glb[:]];  # coordinates of this element's nodes for evaluating coefficient functions
         
         rhsargs = (var, xe, glb, refel, RHS, t, dt, stiffness, mass);
 

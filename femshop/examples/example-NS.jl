@@ -15,7 +15,7 @@ init_femshop("NS");
 @solver(CG)                         # DG, CG, etc.
 @functionSpace(LEGENDRE, 1)         # function, order (or use testFunction and trialFunction)
 @nodes(LOBATTO)                     # elemental node arrangement
-@stepper(EULER_IMPLICIT)            # time stepper (optional second arg is CFL#)
+@stepper(EULER_IMPLICIT, 0.01)            # time stepper (optional second arg is CFL#)
 
 # Specify the problem
 num_elem = 32;
@@ -32,7 +32,7 @@ num_elem = 32;
 
 @testSymbol(w)                    # sets the symbol for a test function
 
-T = 1
+T = 0.5
 @timeInterval(T)                    # (start, end) using this sets problem to time dependent
 @initial(u, "y > 0.99 ? 1 : 0")  # initial condition needed if time dependent
 #@initial(u, "1")  # initial condition needed if time dependent
@@ -72,7 +72,7 @@ T = 1
 
 # Write the weak form
 @coefficient(mu, 0.01)
-@coefficient(dtc, 0.05)
+@coefficient(dtc, 0.0003125)
 @coefficient(h, 1.0 / 32)
 @coefficient(coe1, 4.0)
 @coefficient(coe2, 6.0)
@@ -109,7 +109,7 @@ print("L2 error = ", err_l2, "\n")
 # solution is stored in the variable's "values"
 #using Plots
 #pyplot();
-#display(plot(Femshop.grid_data.allnodes[:,1], Femshop.grid_data.allnodes[:,2], u.values, st = :surface))
+#display(plot(Femshop.grid_data.allnodes[1,:], Femshop.grid_data.allnodes[2,:], u.values[:], st = :surface))
 
 # check
 log_dump_config(Femshop.config);

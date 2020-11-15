@@ -13,29 +13,29 @@ end
 
 function init_stepper(x, stepper)
     if stepper.type == EULER_EXPLICIT
-        dxmin = abs(x[2,1]-x[1,1]); # TODO this only works for similar, square elements
+        dxmin = abs(x[1,2]-x[1,1]); # TODO this only works for similar, square elements
         if stepper.cfl == 0
             stepper.cfl = 0.25;
         end
-        stepper.dt = stepper.cfl*dxmin;
+        stepper.dt = stepper.cfl*dxmin*dxmin;
         stepper.Nsteps = ceil(prob.end_time/stepper.dt);
         stepper.dt = prob.end_time/stepper.Nsteps;
         
         return stepper;
         
     elseif stepper.type == EULER_IMPLICIT
-        dxmin = abs(x[2,1]-x[1,1]); # TODO this only works for similar, square elements
+        dxmin = abs(x[1,2]-x[1,1]); # TODO this only works for similar, square elements
         if stepper.cfl == 0
             stepper.cfl = 1;
         end
-        stepper.dt = stepper.cfl*dxmin*dxmin;
+        stepper.dt = stepper.cfl*dxmin;
         stepper.Nsteps = (prob.end_time/stepper.dt);
         stepper.dt = prob.end_time/stepper.Nsteps;
         
         return stepper;
         
     elseif stepper.type == CRANK_NICHOLSON
-        dxmin = abs(x[2,1]-x[1,1]); # TODO this only works for similar, square elements
+        dxmin = abs(x[1,2]-x[1,1]); # TODO this only works for similar, square elements
         if stepper.cfl == 0
             stepper.cfl = 0.25;
         end
@@ -46,7 +46,7 @@ function init_stepper(x, stepper)
         return stepper;
         
     elseif stepper.type == LSRK4
-        dxmin = abs(x[2,1]-x[1,1]); # TODO this only works for similar, square elements
+        dxmin = abs(x[1,2]-x[1,1]); # TODO this only works for similar, square elements
         if stepper.cfl == 0
             stepper.cfl = 0.25;
         end

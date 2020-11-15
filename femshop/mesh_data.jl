@@ -1,7 +1,7 @@
 #=
 # A struct containing mesh information
 =#
-export MeshData, build_faces, find_boundaries_neighbors, find_normals
+export MeshData, build_faces, find_boundaries, find_normals
 
 struct MeshData
     #### Minimal required information ####
@@ -9,39 +9,35 @@ struct MeshData
     nx::Int;                    # Number of nodes
     nodes::Array{Float64,2};    # node locations
     indices::Array{Int,1};      # node indices may not be in order
-    # Volume elements
+    # Elements
     nel::Int;                   # Number of elements
     elements::Array{Int,2};     # Element vertex to node mapping
     etypes::Array{Int,1};       # Element types as defined by GMSH
     nv::Array{Int,1};           # Elements can have different numbers of vertices
     
     #### Optional information that will be built if not provided ####
-    # Faces of volume elements
-    invind::Dict                # Inverse of indices, maps node index to position in nodes array
-    face2node::Array{Int,3}     # Nodes defining each face of each element
-    normals::Array{Float64,3}   # Normal vectors for each face of each element
-    bdryID::Array{Int,2};       # Boundary ID for each face (0=interior face)
-    neighbors::Array{Int, 2}    # Index of neighboring element for each face (self index for boundary)
-    # Boundary elements (redundant?)
-    #nbel::Int                   # Number of boundary elements
-    #belements::Array{Int, 2}    # Boundary element vertex to node mapping
-    #betypes::Array{Int, 1}      # Boundary element types
-    #nbv::Array{Int,1}           # Number of vertices of boundary elements
+    invind::Array{Int,1}        # Inverse of indices, maps node index to position in nodes array
+    face2vertex::Array{Int,2}   # Nodes defining each face
+    face2element::Array{Int,2}  # Indices of elements on each side of the face. If 0, it is a boundary face.
+    element2face::Array{Int,2}  # Indices of faces on each side of the element.
+    normals::Array{Float64,2}   # Normal vectors for each face pointing from first to second in face2element order
+    bdryID::Array{Int,1};       # Boundary ID for each face (0=interior face)
     
     MeshData(n, x, ind, ne, el, et, v) = (
-        inv = Dict(ind[i] => i for i=1:length(ind));
+        inv = invert_index(ind);
         # uncomment these when/if needed
-        faces = build_faces(ne, el, et);
-        norms = find_normals(ne, el, et, faces, x);
-        (bdry, neighbors) = find_boundaries_neighbors(ne, faces);
-        #faces = Array{Int,3}(undef,0,0,0);
-        #norms = Array{Float64,3}(undef,0,0,0);
-        #bdry = Array{Int,2}(undef,0,0);
-        #neighbors = Array{Int,2}(undef,0,0);
-        new(n, x, ind, ne, el, et, v, inv, faces, norms, bdry, neighbors);
+        # (face2n, face2v) = build_faces(ne, el, et);
+        # norms = find_normals(ne, el, et, face2n, x);
+        # bdry = find_boundaries(ne, face2n);
+        face2v = Array{Int,2}(undef,0,0);
+        face2e = Array{Int,2}(undef,0,0);
+        e2face = Array{Int,2}(undef,0,0);
+        norms = Array{Float64,2}(undef,0,0);
+        bdry = Array{Int,1}(undef,0);
+        new(n, x, ind, ne, el, et, v, inv, face2v, face2e, e2face, norms, bdry);
     )
-    MeshData(n, x, ind, ne, el, et, v, inv, faces, norms, bdry, neighbors) = (
-        new(n, x, ind, ne, el, et, v, inv, faces, norms, bdry, neighbors);
+    MeshData(n, x, ind, ne, el, et, v, inv, face2v, face2e, e2face, norms, bdry) = (
+        new(n, x, ind, ne, el, et, v, inv, face2v, face2e, e2face, norms, bdry);
     )
 end
 
@@ -50,6 +46,14 @@ end
 etypetonv = [2, 3, 4, 4, 8, 6, 5, 2, 3, 4, 4, 8, 6, 5, 1, 4, 8, 6, 5]; # number of vertices
 etypetonf = [2, 3, 4, 4, 6, 5, 5, 2, 3, 4, 4, 6, 5, 5, 1, 4, 6, 5, 5]; # number of faces
 etypetonfn= [1, 3, 4, 3, 4, 4, 4, 1, 3, 4, 3, 4, 4, 4, 1, 3, 4, 4, 4]; # number of nodes for each face (except prism and 5-pyramids!)
+
+function invert_index(ind)
+    invind = zeros(Int, size(ind));
+    for i=1:length(ind)
+        invind[ind[i]] = i;
+    end
+    return invind;
+end
 
 function build_faces(nel, elements, etypes)
     f2n = zeros(Int, nel, 6, 4); #(elementind, faceind, nodeind)
@@ -156,7 +160,7 @@ function normal3(a, b, c)
     return [nx/d; ny/d; nz/d];
 end
 
-function find_boundaries_neighbors(nel, faces)
+function find_boundaries(nel, faces)
     bdry = zeros(Int, nel, 6);
     neighbors = zeros(Int, nel, 6);
     foundmatch = false;

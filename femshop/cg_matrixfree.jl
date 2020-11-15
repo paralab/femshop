@@ -10,7 +10,7 @@ function solve_matrix_free_sym(var, bilinear, linear, stepper=nothing, t=0, dt=0
     maxiters = config.linalg_matfree_max;
     Np = refel.Np;
     nel = mesh_data.nel;
-    N1 = size(grid_data.allnodes)[1];
+    N1 = size(grid_data.allnodes,2);
     multivar = typeof(var) <: Array;
     if multivar
         # multiple variables being solved for simultaneously
@@ -88,7 +88,7 @@ function solve_matrix_free_asym(var, bilinear, linear, stepper=nothing, t=0, dt=
     maxiters = config.linalg_matfree_max;
     Np = refel.Np;
     nel = mesh_data.nel;
-    N1 = size(grid_data.allnodes)[1];
+    N1 = size(grid_data.allnodes,2);
     multivar = typeof(var) <: Array;
     if multivar
         # multiple variables being solved for simultaneously
@@ -192,8 +192,8 @@ function elem_matvec(x, bilinear, dofs_per_node, var, t = 0.0, dt = 0.0)
     
     # Stiffness and mass are precomputed for uniform grid meshes
     if config.mesh_type == UNIFORM_GRID && config.geometry == SQUARE
-        glb = grid_data.loc2glb[1,:];
-        xe = grid_data.allnodes[glb[:],:];
+        glb = grid_data.loc2glb[:,1];
+        xe = grid_data.allnodes[:,glb[:]];
         (detJ, J) = geometric_factors(refel, xe);
         wgdetj = refel.wg .* detJ;
         if config.dimension == 1
@@ -217,8 +217,8 @@ function elem_matvec(x, bilinear, dofs_per_node, var, t = 0.0, dt = 0.0)
     
     #Elemental loop follows elemental ordering
     for e=elemental_order;
-        glb = grid_data.loc2glb[e,:];                 # global indices of this element's nodes for extracting values from var arrays
-        xe = grid_data.allnodes[glb[:],:];  # coordinates of this element's nodes for evaluating coefficient functions
+        glb = grid_data.loc2glb[:,e];                 # global indices of this element's nodes for extracting values from var arrays
+        xe = grid_data.allnodes[:,glb[:]];  # coordinates of this element's nodes for evaluating coefficient functions
         
         subx = extract_linear(x, glb, dofs_per_node);
         
