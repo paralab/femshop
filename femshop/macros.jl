@@ -116,6 +116,13 @@ macro stepper(s, cfl)
     end)
 end
 
+# Sets time stepper dt and Nsteps to specified values
+macro setSteps(dt, steps)
+    return esc(quote
+        set_specified_steps($dt, $steps);
+    end)
+end
+
 # Selects matrix free
 macro matrixFree() return esc(:(@matrixFree(1000, 1e-6))) end
 macro matrixFree(max, tol)
@@ -244,10 +251,17 @@ macro parameter(p, type, val)
     end)
 end
 
+macro boundary(var, bid, bc_type) return esc(:(@boundary($var,$bid,$bc_type, 0))); end
 macro boundary(var, bid, bc_type, bc_exp)
     return esc(quote
         nfuns = @makeFunctions($bc_exp);
         add_boundary_condition($var, $bid, $bc_type, $bc_exp, nfuns);
+    end)
+end
+
+macro referencePoint(var, pos, val)
+    return esc(quote
+        add_reference_point($var, $pos, $val);
     end)
 end
 

@@ -283,9 +283,7 @@ function assemble(var, bilinear, linear, t=0.0, dt=0.0)
     loop_time = Base.Libc.time() - loop_time;
     
     # Build the sparse A. Uses default + to combine overlaps
-    sparse_time = Base.Libc.time();
     A = sparse(AI, AJ, AV);
-    sparse_time = Base.Libc.time() - sparse_time;
     
     # Boundary conditions
     bc_time = Base.Libc.time();
@@ -345,10 +343,43 @@ function assemble(var, bilinear, linear, t=0.0, dt=0.0)
         end
     end
     
+    # Reference points
+    if multivar
+        posind = zeros(Int,0);
+        vals = zeros(0);
+        for vi=1:length(var)
+            if prob.ref_point[var[vi].index,1]
+                eii = prob.ref_point[var[vi].index, 2];
+                tmp = (grid_data.glbvertex[eii[1], eii[2]] - 1)*dofs_per_node + var_to_dofs[vi][1];
+                if length(prob.ref_point[var[vi].index, 3]) > 1
+                    tmp = tmp:(tmp+length(prob.ref_point[var[vi].index, 3])-1);
+                end
+                posind = [posind; tmp];
+                vals = [vals; prob.ref_point[var[vi].index, 3]];
+            end
+        end
+        if length(vals) > 0
+            A = identity_rows(A, posind, length(b));
+            b[posind] = vals;
+        end
+        
+    else
+        if prob.ref_point[var.index,1]
+            eii = prob.ref_point[var.index, 2];
+            posind = (grid_data.glbvertex[eii[1], eii[2]] - 1)*dofs_per_node + 1;
+            if length(prob.ref_point[var.index, 3]) > 1
+                posind = posind:(posind+length(prob.ref_point[var[vi].index, 3])-1);
+            else
+                posind = [posind];
+            end
+            A = identity_rows(A, posind, length(b));
+            b[posind] = prob.ref_point[var.index, 3];
+        end
+    end
+    
     bc_time = Base.Libc.time() - bc_time;
     
     log_entry("Elemental loop time:     "*string(loop_time));
-    log_entry("Form sparse matrix time: "*string(sparse_time));
     log_entry("Boundary condition time: "*string(bc_time));
     
     return (A, b);
@@ -465,6 +496,36 @@ function assemble_rhs_only(var, linear, t=0.0, dt=0.0)
             else
                 b = dirichlet_bc_rhs_only(b, prob.bc_func[var.index, bid][1], grid_data.bdry[bid], t);
             end
+        end
+    end
+    
+    # Reference points
+    if multivar
+        posind = zeros(Int,0);
+        vals = zeros(0);
+        for vi=1:length(var)
+            if prob.ref_point[var[vi].index,1]
+                eii = prob.ref_point[var[vi].index, 2];
+                tmp = (grid_data.glbvertex[eii[1], eii[2]] - 1)*dofs_per_node + var_to_dofs[vi][1];
+                if length(prob.ref_point[var[vi].index, 3]) > 1
+                    tmp = tmp:(tmp+length(prob.ref_point[var[vi].index, 3])-1);
+                end
+                posind = [posind; tmp];
+                vals = [vals; prob.ref_point[var[vi].index, 3]];
+            end
+        end
+        if length(vals) > 0
+            b[posind] = vals;
+        end
+        
+    else
+        if prob.ref_point[var.index,1]
+            eii = prob.ref_point[var.index, 2];
+            posind = (grid_data.glbvertex[eii[1], eii[2]] - 1)*dofs_per_node + 1;
+            if length(prob.ref_point[var.index, 3]) > 1
+                posind = posind:(posind+length(prob.ref_point[var[vi].index, 3])-1);
+            end
+            b[posind] = prob.ref_point[var.index, 3];
         end
     end
 

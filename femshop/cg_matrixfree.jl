@@ -257,9 +257,6 @@ function elem_matvec(x, bilinear, dofs_per_node, var, t = 0.0, dt = 0.0)
                     end
                 end
             end
-            # for bid=1:bidcount
-            #     Ax = dirichlet_bc_matfree(Ax, x, grid_data.bdry[bid], 1:dofs_per_node, dofs_per_node);
-            # end
         else
             for bid=1:bidcount
                 if prob.bc_type[var.index, bid] == NO_BC
@@ -276,6 +273,36 @@ function elem_matvec(x, bilinear, dofs_per_node, var, t = 0.0, dt = 0.0)
             else
                 Ax = dirichlet_bc_matfree(Ax, x, grid_data.bdry[bid]);
             end
+        end
+    end
+    
+    # Reference points
+    if multivar
+        posind = zeros(Int,0);
+        vals = zeros(0);
+        for vi=1:length(var)
+            if prob.ref_point[var[vi].index,1]
+                eii = prob.ref_point[var[vi].index, 2];
+                tmp = (grid_data.glbvertex[eii[1], eii[2]] - 1)*dofs_per_node + var_to_dofs[vi][1];
+                if length(prob.ref_point[var[vi].index, 3]) > 1
+                    tmp = tmp:(tmp+length(prob.ref_point[var[vi].index, 3])-1);
+                end
+                posind = [posind; tmp];
+                vals = [vals; prob.ref_point[var[vi].index, 3]];
+            end
+        end
+        if length(vals) > 0
+            Ax[posind] = vals;
+        end
+        
+    else
+        if prob.ref_point[var.index,1]
+            eii = prob.ref_point[var.index, 2];
+            posind = (grid_data.glbvertex[eii[1], eii[2]] - 1)*dofs_per_node + 1;
+            if length(prob.ref_point[var.index, 3]) > 1
+                posind = posind:(posind+length(prob.ref_point[var[vi].index, 3])-1);
+            end
+            Ax[posind] = prob.ref_point[var.index, 3];
         end
     end
     

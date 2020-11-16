@@ -44,12 +44,8 @@ function newton(nl,formjac, formfunc, nlvar, t=0, dt=0)
 
 	i = 0;
 	while (i < nl.max_iter)
-		# For matrix assembly use next two lines
 		eval_jac(nl, formjac, t, dt);
 		delta = - nl.jac \ nl.res;
-		
-		# For matrix-free use next line
-		#delta = -solve_matrix_free_sym(nl.var, nl.bilinear, nl.linear, nothing, t, dt)
 		
 		#@show nl.jac
 		#@show nl.res

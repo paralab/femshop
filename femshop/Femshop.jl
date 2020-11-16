@@ -5,13 +5,13 @@ We can reorganize things and make submodules as desired.
 module Femshop
 
 # Public macros and functions
-export @language, @domain, @mesh, @solver, @stepper, @functionSpace, @trialFunction, @matrixFree,
-        @testFunction, @nodes, @order, @boundary, @variable, @coefficient, @parameter, @testSymbol, @initial,
+export @language, @domain, @mesh, @solver, @stepper, @setSteps, @functionSpace, @trialFunction, @matrixFree,
+        @testFunction, @nodes, @order, @boundary, @referencePoint, @variable, @coefficient, @parameter, @testSymbol, @initial,
         @timeInterval, @weakForm, @LHS, @RHS, @customOperator, @customOperatorFile,
         @outputMesh, @useLog, @finalize
-export init_femshop, set_language, dendro, set_solver, set_stepper, set_matrix_free, reformat_for_stepper, 
+export init_femshop, set_language, dendro, set_solver, set_stepper, set_specified_steps, set_matrix_free, reformat_for_stepper, 
         add_mesh, output_mesh, add_test_function, 
-        add_initial_condition, add_boundary_condition, set_rhs, set_lhs, set_lhs_surface, set_rhs_surface, solve, 
+        add_initial_condition, add_boundary_condition, add_reference_point, set_rhs, set_lhs, set_lhs_surface, set_rhs_surface, solve, 
         finalize, cachesim, cachesim_solve, 
         morton_nodes, hilbert_nodes, tiled_nodes, morton_elements, hilbert_elements, tiled_elements, ef_nodes
 export build_cache_level, build_cache, build_cache_auto
@@ -58,6 +58,9 @@ bilinears = [];
 surface_bilinears = [];
 #time stepper
 time_stepper = nothing;
+specified_dt = 0;
+specified_Nsteps = 0;
+use_specified_steps = false;
 
 use_cachesim = false;
 
@@ -94,6 +97,9 @@ function init_femshop(name="unnamedProject")
     global surface_linears = [];
     global surface_bilinears = [];
     global time_stepper = nothing;
+    global specified_dt = 0;
+    global specified_Nsteps = 0;
+    global use_specified_steps = false;
     global use_cachesim = false;
 end
 
@@ -116,6 +122,15 @@ function set_stepper(type, cfl)
     global time_stepper = Stepper(type, cfl);
     global config.stepper = type;
     log_entry("Set time stepper to "*type);
+end
+
+function set_specified_steps(dt, steps)
+    global specified_dt = dt;
+    global specified_Nsteps = steps;
+    global use_specified_steps = true;
+    prob.time_dependent = true;
+    prob.end_time = dt*steps;
+    log_entry("Set time stepper values to dt="*string(dt)*", Nsteps="*string(steps));
 end
 
 function set_matrix_free(max, tol)
@@ -279,10 +294,11 @@ end
 function add_boundary_condition(var, bid, type, ex, nfuns)
     global prob;
     # make sure the arrays are big enough
-    if size(prob.bc_func)[1] < var_count || size(prob.bc_func)[2] < bid
-        tmp1 = Array{String,2}(undef, (var_count, bid));
-        tmp2 = Array{Any,2}(undef, (var_count, bid));
-        tmp3 = zeros(Int, (var_count, bid));
+    if size(prob.bc_func)[1] < var_count || size(prob.bc_func,2) < bid
+        nbid = length(grid_data.bids);
+        tmp1 = Array{String,2}(undef, (var_count, nbid));
+        tmp2 = Array{Any,2}(undef, (var_count, nbid));
+        tmp3 = zeros(Int, (var_count, nbid));
         fill!(tmp1, "");
         fill!(tmp2, GenFunction("","","",0,0));
         tmp1[1:size(prob.bc_func)[1], 1:size(prob.bc_func)[2]] = Base.deepcopy(prob.bc_type);
@@ -315,6 +331,52 @@ function add_boundary_condition(var, bid, type, ex, nfuns)
     prob.bid[var.index, bid] = bid;
 
     log_entry("Boundary condition: var="*string(var.symbol)*" bid="*string(bid)*" type="*type*" val="*string(ex));
+end
+
+function add_reference_point(var, pos, val)
+    global prob;
+    # make sure the array is big enough
+    if size(prob.ref_point,1) < var_count
+        tmp = Array{Any,2}(undef, (var_count, 3));
+        for i=1:size(prob.ref_point,1)
+            tmp[i,:] = prob.ref_point[i,:];
+        end
+        for i=(size(prob.ref_point,1)+1):var_count
+            tmp[i,1] = false;
+            tmp[i,2] = [0,0];
+            tmp[i,3] = [0];
+        end
+        prob.ref_point = tmp;
+    end
+    if typeof(pos) <: Number
+        pos = pos*ones(config.dimension);
+    end
+    if typeof(val) <: Number
+        val = val*ones(length(var.symvar.vals));
+    end
+    
+    # Find the closest vertex to pos
+    # The stored pos is actually the index into glbvertex pointing to the closest vertex
+    ind = [1,1];
+    mindist = 12345;
+    for ei=1:mesh_data.nel
+        for i=1:size(grid_data.glbvertex,1)
+            d = 0;
+            for comp=1:length(pos)
+                d = d + abs(grid_data.allnodes[comp, grid_data.glbvertex[i, ei]] - pos[comp]);
+            end
+            if d<mindist
+                ind = [i,ei];
+                mindist = d;
+            end
+        end
+    end
+    
+    prob.ref_point[var.index, 1] = true;
+    prob.ref_point[var.index, 2] = ind;
+    prob.ref_point[var.index, 3] = val;
+    
+    log_entry("Reference point: var="*string(var.symbol)*" position="*string(pos)*" value="*string(val));
 end
 
 function set_rhs(var, code="")
@@ -473,6 +535,10 @@ function solve(var, nlvar=nothing; nonlinear=false)
             
             if prob.time_dependent
                 global time_stepper = init_stepper(grid_data.allnodes, time_stepper);
+                if use_specified_steps
+                    Femshop.time_stepper.dt = specified_dt;
+				    Femshop.time_stepper.Nsteps = specified_Nsteps;
+                end
 				if (nonlinear)
                 	t = @elapsed(result = CGSolver.nonlinear_solve(var, nlvar, lhs, rhs, time_stepper));
 				else
