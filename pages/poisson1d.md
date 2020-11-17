@@ -6,7 +6,7 @@ title: Poisson 1D
 
 <img src="images/poisson1d.png" alt="poisson1d" width="400">
 
-The Julia script: <a href="https://github.com/paralab/femshop/blob/master/femshop/examples/example-poisson1d.jl">example-poisson1d.jl<\a>
+The Julia script: <a href="https://github.com/paralab/femshop/blob/master/femshop/examples/example-poisson1d.jl">example-poisson1d.jl</a>
 
 The 1D Poisson equation with Dirichlet boundary and smooth functions is about as simple as it gets. This example demonstrates the basics of setting up a problem in Fenshop. A uniform discretization of the unit domain is used with p=4 polynomial basis function space.
 
@@ -32,9 +32,9 @@ Define the variable, test function, and forcing function symbols.
 @coefficient(f, "-100*pi*pi*sin(10*pi*x)*sin(pi*x) - pi*pi*sin(10*pi*x)*sin(pi*x) + 20*pi*pi*cos(10*pi*x)*cos(pi*x)")
 ```
 Convert the PDE
-<div align="center"><img src="https://render.githubusercontent.com/render/math?math=\begin{align}\Delta%20u&=f(x)\\ u(0)&=u(1)=0\end{align}"> <\div>
+<div align="center"><img src="https://render.githubusercontent.com/render/math?math=\begin{align}\Delta%20u&=f(x)\\ u(0)&=u(1)=0\end{align}"> </div>
 into the weak form
-<div align="center"><img src="https://render.githubusercontent.com/render/math?math=(grad(u),grad(v))=(f,v)"> <\div>
+<div align="center"><img src="https://render.githubusercontent.com/render/math?math=(grad(u),grad(v))=(f,v)"> </div>
 
 The boundary condition is specified.
 ```
