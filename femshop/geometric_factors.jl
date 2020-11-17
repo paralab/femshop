@@ -16,14 +16,14 @@ function geometric_factors(refel, pts)
     # J = detJ
     # D = Jacobian
     if refel.dim == 1
-        xr  = refel.Dg*pts;
+        xr  = refel.Dg*pts[:];
         J = xr[:];
         rx = 1 ./ J;
         D = Jacobian(rx,[],[],[],[],[],[],[],[]);
         
     elseif refel.dim == 2
-        (xr, xs) = tensor_grad2(refel.Dg, pts[:,1]);
-        (yr, ys) = tensor_grad2(refel.Dg, pts[:,2]);
+        (xr, xs) = tensor_grad2(refel.Dg, pts[1,:][:]);
+        (yr, ys) = tensor_grad2(refel.Dg, pts[2,:][:]);
         J = -xs.*yr + xr.*ys;
         
         rx =  ys./J;
@@ -33,9 +33,9 @@ function geometric_factors(refel, pts)
         D = Jacobian(rx,ry,[],sx,sy,[],[],[],[]);
         
     else
-        (xr, xs, xt) = tensor_grad3(refel.Dg, pts[:,1]);
-        (yr, ys, yt) = tensor_grad3(refel.Dg, pts[:,2]);
-        (zr, zs, zt) = tensor_grad3(refel.Dg, pts[:,3]);
+        (xr, xs, xt) = tensor_grad3(refel.Dg, pts[1,:][:]);
+        (yr, ys, yt) = tensor_grad3(refel.Dg, pts[2,:][:]);
+        (zr, zs, zt) = tensor_grad3(refel.Dg, pts[3,:][:]);
         J = xr.*(ys.*zt-zs.*yt) - yr.*(xs.*zt-zs.*xt) + zr.*(xs.*yt-ys.*xt);
         
         rx =  (ys.*zt - zs.*yt)./J;
@@ -109,7 +109,7 @@ function geometric_factors_cachesim(refel, pts)
     # J = detJ
     # D = Jacobian
     if refel.dim == 1
-        xr  = refel.Dg*pts;
+        xr  = refel.Dg*pts[:];
         J = xr[:];
         rx = 1 ./ J;
         D = Jacobian(rx,[],[],[],[],[],[],[],[]);
@@ -118,8 +118,8 @@ function geometric_factors_cachesim(refel, pts)
         cachesim_store_range(16);
         
     elseif refel.dim == 2
-        (xr, xs) = tensor_grad2(refel.Dg, pts[:,1]);
-        (yr, ys) = tensor_grad2(refel.Dg, pts[:,2]);
+        (xr, xs) = tensor_grad2(refel.Dg, pts[1,:][:]);
+        (yr, ys) = tensor_grad2(refel.Dg, pts[2,:][:]);
         J = -xs.*yr + xr.*ys;
         
         rx =  ys./J;
@@ -135,9 +135,9 @@ function geometric_factors_cachesim(refel, pts)
         cachesim_store_range(16);
         
     else
-        (xr, xs, xt) = tensor_grad3(refel.Dg, pts[:,1]);
-        (yr, ys, yt) = tensor_grad3(refel.Dg, pts[:,2]);
-        (zr, zs, zt) = tensor_grad3(refel.Dg, pts[:,3]);
+        (xr, xs, xt) = tensor_grad3(refel.Dg, pts[1,:][:]);
+        (yr, ys, yt) = tensor_grad3(refel.Dg, pts[2,:][:]);
+        (zr, zs, zt) = tensor_grad3(refel.Dg, pts[3,:][:]);
         J = xr.*(ys.*zt-zs.*yt) - yr.*(xs.*zt-zs.*xt) + zr.*(xs.*yt-ys.*xt);
         
         rx =  (ys.*zt - zs.*yt)./J;

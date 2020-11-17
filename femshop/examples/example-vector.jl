@@ -17,7 +17,7 @@ init_femshop("vector");
 @nodes(LOBATTO)                     # elemental node arrangement
 
 # Specify the problem
-@mesh(QUADMESH, 30)                 # .msh file or generate our own
+@mesh(QUADMESH, 20)                 # .msh file or generate our own
 
 @variable(u, VECTOR)
 
@@ -26,9 +26,10 @@ init_femshop("vector");
 @boundary(u, 1, DIRICHLET, [0, 0])
 
 # Write the weak form
-@coefficient(f, VECTOR, ["-5*pi*pi*sin(pi*x)*sin(2*pi*y)", "-25*pi*pi*sin(3*pi*x)*sin(4*pi*y)"])
+@coefficient(f, VECTOR, ["-25*pi*pi*sin(pi*x)*sin(2*pi*y)", "-125*pi*pi*sin(3*pi*x)*sin(4*pi*y)"])
+@coefficient(a, 5)
 
-@weakForm(u, "-inner(grad(u), grad(v)) - f*v")
+@weakForm(u, "-a*inner(grad(u), grad(v)) - dot(f,v)")
 
 solve(u);
 
@@ -39,14 +40,14 @@ maxerru = 0
 exactu1(x,y) = sin(pi*x)*sin(2*pi*y);
 exactu2(x,y) = sin(3*pi*x)*sin(4*pi*y);
 
-for i=1:size(Femshop.grid_data.allnodes,1)
-    x = Femshop.grid_data.allnodes[i,1];
-    y = Femshop.grid_data.allnodes[i,2];
+for i=1:size(Femshop.grid_data.allnodes,2)
+    x = Femshop.grid_data.allnodes[1,i];
+    y = Femshop.grid_data.allnodes[2,i];
     exac = [exactu1(x,y), exactu2(x,y)];
-    for j=1:size(Femshop.grid_data.allnodes,2)
-        erroru[i,j] = u.values[i,j] - exac[j];
+    for j=1:size(Femshop.grid_data.allnodes,1)
+        erroru[j,i] = u.values[j,i] - exac[j];
         global maxerru;
-        maxerru = max(abs(erroru[i,j]),maxerru);
+        maxerru = max(abs(erroru[j,i]),maxerru);
     end
     
 end
@@ -54,7 +55,7 @@ println("u max error = "*string(maxerru));
 
 # using Plots
 # pyplot();
-# display(plot(Femshop.grid_data.allnodes[:,1], Femshop.grid_data.allnodes[:,2], u.values[:,1], st=:surface))
+# display(plot(Femshop.grid_data.allnodes[1,:], Femshop.grid_data.allnodes[2,:], u.values[1,:], st=:surface))
 
 # check
 log_dump_config();

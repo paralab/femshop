@@ -14,6 +14,8 @@ init_femshop("multivar");
 @domain(1)
 @functionSpace(LEGENDRE, 3)
 
+@matrixFree(200,1e-6)
+
 # Build a simple mesh
 @mesh(LINEMESH, 30)
 
@@ -24,8 +26,8 @@ init_femshop("multivar");
 @testSymbol(v)
 
 #Boundary conditions
-@boundary(u, 1, DIRICHLET, 0)
-@boundary(q, 1, DIRICHLET, 0)
+@boundary(u, 1, DIRICHLET, "0")
+@boundary(q, 1, DIRICHLET, "0")
 
 #Equations
 @coefficient(f, "-4*pi*pi*sin(2*pi*x)")
@@ -53,6 +55,11 @@ for i=1:size(Femshop.grid_data.allnodes,1)
 end
 println("max error(u) = "*string(maxerru));
 println("max error(q) = "*string(maxerrq));
+
+# using Plots
+# pyplot();
+# display(plot(Femshop.grid_data.allnodes[:], u.values[:], markershape=:circle, reuse=false))
+# display(plot(Femshop.grid_data.allnodes[:], q.values[:], markershape=:circle, reuse=false))
 
 # check
 log_dump_config();

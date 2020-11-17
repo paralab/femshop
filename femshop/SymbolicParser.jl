@@ -114,6 +114,9 @@ function sp_parse(ex, var)
     # Check for time derivatives
     timederiv = check_for_dt(sterms);
     
+    # Check for surface integrals
+    has_surface = check_for_surface(sterms);
+    
     # Each element has an lhs and rhs
     lhs = copy(sterms); # set up the container right
     rhs = copy(sterms);
@@ -150,14 +153,40 @@ function sp_parse(ex, var)
         end
     end
     
+    # If there was a surface integral, separate those terms as well
+    if has_surface
+        surflhs = copy(lhs);
+        surfrhs = copy(rhs);
+        if varcount > 1
+            for i=1:length(symex)
+                sz = size(symex[i]);
+                (surflhs[i],lhs[i]) = split_surf(lhs[i],sz);
+                (surfrhs[i],rhs[i]) = split_surf(rhs[i],sz);
+            end
+        else
+            sz = size(symex);
+            (surflhs,lhs) = split_surf(lhs,sz);
+            (surfrhs,rhs) = split_surf(rhs,sz);
+        end
+    end
+    
     #println("LHS = "*string(lhs));
     #println("RHS = "*string(rhs));
     if timederiv
         #println("dtLHS = "*string(dtlhs));
         #println("dtRHS = "*string(dtrhs));
-        return ((dtlhs,lhs), rhs);
+        if has_surface
+            return ((dtlhs,lhs), rhs, surflhs, surfrhs);
+        else
+            return ((dtlhs,lhs), rhs);
+        end
+        
     else
-        return (lhs, rhs);
+        if has_surface
+            return (lhs, rhs, surflhs, surfrhs);
+        else
+            return (lhs, rhs);
+        end
     end
 end
 
@@ -387,6 +416,18 @@ function check_for_dt(terms)
     return result;
 end
 
+function check_for_surface(terms)
+    result = false;
+    if typeof(terms) <: Array
+        for i=1:length(terms)
+            result = result || check_for_surface(terms[i]);
+        end
+    else
+        result = occursin("SURFACEINTEGRAL", string(terms));
+    end
+    return result;
+end
+
 function split_left_right(sterms,sz,var)
     lhs = copy(sterms); # set up the container right
     rhs = copy(sterms);
@@ -501,6 +542,60 @@ function split_dt(terms, sz)
     end
     
     return (hasdt, nodt);
+end
+
+function split_surf(terms, sz)
+    hassurf = copy(terms); # set up the container right
+    nosurf = copy(terms);
+    SURFACEINTEGRAL = symbols("SURFACEINTEGRAL"); # will be removed from terms
+    if length(sz) == 1 # vector or scalar
+        for i=1:sz[1]
+            hassurf[i] = Array{Basic,1}(undef,0);
+            nosurf[i] = Array{Basic,1}(undef,0);
+            for ti=1:length(terms[i])
+                if check_for_surface(terms[i][ti])
+                    terms[i][ti] = subs(terms[i][ti], SURFACEINTEGRAL=>1);
+                    push!(hassurf[i], terms[i][ti]);
+                else
+                    push!(nosurf[i], terms[i][ti]);
+                end
+            end
+        end
+    elseif length(sz) == 2 # matrix
+        for j=1:sz[2]
+            for i=1:sz[1]
+                hassurf[i,j] = Basic(0);
+                nosurf[i,j] = Basic(0);
+                for ti=1:length(terms[i,j])
+                    if check_for_surface(terms[i,j][ti])
+                        terms[i,j][ti] = subs(terms[i,j][ti], SURFACEINTEGRAL=>1);
+                        push!(hassurf[i,j], terms[i,j][ti]);
+                    else
+                        push!(nosurf[i,j], terms[i,j][ti]);
+                    end
+                end
+            end
+        end
+    elseif length(sz) == 3 # rank 3
+        for k=1:sz[3]
+            for j=1:sz[2]
+                for i=1:sz[1]
+                    hassurf[i,j,k] = Basic(0);
+                    nosurf[i,j,k] = Basic(0);
+                    for ti=1:length(terms[i,j,k])
+                        if check_for_surface(terms[i,j,k][ti])
+                            terms[i,j,k][ti] = subs(terms[i,j,k][ti], SURFACEINTEGRAL=>1);
+                            push!(hassurf[i,j,k], terms[i,j,k][ti]);
+                        else
+                            push!(nosurf[i,j,k], terms[i,j,k][ti]);
+                        end
+                    end
+                end
+            end
+        end
+    end
+    
+    return (hassurf, nosurf);
 end
 
 function apply_negative(ex)

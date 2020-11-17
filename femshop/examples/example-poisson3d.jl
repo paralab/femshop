@@ -39,10 +39,10 @@ solve(u);
 maxerr = 0;
 exact(x,y,z) = sin(pi*x)*sin(pi*y)*sin(pi*z);
 
-for i=1:size(Femshop.grid_data.allnodes,1)
-    x = Femshop.grid_data.allnodes[i,1];
-    y = Femshop.grid_data.allnodes[i,2];
-    z = Femshop.grid_data.allnodes[i,3];
+for i=1:size(Femshop.grid_data.allnodes,2)
+    x = Femshop.grid_data.allnodes[1,i];
+    y = Femshop.grid_data.allnodes[2,i];
+    z = Femshop.grid_data.allnodes[3,i];
     err = abs(u.values[i] - exact(x,y,z));
     global maxerr;
     maxerr = max(err,maxerr);
@@ -50,12 +50,12 @@ end
 println("max error = "*string(maxerr));
 
 # solution is stored in the variable's "values"
-#using Plots
-#pyplot();
-#N = n*ord+1;
-#half = Int(round(N/2));
-#range = (N*N*half+1):(N*N*(half+1));
-#display(plot(Femshop.grid_data.allnodes[range,1], Femshop.grid_data.allnodes[range,2], u.values[range], st=:surface))
+# using Plots
+# pyplot();
+# N = n*ord+1;
+# half = Int(round(N/2));
+# range = (N*N*half+1):(N*N*(half+1));
+# display(plot(Femshop.grid_data.allnodes[1,range], Femshop.grid_data.allnodes[2,range], u.values[range], st=:surface))
 
 # check
 log_dump_config();

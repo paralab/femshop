@@ -39,7 +39,7 @@ solve(u);
 # solution is stored in the variable's "values"
 # using Plots
 # pyplot();
-# display(plot(Femshop.grid_data.allnodes[:,1], Femshop.grid_data.allnodes[:,2], u.values, st = :surface))
+# display(plot(Femshop.grid_data.allnodes[1,:], Femshop.grid_data.allnodes[2,:], u.values[:], st = :surface))
 
 # check
 log_dump_config(Femshop.config);

@@ -10,7 +10,7 @@ function solve_matrix_free_sym(var, bilinear, linear, stepper=nothing, t=0, dt=0
     maxiters = config.linalg_matfree_max;
     Np = refel.Np;
     nel = mesh_data.nel;
-    N1 = size(grid_data.allnodes)[1];
+    N1 = size(grid_data.allnodes,2);
     multivar = typeof(var) <: Array;
     if multivar
         # multiple variables being solved for simultaneously
@@ -88,7 +88,7 @@ function solve_matrix_free_asym(var, bilinear, linear, stepper=nothing, t=0, dt=
     maxiters = config.linalg_matfree_max;
     Np = refel.Np;
     nel = mesh_data.nel;
-    N1 = size(grid_data.allnodes)[1];
+    N1 = size(grid_data.allnodes,2);
     multivar = typeof(var) <: Array;
     if multivar
         # multiple variables being solved for simultaneously
@@ -192,8 +192,8 @@ function elem_matvec(x, bilinear, dofs_per_node, var, t = 0.0, dt = 0.0)
     
     # Stiffness and mass are precomputed for uniform grid meshes
     if config.mesh_type == UNIFORM_GRID && config.geometry == SQUARE
-        glb = grid_data.loc2glb[1,:];
-        xe = grid_data.allnodes[glb[:],:];
+        glb = grid_data.loc2glb[:,1];
+        xe = grid_data.allnodes[:,glb[:]];
         (detJ, J) = geometric_factors(refel, xe);
         wgdetj = refel.wg .* detJ;
         if config.dimension == 1
@@ -217,8 +217,8 @@ function elem_matvec(x, bilinear, dofs_per_node, var, t = 0.0, dt = 0.0)
     
     #Elemental loop follows elemental ordering
     for e=elemental_order;
-        glb = grid_data.loc2glb[e,:];                 # global indices of this element's nodes for extracting values from var arrays
-        xe = grid_data.allnodes[glb[:],:];  # coordinates of this element's nodes for evaluating coefficient functions
+        glb = grid_data.loc2glb[:,e];                 # global indices of this element's nodes for extracting values from var arrays
+        xe = grid_data.allnodes[:,glb[:]];  # coordinates of this element's nodes for evaluating coefficient functions
         
         subx = extract_linear(x, glb, dofs_per_node);
         
@@ -257,9 +257,6 @@ function elem_matvec(x, bilinear, dofs_per_node, var, t = 0.0, dt = 0.0)
                     end
                 end
             end
-            # for bid=1:bidcount
-            #     Ax = dirichlet_bc_matfree(Ax, x, grid_data.bdry[bid], 1:dofs_per_node, dofs_per_node);
-            # end
         else
             for bid=1:bidcount
                 if prob.bc_type[var.index, bid] == NO_BC
@@ -276,6 +273,36 @@ function elem_matvec(x, bilinear, dofs_per_node, var, t = 0.0, dt = 0.0)
             else
                 Ax = dirichlet_bc_matfree(Ax, x, grid_data.bdry[bid]);
             end
+        end
+    end
+    
+    # Reference points
+    if multivar
+        posind = zeros(Int,0);
+        vals = zeros(0);
+        for vi=1:length(var)
+            if prob.ref_point[var[vi].index,1]
+                eii = prob.ref_point[var[vi].index, 2];
+                tmp = (grid_data.glbvertex[eii[1], eii[2]] - 1)*dofs_per_node + var_to_dofs[vi][1];
+                if length(prob.ref_point[var[vi].index, 3]) > 1
+                    tmp = tmp:(tmp+length(prob.ref_point[var[vi].index, 3])-1);
+                end
+                posind = [posind; tmp];
+                vals = [vals; prob.ref_point[var[vi].index, 3]];
+            end
+        end
+        if length(vals) > 0
+            Ax[posind] = vals;
+        end
+        
+    else
+        if prob.ref_point[var.index,1]
+            eii = prob.ref_point[var.index, 2];
+            posind = (grid_data.glbvertex[eii[1], eii[2]] - 1)*dofs_per_node + 1;
+            if length(prob.ref_point[var.index, 3]) > 1
+                posind = posind:(posind+length(prob.ref_point[var[vi].index, 3])-1);
+            end
+            Ax[posind] = prob.ref_point[var.index, 3];
         end
     end
     

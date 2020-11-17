@@ -105,9 +105,10 @@ end
 
 # Use this to reorder the nodes in a given grid.
 function reorder_grid_recursive(grid, griddim, type)
-    dim = size(grid.allnodes,2);
-    nnodes = size(grid.allnodes,1);
-    nel = size(grid.loc2glb,1);
+    dim = size(grid.allnodes,1);
+    nnodes = size(grid.allnodes,2);
+    nel = size(grid.loc2glb,2);
+    nfc = size(grid.face2glb,2);
     
     # get the ordering
     rordering = get_recursive_order(type, dim, griddim);
@@ -118,10 +119,12 @@ function reorder_grid_recursive(grid, griddim, type)
     newbdry = copy(grid.bdry);
     newloc2glb = copy(grid.loc2glb);
     newglbvertex = copy(grid.glbvertex);
+    newface2glb = copy(grid.face2glb);
+    newfaceVertex2glb = copy(grid.faceVertex2glb);
     
     for mi=1:length(rordering)
         for d=1:dim
-            newnodes[rordering[mi],d] = grid.allnodes[mi,d];
+            newnodes[d,rordering[mi]] = grid.allnodes[d,mi];
         end
     end
     
@@ -132,15 +135,24 @@ function reorder_grid_recursive(grid, griddim, type)
     end
     
     for ei=1:nel
-        for ni=1:size(newloc2glb,2)
-            newloc2glb[ei,ni] = rordering[grid.loc2glb[ei,ni]];
+        for ni=1:size(newloc2glb,1)
+            newloc2glb[ni,ei] = rordering[grid.loc2glb[ni,ei]];
         end
-        for ni=1:size(newglbvertex,2)
-            newglbvertex[ei,ni] = rordering[grid.glbvertex[ei,ni]];
+        for ni=1:size(newglbvertex,1)
+            newglbvertex[ni,ei] = rordering[grid.glbvertex[ni,ei]];
         end
     end
     
-    return Femshop.Grid(newnodes, newbdry, grid.bdryelem, grid.bdrynorm, grid.bids, newloc2glb, newglbvertex);
+    for fi=1:nfc
+        for ni=1:size(newface2glb,1)
+            newface2glb[ni,fi] = rordering[grid.face2glb[ni,fi]];
+        end
+        for ni=1:size(newfaceVertex2glb,1)
+            newfaceVertex2glb[ni,fi] = rordering[grid.faceVertex2glb[ni,fi]];
+        end
+    end
+    
+    return Femshop.Grid(newnodes, newbdry, grid.bdryface, grid.bdrynorm, grid.bids, newloc2glb, newglbvertex, newface2glb, newfaceVertex2glb);
 end
 
 

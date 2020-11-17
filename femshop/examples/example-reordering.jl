@@ -5,8 +5,8 @@ if !@isdefined(Femshop)
     include("../Femshop.jl");
     using .Femshop
 end
-n = 31;
-ord = 1;
+n = 5;
+ord = 4;
 gd = n*ord + 1; # grid size in each dimension
 griddim = [gd,gd,gd];
 te = 1; # elemental loop order is also tiled with this width
@@ -20,7 +20,7 @@ init_femshop("reordering");
 @domain(3)
 @functionSpace(LEGENDRE, ord)
 
-@matrixFree(200,1e-6)
+#@matrixFree(200,1e-6)
 
 @mesh(HEXMESH, n)
 
@@ -58,7 +58,9 @@ init_femshop("reordering");
 #pyplot();
 
 # First do u (one DOF)
-times = 1; # average times times
+times = 4; # average times times
+timings = zeros(7);
+timings6 = zeros(7);
 println("One DOF per node, average of "*string(times)*" runs")
 #warm up
 solve(u);
@@ -70,6 +72,7 @@ for iter=1:times
 end
 regtime = Base.Libc.time() - regtime;
 regtime /= times;
+timings[1] = regtime;
 println("Lex. time = "*string(regtime)*"sec.");
 #display(spy(Femshop.CGSolver.Amat, legend=nothing, reuse=false));
 
@@ -78,7 +81,7 @@ for ti=1:length(tds)
     td = tds[ti];
     @mesh(HEXMESH, n)
     tiled_nodes(griddim,(td,td,td));
-    #tiled_elements((n,n,n),(te,te,te));
+    tiled_elements((n,n,n),(te,te,te));
     
     #solve(u);
     tiletime = Base.Libc.time();
@@ -87,7 +90,7 @@ for ti=1:length(tds)
     end
     tiletime = Base.Libc.time() - tiletime;
     tiletime /= times;
-
+    timings[2] = tiletime;
     println("tiled("*string(td)*") = "*string(tiletime)*"sec.");
 end
 #display(spy(Femshop.CGSolver.Amat, legend=nothing, reuse=false));
@@ -104,7 +107,7 @@ for iter=1:times
 end
 tiletime = Base.Libc.time() - tiletime;
 tiletime /= times;
-
+timings[3] = tiletime;
 println("morton = "*string(tiletime)*"sec.");
 #display(spy(Femshop.CGSolver.Amat, legend=nothing, reuse=false));
 
@@ -120,8 +123,59 @@ for iter=1:times
 end
 tiletime = Base.Libc.time() - tiletime;
 tiletime /= times;
-
+timings[4] = tiletime;
 println("hilbert = "*string(tiletime)*"sec.");
+
+
+# Lex. + ef ordering
+@mesh(HEXMESH, n)
+ef_nodes();
+regtime = Base.Libc.time();
+for iter=1:times
+    solve(u);
+end
+regtime = Base.Libc.time() - regtime;
+regtime /= times;
+timings[5] = regtime;
+println("Lex + ef time = "*string(regtime)*"sec.");
+#display(spy(Femshop.CGSolver.Amat, legend=nothing, reuse=false));
+
+# morton + ef ordering
+@mesh(HEXMESH, n)
+morton_elements([n,n,n]);
+ef_nodes();
+
+#solve(u);
+tiletime = Base.Libc.time();
+for iter=1:times
+    solve(u);
+end
+tiletime = Base.Libc.time() - tiletime;
+tiletime /= times;
+timings[6] = tiletime;
+println("morton + ef = "*string(tiletime)*"sec.");
+#display(spy(Femshop.CGSolver.Amat, legend=nothing, reuse=false));
+
+# hilbert ordering
+@mesh(HEXMESH, n)
+hilbert_elements([n,n,n]);
+ef_nodes();
+
+#solve(u);
+tiletime = Base.Libc.time();
+for iter=1:times
+    solve(u);
+end
+tiletime = Base.Libc.time() - tiletime;
+tiletime /= times;
+timings[7] = tiletime;
+println("hilbert + ef = "*string(tiletime)*"sec.");
+
+# using Plots
+# pyplot();
+# #display(plot(timings, marker=:circle, reuse=false))
+# labels = ["lex", "tiled", "hilb", "mort", "lex+ef", "hilb+ef", "mort+ef"];
+# display(bar(labels, timings, legend=false, reuse=false))
 
 ###############################################################################
 # then do qn (6 DOF)
@@ -132,7 +186,6 @@ println("Six DOF per node, averaged "*string(times)*" times")
 
 #warm up
 solve([q1,q2,q3,q4,q5,q6]);
-times = 1; # average times times
 
 # Lex. ordering
 regtime = Base.Libc.time();
@@ -141,6 +194,7 @@ for iter=1:times
 end
 regtime = Base.Libc.time() - regtime;
 regtime /= times;
+timings6[1] = regtime;
 println("Lex. time = "*string(regtime)*"sec.");
 
 # Tiled ordering
@@ -157,7 +211,7 @@ for ti=1:length(tds)
     end
     tiletime = Base.Libc.time() - tiletime;
     tiletime /= times;
-
+    timings6[2] = tiletime;
     println("tiled("*string(td)*") = "*string(tiletime)*"sec.");
 end
 
@@ -173,7 +227,7 @@ for iter=1:times
 end
 tiletime = Base.Libc.time() - tiletime;
 tiletime /= times;
-
+timings6[3] = tiletime;
 println("morton = "*string(tiletime)*"sec.");
 #display(spy(Femshop.CGSolver.Amat, legend=nothing, reuse=false));
 
@@ -189,8 +243,59 @@ for iter=1:times
 end
 tiletime = Base.Libc.time() - tiletime;
 tiletime /= times;
-
+timings6[4] = tiletime;
 println("hilbert = "*string(tiletime)*"sec.");
+
+# Lex. + ef ordering
+@mesh(HEXMESH, n)
+ef_nodes();
+regtime = Base.Libc.time();
+for iter=1:times
+    solve([q1,q2,q3,q4,q5,q6]);
+end
+regtime = Base.Libc.time() - regtime;
+regtime /= times;
+timings6[5] = regtime;
+println("Lex + ef time = "*string(regtime)*"sec.");
+#display(spy(Femshop.CGSolver.Amat, legend=nothing, reuse=false));
+
+# morton + ef ordering
+@mesh(HEXMESH, n)
+morton_elements([n,n,n]);
+ef_nodes();
+
+#solve(u);
+tiletime = Base.Libc.time();
+for iter=1:times
+    solve([q1,q2,q3,q4,q5,q6]);
+end
+tiletime = Base.Libc.time() - tiletime;
+tiletime /= times;
+timings6[6] = tiletime;
+println("morton + ef = "*string(tiletime)*"sec.");
+#display(spy(Femshop.CGSolver.Amat, legend=nothing, reuse=false));
+
+# hilbert ordering
+@mesh(HEXMESH, n)
+hilbert_elements([n,n,n]);
+ef_nodes();
+
+#solve(u);
+tiletime = Base.Libc.time();
+for iter=1:times
+    solve([q1,q2,q3,q4,q5,q6]);
+end
+tiletime = Base.Libc.time() - tiletime;
+tiletime /= times;
+timings6[7] = tiletime;
+println("hilbert + ef = "*string(tiletime)*"sec.");
+
+using Plots
+pyplot();
+#display(plot(timings, marker=:circle, reuse=false))
+labels = ["lex", "tiled", "hilb", "mort", "lex+ef", "hilb+ef", "mort+ef"];
+display(bar(labels, timings, legend=false, reuse=false))
+display(bar(labels, timings6, legend=false, reuse=false))
 
 # exact solution is sin(pi*x)*sin(pi*y)*sin(pi*z)
 # check error
@@ -199,10 +304,10 @@ maxerrq = 0;
 exact(x,y,z) = sin(pi*x)*sin(pi*y)*sin(pi*z);
 exactq(x,y,z) = sin(pi*x)*sin(pi*y)*sin(pi*z);
 
-for i=1:size(Femshop.grid_data.allnodes,1)
-    x = Femshop.grid_data.allnodes[i,1];
-    y = Femshop.grid_data.allnodes[i,2];
-    z = Femshop.grid_data.allnodes[i,3];
+for i=1:size(Femshop.grid_data.allnodes,2)
+    x = Femshop.grid_data.allnodes[1,i];
+    y = Femshop.grid_data.allnodes[2,i];
+    z = Femshop.grid_data.allnodes[3,i];
     err = abs(u.values[i] - exact(x,y,z));
     errq = abs(q1.values[i] - exactq(x,y,z)) + abs(q2.values[i] - exactq(x,y,z)) + abs(q3.values[i] - exactq(x,y,z)) + 
             abs(q4.values[i] - exactq(x,y,z)) + abs(q5.values[i] - exactq(x,y,z)) + abs(q6.values[i] - exactq(x,y,z));

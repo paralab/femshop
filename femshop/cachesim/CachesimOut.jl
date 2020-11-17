@@ -132,9 +132,9 @@ end
 
 # Build a single-level cache with enough capacity to hold el_num*np values
 function build_cache_auto(el_num, grid; bytes_per_val=8, bytes_per_line=64, assoc=1)
-    Np = size(grid.loc2glb,2);
-    nel = size(grid.loc2glb,1);
-    dim = size(grid.allnodes,2);
+    Np = size(grid.loc2glb,1);
+    nel = size(grid.loc2glb,2);
+    dim = size(grid.allnodes,1);
     
     lines = Int(ceil((el_num*Np*bytes_per_val)/bytes_per_line));
     lines = max(4, lines);
@@ -368,9 +368,9 @@ function analyze_cache_with_grid(cache, grid, el_order, dofs)
     
     nodes_per_line = bytes_per_line / bytes_per_node;
     
-    np = size(grid.loc2glb,2);
-    dim = size(grid.allnodes,2);
-    nnodes = size(grid.allnodes,1);
+    np = size(grid.loc2glb,1);
+    dim = size(grid.allnodes,1);
+    nnodes = size(grid.allnodes,2);
     nel = length(el_order);
     
     bigarray = add_cachesim_array_aligned([nnodes*dofs],bytes_per_val);
@@ -388,7 +388,7 @@ function analyze_cache_with_grid(cache, grid, el_order, dofs)
             tmp = lines;
             already1 = false;
             already2 = false;
-            gind = grid.loc2glb[ei,ni];
+            gind = grid.loc2glb[ni,ei];
             startaddr = (gind-1)*bytes_per_node;
             endaddr = startaddr + bytes_per_node-1;
             lin1 = floor(startaddr/bytes_per_line);

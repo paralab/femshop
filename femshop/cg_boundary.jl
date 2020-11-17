@@ -180,30 +180,30 @@ function dirichlet_bc_rhs_only(b, val, bdryind, t=0, dofind = 1, totaldofs = 1)
     elseif typeof(val) == Coefficient && typeof(val.value[1]) == GenFunction
         if config.dimension == 1
             for i=1:length(bdry)
-                b[vecbdry[i]]=val.value[1].func(grid_data.allnodes[bdry[i],1],0,0,t);
+                b[vecbdry[i]]=val.value[1].func(grid_data.allnodes[1,bdry[i]],0,0,t);
             end
         elseif config.dimension == 2
             for i=1:length(bdry)
-                b[vecbdry[i]]=val.value[1].func(grid_data.allnodes[bdry[i],1],grid_data.allnodes[bdry[i],2],0,t);
+                b[vecbdry[i]]=val.value[1].func(grid_data.allnodes[1,bdry[i]],grid_data.allnodes[2,bdry[i]],0,t);
             end
         else
             for i=1:length(bdry)
-                b[vecbdry[i]]=val.value[1].func(grid_data.allnodes[bdry[i],1],grid_data.allnodes[bdry[i],2],grid_data.allnodes[bdry[i],3],t);
+                b[vecbdry[i]]=val.value[1].func(grid_data.allnodes[1,bdry[i]],grid_data.allnodes[2,bdry[i]],grid_data.allnodes[3,bdry[i]],t);
             end
         end
         
     elseif typeof(val) == GenFunction
         if config.dimension == 1
             for i=1:length(bdry)
-                b[vecbdry[i]]=val.func(grid_data.allnodes[bdry[i],1],0,0,t);
+                b[vecbdry[i]]=val.func(grid_data.allnodes[1,bdry[i]],0,0,t);
             end
         elseif config.dimension == 2
             for i=1:length(bdry)
-                b[vecbdry[i]]=val.func(grid_data.allnodes[bdry[i],1],grid_data.allnodes[bdry[i],2],0,t);
+                b[vecbdry[i]]=val.func(grid_data.allnodes[1,bdry[i]],grid_data.allnodes[2,bdry[i]],0,t);
             end
         else
             for i=1:length(bdry)
-                b[vecbdry[i]]=val.func(grid_data.allnodes[bdry[i],1],grid_data.allnodes[bdry[i],2],grid_data.allnodes[bdry[i],3],t);
+                b[vecbdry[i]]=val.func(grid_data.allnodes[1,bdry[i]],grid_data.allnodes[2,bdry[i]],grid_data.allnodes[3,bdry[i]],t);
             end
         end
     end
@@ -224,11 +224,13 @@ function neumann_bc(A, b, val, bdryind, bid, t=0, dofind = 1, totaldofs = 1)
     S2 = spzeros(na, nb);
     S3 = spzeros(na, nb);
     S = spzeros(na, nb);
-    bel = grid_data.bdryelem[bid];
+    bfc = grid_data.bdryface[bid];
     
-    for e = 1:length(bel)
-        glb = grid_data.loc2glb[bel[e],:];       # global indices of this element's nodes
-        xe = grid_data.allnodes[glb[:],:];  # coordinates of this element's nodes
+    for fi = 1:length(bfc)
+        # find the relevant element
+        e = mesh_data.face2element[1,bfc[fi]]>0 ? mesh_data.face2element[1,bfc[fi]] : mesh_data.face2element[2,bfc[fi]];
+        glb = grid_data.loc2glb[:,e];       # global indices of this element's nodes
+        xe = grid_data.allnodes[:,glb[:]];  # coordinates of this element's nodes
         
         # offset for multi dof
         if totaldofs > 1
@@ -269,7 +271,7 @@ function neumann_bc(A, b, val, bdryind, bid, t=0, dofind = 1, totaldofs = 1)
     
     # Add the right components of S1,S2,S3 according to normal vector
     for i=1:length(bdry)
-        norm = grid_data.bdrynorm[bid][i,:];
+        norm = grid_data.bdrynorm[bid][:,i];
         if config.dimension == 1
             S[bdry[i],:] = norm[1] .* S1[bdry[i],:];
         elseif config.dimension == 2

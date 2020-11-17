@@ -116,6 +116,13 @@ macro stepper(s, cfl)
     end)
 end
 
+# Sets time stepper dt and Nsteps to specified values
+macro setSteps(dt, steps)
+    return esc(quote
+        set_specified_steps($dt, $steps);
+    end)
+end
+
 # Selects matrix free
 macro matrixFree() return esc(:(@matrixFree(1000, 1e-6))) end
 macro matrixFree(max, tol)
@@ -164,15 +171,15 @@ macro mesh(m, N, bids, interval)
     return esc(quote
         if $m == LINEMESH
             log_entry("Building simple line mesh with nx elements, nx="*string($N));
-            meshtime = @elapsed(add_mesh(simple_line_mesh($N+1, $bids, $interval)));
+            meshtime = @elapsed(add_mesh(simple_line_mesh($N.+1, $bids, $interval)));
             log_entry("Grid building took "*string(meshtime)*" seconds");
         elseif $m == QUADMESH
             log_entry("Building simple quad mesh with nx*nx elements, nx="*string($N));
-            meshtime = @elapsed(add_mesh(simple_quad_mesh($N+1, $bids, $interval)));
+            meshtime = @elapsed(add_mesh(simple_quad_mesh($N.+1, $bids, $interval)));
             log_entry("Grid building took "*string(meshtime)*" seconds");
         elseif $m == HEXMESH
             log_entry("Building simple hex mesh with nx*nx*nx elements, nx="*string($N));
-            meshtime = @elapsed(add_mesh(simple_hex_mesh($N+1, $bids, $interval)));
+            meshtime = @elapsed(add_mesh(simple_hex_mesh($N.+1, $bids, $interval)));
             log_entry("Grid building took "*string(meshtime)*" seconds");
         end
     end)
@@ -244,10 +251,17 @@ macro parameter(p, type, val)
     end)
 end
 
+macro boundary(var, bid, bc_type) return esc(:(@boundary($var,$bid,$bc_type, 0))); end
 macro boundary(var, bid, bc_type, bc_exp)
     return esc(quote
         nfuns = @makeFunctions($bc_exp);
         add_boundary_condition($var, $bid, $bc_type, $bc_exp, nfuns);
+    end)
+end
+
+macro referencePoint(var, pos, val)
+    return esc(quote
+        add_reference_point($var, $pos, $val);
     end)
 end
 
@@ -300,17 +314,36 @@ macro weakForm(var, ex)
         log_entry("Making weak form for variable(s): "*string(wfvars));
         log_entry("Weak form, input: "*string($ex));
         
-        (lhs_expr, rhs_expr) = sp_parse(wfex, wfvars);
+        result_exprs = sp_parse(wfex, wfvars);
+        if length(result_exprs) == 4
+            (lhs_expr, rhs_expr, lhs_surf_expr, rhs_surf_expr) = result_exprs;
+        else
+            (lhs_expr, rhs_expr) = result_exprs;
+        end
         
         if typeof(lhs_expr) <: Tuple && length(lhs_expr) == 2 # has time derivative
-            log_entry("Weak form, symbolic layer: Dt("*string(lhs_expr[1])*") + "*string(lhs_expr[2])*" = "*string(rhs_expr));
+            if length(result_exprs) == 4
+                log_entry("Weak form, before modifying for time: Dt("*string(lhs_expr[1])*") + "*string(lhs_expr[2])*" + surface("*string(lhs_surf_expr)*") = "*string(rhs_expr)*" + surface("*string(rhs_surf_expr)*")");
+                
+                (newlhs, newrhs) = reformat_for_stepper(lhs_expr, rhs_expr, Femshop.config.stepper);
+                #TODO reformat surface terms
+                
+                log_entry("Weak form, modified for time stepping: "*string(newlhs)*" + surface("*string(lhs_surf_expr)*") = "*string(newrhs)*" + surface("*string(rhs_surf_expr)*")");
+                
+                lhs_expr = newlhs;
+                rhs_expr = newrhs;
+                
+            else
+                log_entry("Weak form, before modifying for time: Dt("*string(lhs_expr[1])*") + "*string(lhs_expr[2])*" = "*string(rhs_expr));
+                
+                (newlhs, newrhs) = reformat_for_stepper(lhs_expr, rhs_expr, Femshop.config.stepper);
+                
+                log_entry("Weak form, modified for time stepping: "*string(newlhs)*" = "*string(newrhs));
+                
+                lhs_expr = newlhs;
+                rhs_expr = newrhs;
+            end
             
-            (newlhs, newrhs) = reformat_for_stepper(lhs_expr, rhs_expr, Femshop.config.stepper);
-            
-            log_entry("Weak form, modified for time stepping: "*string(newlhs)*" = "*string(newrhs));
-            
-            lhs_expr = newlhs;
-            rhs_expr = newrhs;
         end
         
         # make a string for the expression
@@ -326,6 +359,14 @@ macro weakForm(var, ex)
                 for j=2:length(rhs_expr[i])
                     global rhsstring = rhsstring*" + "*string(rhs_expr[i][j]);
                 end
+                if length(result_exprs) == 4
+                    for j=2:length(lhs_surf_expr[i])
+                        global lhsstring = lhsstring*" + surface("*string(lhs_surf_expr[i][j])*")";
+                    end
+                    for j=2:length(rhs_surf_expr[i])
+                        global rhsstring = rhsstring*" + surface("*string(rhs_surf_expr[i][j])*")";
+                    end
+                end
                 lhsstring = lhsstring*"\n";
                 rhsstring = rhsstring*"\n";
             end
@@ -338,13 +379,27 @@ macro weakForm(var, ex)
             for j=2:length(rhs_expr[1])
                 global rhsstring = rhsstring*" + "*string(rhs_expr[1][j]);
             end
+            if length(result_exprs) == 4
+                for j=2:length(lhs_surf_expr[1])
+                    global lhsstring = lhsstring*" + surface("*string(lhs_surf_expr[1][j])*")";
+                end
+                for j=2:length(rhs_surf_expr[1])
+                    global rhsstring = rhsstring*" + surface("*string(rhs_surf_expr[1][j])*")";
+                end
+            end
         end
         log_entry("Weak form, symbolic layer:\n"*string(lhsstring)*"\n"*string(rhsstring));
         
         # change symbolic layer into code layer
         lhs_code = generate_code_layer(lhs_expr, $var, LHS);
         rhs_code = generate_code_layer(rhs_expr, $var, RHS);
-        Femshop.log_entry("Weak form, code layer: LHS = "*string(lhs_code)*" \n  RHS = "*string(rhs_code));
+        if length(result_exprs) == 4
+            lhs_surf_code = generate_code_layer_surface(lhs_surf_expr, $var, LHS);
+            rhs_surf_code = generate_code_layer_surface(rhs_surf_expr, $var, RHS);
+            Femshop.log_entry("Weak form, code layer: LHS = "*string(lhs_code)*"\n  + surface("*string(lhs_surf_code)*") \n  RHS = "*string(rhs_code)*"\n  + surface("*string(rhs_surf_code)*")");
+        else
+            Femshop.log_entry("Weak form, code layer: LHS = "*string(lhs_code)*" \n  RHS = "*string(rhs_code));
+        end
         
         if Femshop.language == JULIA || Femshop.language == 0
             args = "args";
@@ -353,6 +408,16 @@ macro weakForm(var, ex)
             
             @makeFunction(args, string(rhs_code));
             set_rhs($var);
+            
+            if length(result_exprs) == 4
+                args = "args";
+                @makeFunction(args, string(lhs_surf_code));
+                set_lhs_surface($var);
+                
+                @makeFunction(args, string(rhs_surf_code));
+                set_rhs_surface($var);
+            end
+            
         elseif Femshop.language == CPP
             # Don't need to generate any functions
             set_lhs($var, lhs_code);

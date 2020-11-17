@@ -39,9 +39,9 @@ solve(u);
 maxerr = 0;
 exact(x,y) = sin(2*pi*(x+0.125))*sin(2*pi*(y+0.125));
 
-for i=1:size(Femshop.grid_data.allnodes,1)
-    x = Femshop.grid_data.allnodes[i,1];
-    y = Femshop.grid_data.allnodes[i,2];
+for i=1:size(Femshop.grid_data.allnodes,2)
+    x = Femshop.grid_data.allnodes[1,i];
+    y = Femshop.grid_data.allnodes[2,i];
     err = abs(u.values[i] - exact(x,y));
     global maxerr;
     maxerr = max(err,maxerr);
@@ -51,7 +51,7 @@ println("max error = "*string(maxerr));
 # solution is stored in the variable's "values"
 #using Plots
 #pyplot();
-#display(plot(Femshop.grid_data.allnodes[:,1], Femshop.grid_data.allnodes[:,2], u.values, st=:surface, reuse=false))
+#display(plot(Femshop.grid_data.allnodes[:,1], Femshop.grid_data.allnodes[:,2], u.values[:], st=:surface, reuse=false))
 
 # check
 log_dump_config();

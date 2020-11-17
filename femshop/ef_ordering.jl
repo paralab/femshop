@@ -6,7 +6,7 @@
 export reorder_grid_element_first, get_element_first_order
 
 function element_first_order_2d(grid, porder, elorder, invert = true)
-    nnodes = size(grid.allnodes,1);
+    nnodes = size(grid.allnodes,2);
     eforder = zeros(Int, nnodes); # The ordering
     node_done = zeros(Bool, nnodes);
     
@@ -18,7 +18,7 @@ function element_first_order_2d(grid, porder, elorder, invert = true)
         for j = 2:porder
             for i = 2:porder
                 lind = i + (porder+1)*(j-1);
-                gind = l2g[ei, lind];
+                gind = l2g[lind, ei];
                 # These should not be done yet.
                 efind = efind+1;
                 if invert
@@ -33,7 +33,7 @@ function element_first_order_2d(grid, porder, elorder, invert = true)
         # y=0 side
         for i = 1:porder+1
             lind = i;
-            gind = l2g[ei, lind];
+            gind = l2g[lind, ei];
             if !node_done[gind]
                 efind = efind+1;
                 if invert
@@ -48,7 +48,7 @@ function element_first_order_2d(grid, porder, elorder, invert = true)
         # x=0 side
         for i = 2:porder+1
             lind = (porder+1)*(i-1) + 1;
-            gind = l2g[ei, lind];
+            gind = l2g[lind, ei];
             if !node_done[gind]
                 efind = efind+1;
                 if invert
@@ -63,7 +63,7 @@ function element_first_order_2d(grid, porder, elorder, invert = true)
         # y=1 side
         for i = 2:porder+1
             lind = i + (porder+1)*porder;
-            gind = l2g[ei, lind];
+            gind = l2g[lind, ei];
             if !node_done[gind]
                 efind = efind+1;
                 if invert
@@ -78,7 +78,7 @@ function element_first_order_2d(grid, porder, elorder, invert = true)
         # x=1 side
         for i = 2:porder
             lind = (porder+1)*i;
-            gind = l2g[ei, lind];
+            gind = l2g[lind, ei];
             if !node_done[gind]
                 efind = efind+1;
                 if invert
@@ -96,7 +96,7 @@ function element_first_order_2d(grid, porder, elorder, invert = true)
 end
 
 function element_first_order_3d(grid, porder, elorder, invert = true)
-    nnodes = size(grid.allnodes,1);
+    nnodes = size(grid.allnodes,2);
     eforder = zeros(Int, nnodes); # The ordering
     node_done = zeros(Bool, nnodes);
     
@@ -109,7 +109,7 @@ function element_first_order_3d(grid, porder, elorder, invert = true)
             for j = 2:porder
                 for i = 2:porder
                     lind = i + (porder+1)*((j-1) + (porder+1)*(k-1));
-                    gind = l2g[ei, lind];
+                    gind = l2g[lind, ei];
                     # These should not be done yet.
                     efind = efind+1;
                     if invert
@@ -126,7 +126,7 @@ function element_first_order_3d(grid, porder, elorder, invert = true)
         for j = 1:porder+1
             for i = 1:porder+1
                 lind = i + (porder+1)*(j-1);
-                gind = l2g[ei, lind];
+                gind = l2g[lind, ei];
                 if !node_done[gind]
                     efind = efind+1;
                     if invert
@@ -143,7 +143,7 @@ function element_first_order_3d(grid, porder, elorder, invert = true)
         for j = 2:porder+1
             for i = 1:porder+1
                 lind = i + (porder+1)*(porder+1)*(j-1);
-                gind = l2g[ei, lind];
+                gind = l2g[lind, ei];
                 if !node_done[gind]
                     efind = efind+1;
                     if invert
@@ -160,7 +160,7 @@ function element_first_order_3d(grid, porder, elorder, invert = true)
         for j = 2:porder+1
             for i = 2:porder+1
                 lind = (porder+1)*(i-1) + 1 + (porder+1)*(porder+1)*(j-1);
-                gind = l2g[ei, lind];
+                gind = l2g[lind,ei];
                 if !node_done[gind]
                     efind = efind+1;
                     if invert
@@ -177,7 +177,7 @@ function element_first_order_3d(grid, porder, elorder, invert = true)
         for j = 2:porder+1
             for i = 2:porder+1
                 lind = i + (porder+1)*(j-1) + (porder+1)*(porder+1)*porder;
-                gind = l2g[ei, lind];
+                gind = l2g[lind, ei];
                 if !node_done[gind]
                     efind = efind+1;
                     if invert
@@ -194,7 +194,7 @@ function element_first_order_3d(grid, porder, elorder, invert = true)
         for j = 2:porder
             for i = 2:porder+1
                 lind = i + (porder+1)*(porder+1)*(j-1) + (porder+1)*porder;
-                gind = l2g[ei, lind];
+                gind = l2g[lind, ei];
                 if !node_done[gind]
                     efind = efind+1;
                     if invert
@@ -211,7 +211,7 @@ function element_first_order_3d(grid, porder, elorder, invert = true)
         for j = 2:porder
             for i = 2:porder
                 lind = (porder+1)*(i-1) + 1 + (porder+1)*(porder+1)*(j-1) + porder;
-                gind = l2g[ei, lind];
+                gind = l2g[lind, ei];
                 if !node_done[gind]
                     efind = efind+1;
                     if invert
@@ -230,8 +230,9 @@ function element_first_order_3d(grid, porder, elorder, invert = true)
 end
 
 function reorder_grid_element_first(grid, porder, elorder)
-    dim = size(grid.allnodes,2);
-    nel = size(grid.loc2glb,1);
+    dim = size(grid.allnodes,1);
+    nel = size(grid.loc2glb,2);
+    nfc = size(grid.face2glb,2);
     
     norder= get_element_first_order(dim, grid, porder, elorder, true);
     
@@ -239,10 +240,12 @@ function reorder_grid_element_first(grid, porder, elorder)
     newbdry = copy(grid.bdry);
     newloc2glb = copy(grid.loc2glb);
     newglbvertex = copy(grid.glbvertex);
+    newface2glb = copy(grid.face2glb);
+    newfaceVertex2glb = copy(grid.faceVertex2glb);
     
     for mi=1:length(norder)
         for d=1:dim
-            newnodes[norder[mi],d] = grid.allnodes[mi,d];
+            newnodes[d,norder[mi]] = grid.allnodes[d,mi];
         end
     end
     
@@ -253,15 +256,24 @@ function reorder_grid_element_first(grid, porder, elorder)
     end
     
     for ei=1:nel
-        for ni=1:size(newloc2glb,2)
-            newloc2glb[ei,ni] = norder[grid.loc2glb[ei,ni]];
+        for ni=1:size(newloc2glb,1)
+            newloc2glb[ni,ei] = norder[grid.loc2glb[ni,ei]];
         end
-        for ni=1:size(newglbvertex,2)
-            newglbvertex[ei,ni] = norder[grid.glbvertex[ei,ni]];
+        for ni=1:size(newglbvertex,1)
+            newglbvertex[ni,ei] = norder[grid.glbvertex[ni,ei]];
         end
     end
     
-    return Femshop.Grid(newnodes, newbdry, grid.bdryelem, grid.bdrynorm, grid.bids, newloc2glb, newglbvertex);
+    for fi=1:nfc
+        for ni=1:size(newface2glb,1)
+            newface2glb[ni,fi] = norder[grid.face2glb[ni,fi]];
+        end
+        for ni=1:size(newfaceVertex2glb,1)
+            newfaceVertex2glb[ni,fi] = norder[grid.faceVertex2glb[ni,fi]];
+        end
+    end
+    
+    return Femshop.Grid(newnodes, newbdry, grid.bdryface, grid.bdrynorm, grid.bids, newloc2glb, newglbvertex, newface2glb, newfaceVertex2glb);
 end
 
 function get_element_first_order(dim, grid, porder, elorder, invert = true)
@@ -270,6 +282,6 @@ function get_element_first_order(dim, grid, porder, elorder, invert = true)
     elseif dim == 2
         return eforder_order_2d(grid, porder, elorder, invert);
     else
-        return 1:size(grid.allnodes,1); # 1D doesn't make sense
+        return 1:size(grid.allnodes,2); # 1D doesn't make sense
     end
 end

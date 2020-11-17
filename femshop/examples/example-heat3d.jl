@@ -45,7 +45,7 @@ solve(u);
 #N = n*ord+1;
 #half = Int(round(N/2));
 #range = (N*N*half+1):(N*N*(half+1));
-#display(plot(Femshop.grid_data.allnodes[range,1], Femshop.grid_data.allnodes[range,2], u.values[range], st=:surface))
+#display(plot(Femshop.grid_data.allnodes[1,range], Femshop.grid_data.allnodes[2,range], u.values[range], st=:surface))
 
 # check
 log_dump_config(Femshop.config);

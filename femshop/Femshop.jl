@@ -5,17 +5,18 @@ We can reorganize things and make submodules as desired.
 module Femshop
 
 # Public macros and functions
-export @language, @domain, @mesh, @solver, @stepper, @functionSpace, @trialFunction, @matrixFree,
-        @testFunction, @nodes, @order, @boundary, @variable, @coefficient, @parameter, @testSymbol, @initial,
+export @language, @domain, @mesh, @solver, @stepper, @setSteps, @functionSpace, @trialFunction, @matrixFree,
+        @testFunction, @nodes, @order, @boundary, @referencePoint, @variable, @coefficient, @parameter, @testSymbol, @initial,
         @timeInterval, @weakForm, @LHS, @RHS, @customOperator, @customOperatorFile,
         @outputMesh, @useLog, @finalize
-export init_femshop, set_language, dendro, set_solver, set_stepper, set_matrix_free, reformat_for_stepper, 
+export init_femshop, set_language, dendro, set_solver, set_stepper, set_specified_steps, set_matrix_free, reformat_for_stepper, 
         add_mesh, output_mesh, add_test_function, 
-        add_initial_condition, add_boundary_condition, set_rhs, set_lhs, solve, finalize, cachesim, cachesim_solve, 
+        add_initial_condition, add_boundary_condition, add_reference_point, set_rhs, set_lhs, set_lhs_surface, set_rhs_surface, solve, 
+        finalize, cachesim, cachesim_solve, 
         morton_nodes, hilbert_nodes, tiled_nodes, morton_elements, hilbert_elements, tiled_elements, ef_nodes
 export build_cache_level, build_cache, build_cache_auto
 export sp_parse
-export generate_code_layer
+export generate_code_layer, generate_code_layer_surface
 export Variable, add_variable
 export Coefficient, add_coefficient
 export Parameter, add_parameter
@@ -38,6 +39,7 @@ log_line_index = 1;
 mesh_data = nothing;
 grid_data = nothing;
 refel = nothing;
+face_refel = nothing;
 elemental_order = [];
 #problem variables
 var_count = 0;
@@ -50,10 +52,15 @@ genfunc_count = 0;
 genfunctions = [];
 #rhs
 linears = [];
+surface_linears = [];
 #lhs
 bilinears = [];
+surface_bilinears = [];
 #time stepper
 time_stepper = nothing;
+specified_dt = 0;
+specified_Nsteps = 0;
+use_specified_steps = false;
 
 use_cachesim = false;
 
@@ -76,6 +83,7 @@ function init_femshop(name="unnamedProject")
     global mesh_data = nothing;
     global grid_data = nothing;
     global refel = nothing;
+    global face_refel = nothing;
     global elemental_order = [];
     global var_count = 0;
     global variables = [];
@@ -86,7 +94,12 @@ function init_femshop(name="unnamedProject")
     global genfunctions = [];
     global linears = [];
     global bilinears = [];
+    global surface_linears = [];
+    global surface_bilinears = [];
     global time_stepper = nothing;
+    global specified_dt = 0;
+    global specified_Nsteps = 0;
+    global use_specified_steps = false;
     global use_cachesim = false;
 end
 
@@ -111,6 +124,15 @@ function set_stepper(type, cfl)
     log_entry("Set time stepper to "*type);
 end
 
+function set_specified_steps(dt, steps)
+    global specified_dt = dt;
+    global specified_Nsteps = steps;
+    global use_specified_steps = true;
+    prob.time_dependent = true;
+    prob.end_time = dt*steps;
+    log_entry("Set time stepper values to dt="*string(dt)*", Nsteps="*string(steps));
+end
+
 function set_matrix_free(max, tol)
     config.linalg_matrixfree = true;
     config.linalg_matfree_max = max;
@@ -121,7 +143,8 @@ function add_mesh(mesh)
     if typeof(mesh) <: Tuple
         global mesh_data = mesh[1];
         global refel = mesh[2];
-        global grid_data = mesh[3];
+        global face_refel = mesh[3];
+        global grid_data = mesh[4];
     else
         global mesh_data = mesh;
     end
@@ -129,7 +152,7 @@ function add_mesh(mesh)
     global elemental_order = 1:mesh_data.nel;
 
     log_entry("Added mesh with "*string(mesh_data.nx)*" vertices and "*string(mesh_data.nel)*" elements.");
-    log_entry("Full grid has "*string(length(grid_data.allnodes))*" nodes.");
+    log_entry("Full grid has "*string(size(grid_data.allnodes,2))*" nodes.");
 end
 
 function output_mesh(file, format)
@@ -150,15 +173,15 @@ function add_variable(var)
     global var_count += 1;
     if language == JULIA || language == 0
         # adjust values arrays
-        N = size(grid_data.allnodes)[1];
+        N = size(grid_data.allnodes,2);
         if var.type == SCALAR
-            var.values = zeros(N);
+            var.values = zeros(1, N);
         elseif var.type == VECTOR
-            var.values = zeros(N, config.dimension);
+            var.values = zeros(config.dimension, N);
         elseif var.type == TENSOR
-            var.values = zeros(N, config.dimension*config.dimension);
+            var.values = zeros(config.dimension*config.dimension, N);
         elseif var.type == SYM_TENSOR
-            var.values = zeros(N, Int((config.dimension*(config.dimension+1))/2));
+            var.values = zeros(Int((config.dimension*(config.dimension+1))/2), N);
         end
     end
     # make SymType
@@ -169,6 +192,8 @@ function add_variable(var)
 
     global linears = [linears; nothing];
     global bilinears = [bilinears; nothing];
+    global surface_linears = [surface_linears; nothing];
+    global surface_bilinears = [surface_bilinears; nothing];
 
     log_entry("Added variable: "*string(var.symbol)*" of type: "*var.type);
 end
@@ -269,10 +294,11 @@ end
 function add_boundary_condition(var, bid, type, ex, nfuns)
     global prob;
     # make sure the arrays are big enough
-    if size(prob.bc_func)[1] < var_count || size(prob.bc_func)[2] < bid
-        tmp1 = Array{String,2}(undef, (var_count, bid));
-        tmp2 = Array{Any,2}(undef, (var_count, bid));
-        tmp3 = zeros(Int, (var_count, bid));
+    if size(prob.bc_func)[1] < var_count || size(prob.bc_func,2) < bid
+        nbid = length(grid_data.bids);
+        tmp1 = Array{String,2}(undef, (var_count, nbid));
+        tmp2 = Array{Any,2}(undef, (var_count, nbid));
+        tmp3 = zeros(Int, (var_count, nbid));
         fill!(tmp1, "");
         fill!(tmp2, GenFunction("","","",0,0));
         tmp1[1:size(prob.bc_func)[1], 1:size(prob.bc_func)[2]] = Base.deepcopy(prob.bc_type);
@@ -305,6 +331,52 @@ function add_boundary_condition(var, bid, type, ex, nfuns)
     prob.bid[var.index, bid] = bid;
 
     log_entry("Boundary condition: var="*string(var.symbol)*" bid="*string(bid)*" type="*type*" val="*string(ex));
+end
+
+function add_reference_point(var, pos, val)
+    global prob;
+    # make sure the array is big enough
+    if size(prob.ref_point,1) < var_count
+        tmp = Array{Any,2}(undef, (var_count, 3));
+        for i=1:size(prob.ref_point,1)
+            tmp[i,:] = prob.ref_point[i,:];
+        end
+        for i=(size(prob.ref_point,1)+1):var_count
+            tmp[i,1] = false;
+            tmp[i,2] = [0,0];
+            tmp[i,3] = [0];
+        end
+        prob.ref_point = tmp;
+    end
+    if typeof(pos) <: Number
+        pos = pos*ones(config.dimension);
+    end
+    if typeof(val) <: Number
+        val = val*ones(length(var.symvar.vals));
+    end
+    
+    # Find the closest vertex to pos
+    # The stored pos is actually the index into glbvertex pointing to the closest vertex
+    ind = [1,1];
+    mindist = 12345;
+    for ei=1:mesh_data.nel
+        for i=1:size(grid_data.glbvertex,1)
+            d = 0;
+            for comp=1:length(pos)
+                d = d + abs(grid_data.allnodes[comp, grid_data.glbvertex[i, ei]] - pos[comp]);
+            end
+            if d<mindist
+                ind = [i,ei];
+                mindist = d;
+            end
+        end
+    end
+    
+    prob.ref_point[var.index, 1] = true;
+    prob.ref_point[var.index, 2] = ind;
+    prob.ref_point[var.index, 3] = val;
+    
+    log_entry("Reference point: var="*string(var.symbol)*" position="*string(pos)*" value="*string(val));
 end
 
 function set_rhs(var, code="")
@@ -347,6 +419,50 @@ function set_lhs(var, code="")
             end
         else
             bilinears[var.index] = code;
+        end
+    end
+end
+
+function set_rhs_surface(var, code="")
+    global surface_linears;
+    if language == 0 || language == JULIA
+        if typeof(var) <:Array
+            for i=1:length(var)
+                surface_linears[var[i].index] = genfunctions[end];
+            end
+        else
+            surface_linears[var.index] = genfunctions[end];
+        end
+        
+    else # external generation
+        if typeof(var) <:Array
+            for i=1:length(var)
+                surface_linears[var[i].index] = code;
+            end
+        else
+            surface_linears[var.index] = code;
+        end
+    end
+end
+
+function set_lhs_surface(var, code="")
+    global surface_bilinears;
+    if language == 0 || language == JULIA
+        if typeof(var) <:Array
+            for i=1:length(var)
+                surface_bilinears[var[i].index] = genfunctions[end];
+            end
+        else
+            surface_bilinears[var.index] = genfunctions[end];
+        end
+        
+    else # external generation
+        if typeof(var) <:Array
+            for i=1:length(var)
+                surface_bilinears[var[i].index] = code;
+            end
+        else
+            surface_bilinears[var.index] = code;
         end
     end
 end
@@ -399,25 +515,30 @@ function solve(var, nlvar=nothing; nonlinear=false)
         #generate_stepper();
         generate_output();
     else
+        if typeof(var) <: Array
+            varnames = "["*string(var[1].symbol);
+            for vi=2:length(var)
+                varnames = varnames*", "*string(var[vi].symbol);
+            end
+            varnames = varnames*"]";
+            varind = var[1].index;
+        else
+            varnames = string(var.symbol);
+            varind = var.index;
+        end
+        
         if config.solver_type == CG
             init_cgsolver();
-            if typeof(var) <: Array
-                varnames = "["*string(var[1].symbol);
-                for vi=2:length(var)
-                    varnames = varnames*", "*string(var[vi].symbol);
-                end
-                varnames = varnames*"]";
-                varind = var[1].index;
-            else
-                varnames = string(var.symbol);
-                varind = var.index;
-            end
-
+            
             lhs = bilinears[varind];
             rhs = linears[varind];
             
             if prob.time_dependent
                 global time_stepper = init_stepper(grid_data.allnodes, time_stepper);
+                if use_specified_steps
+                    Femshop.time_stepper.dt = specified_dt;
+				    Femshop.time_stepper.Nsteps = specified_Nsteps;
+                end
 				if (nonlinear)
                 	t = @elapsed(result = CGSolver.nonlinear_solve(var, nlvar, lhs, rhs, time_stepper));
 				else
@@ -431,7 +552,7 @@ function solve(var, nlvar=nothing; nonlinear=false)
                 else
                     t = @elapsed(result = CGSolver.linear_solve(var, lhs, rhs));
 				end
-
+                
                 # place the values in the variable value arrays
                 if typeof(var) <: Array && length(result) > 1
                     tmp = 0;
@@ -442,19 +563,22 @@ function solve(var, nlvar=nothing; nonlinear=false)
                     for vi=1:length(var)
                         components = length(var[vi].symvar.vals);
                         for compi=1:components
-                            var[vi].values[:,compi] = result[(compi+tmp):totalcomponents:end];
+                            var[vi].values[compi,:] = result[(compi+tmp):totalcomponents:end];
                             tmp = tmp + 1;
                         end
                     end
                 elseif length(result) > 1
                     components = length(var.symvar.vals);
                     for compi=1:components
-                        var.values[:,compi] = result[compi:components:end];
+                        var.values[compi,:] = result[compi:components:end];
                     end
                 end
             end
-
+            
             log_entry("Solved for "*varnames*".(took "*string(t)*" seconds)");
+            
+        elseif config.solver_type == DG
+            #TODO DG solve
         end
     end
 

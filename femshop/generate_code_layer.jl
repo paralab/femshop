@@ -7,6 +7,9 @@ include("generate_code_layer_dendro.jl");
 include("generate_code_layer_homg.jl");
 include("generate_code_layer_cachesim.jl");
 
+# Surface integrals are generated separately
+include("generate_code_layer_surface.jl");
+
 function generate_code_layer(ex, var, lorr)
     if use_cachesim
         if language == 0 || language == JULIA
@@ -43,7 +46,7 @@ function generate_code_layer_julia(symex, var, lorr)
     push!(code.args, :(x = args[2]));    # global coords of element's nodes
     push!(code.args, :(gbl = args[3]));  # global indices of the nodes
     push!(code.args, :(refel = args[4]));# 
-    push!(code.args, :(borl = args[5])); # bilinear or linear? code or rhs?
+    push!(code.args, :(borl = args[5])); # bilinear or linear? lhs or rhs?
     push!(code.args, :(time = args[6])); # time for time dependent coefficients
     if prob.time_dependent
         push!(code.args, :(dt = args[7])); # dt for time dependent problems
@@ -139,29 +142,12 @@ function generate_code_layer_julia(symex, var, lorr)
         if config.dimension == 1
             push!(code.args, :((RQ1,RD1) = build_deriv_matrix(refel, J)));
             push!(code.args, :(TRQ1 = RQ1'));
-            # push!(code.args, Expr(:(=), :Q1matrix, :(refel.Qr)));
-            # push!(code.args, Expr(:(=), :D1matrix, :(refel.Ddr)));
         elseif config.dimension == 2
             push!(code.args, :((RQ1,RQ2,RD1,RD2) = build_deriv_matrix(refel, J)));
             push!(code.args, :((TRQ1,TRQ2) = (RQ1',RQ2')));
-            # push!(code.args, Expr(:(=), :R1matrix, :([diagm(J.rx) diagm(J.sx)])));
-            # push!(code.args, Expr(:(=), :Q1matrix, :([refel.Qr ; refel.Qs])));
-            # push!(code.args, Expr(:(=), :D1matrix, :([refel.Ddr ; refel.Dds])));
-            # push!(code.args, Expr(:(=), :R2matrix, :([diagm(J.ry) diagm(J.sy)])));
-            # push!(code.args, Expr(:(=), :Q2matrix, :([refel.Qr ; refel.Qs])));
-            # push!(code.args, Expr(:(=), :D2matrix, :([refel.Ddr ; refel.Dds])));
         elseif config.dimension == 3
             push!(code.args, :((RQ1,RQ2,RQ3,RD1,RD2,RD3) = build_deriv_matrix(refel, J)));
             push!(code.args, :((TRQ1,TRQ2,TRQ3) = (RQ1',RQ2',RQ3')));
-            # push!(code.args, Expr(:(=), :R1matrix, :([diagm(J.rx) diagm(J.sx) diagm(J.tx)])));
-            # push!(code.args, Expr(:(=), :Q1matrix, :([refel.Qr ; refel.Qs ; refel.Qt])));
-            # push!(code.args, Expr(:(=), :D1matrix, :([refel.Ddr ; refel.Dds ; refel.Ddt])));
-            # push!(code.args, Expr(:(=), :R2matrix, :([diagm(J.ry) diagm(J.sy) diagm(J.ty)])));
-            # push!(code.args, Expr(:(=), :Q2matrix, :([refel.Qr ; refel.Qs ; refel.Qt])));
-            # push!(code.args, Expr(:(=), :D2matrix, :([refel.Ddr ; refel.Dds ; refel.Ddt])));
-            # push!(code.args, Expr(:(=), :R3matrix, :([diagm(J.rz) diagm(J.sz) diagm(J.tz)])));
-            # push!(code.args, Expr(:(=), :Q3matrix, :([refel.Qr ; refel.Qs ; refel.Qt])));
-            # push!(code.args, Expr(:(=), :D3matrix, :([refel.Ddr ; refel.Dds ; refel.Ddt])));
         end
     end
     
@@ -200,7 +186,7 @@ function generate_code_layer_julia(symex, var, lorr)
     ######################################
     # coef_n_i = zeros(refel.Np);
     # for coefi = 1:refel.Np
-    #     coef_n_i[coefi] = a.value[i].func(x[coefi,1], x[coefi,2],x[coefi,3],time);
+    #     coef_n_i[coefi] = a.value[i].func(x[1,coefi], x[2,coefi],x[3,coefi],time);
     # end
     ######################################
     if length(needed_coef) > 0
@@ -208,9 +194,9 @@ function generate_code_layer_julia(symex, var, lorr)
         cloopin = Expr(:block);
         cargs = [:(x[coefi]); 0; 0; :time];
         if config.dimension == 2
-            cargs = [:(x[coefi,1]); :(x[coefi,2]); 0; :time];
+            cargs = [:(x[1,coefi]); :(x[2,coefi]); 0; :time];
         elseif config.dimension == 3
-            cargs = [:(x[coefi,1]); :(x[coefi,2]); :(x[coefi,3]); :time];
+            cargs = [:(x[1,coefi]); :(x[2,coefi]); :(x[3,coefi]); :time];
         end
         
         for i=1:length(needed_coef)
@@ -250,7 +236,7 @@ function generate_code_layer_julia(symex, var, lorr)
                         tmpb = :(copy(Femshop.variables[$cval].values[gbl])); 
                     else
                         compo = needed_coef_ind[i];
-                        tmpb = :(copy(Femshop.variables[$cval].values[gbl, $compo]));
+                        tmpb = :(copy(Femshop.variables[$cval].values[$compo, gbl]));
                     end
                     
                     push!(code.args, Expr(:(=), tmpc, tmpb));

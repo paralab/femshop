@@ -16,10 +16,13 @@ init_femshop("NS");
 @functionSpace(LEGENDRE, 1)         # function, order (or use testFunction and trialFunction)
 @nodes(LOBATTO)                     # elemental node arrangement
 @stepper(EULER_IMPLICIT)            # time stepper (optional second arg is CFL#)
+dt = 0.05;
+nsteps = 50;
+@setSteps(dt, nsteps)                # manually set stepper dt and Nsteps, overriding defaults and interval
 
 # Specify the problem
 num_elem = 32;
-@mesh(QUADMESH, num_elem, 4)                   # .msh file or generate our own
+@mesh(QUADMESH, num_elem, 4)
 
 @variable(u)                        # same as @variable(u, SCALAR)
 @variable(v)                        # same as @variable(u, SCALAR)
@@ -32,84 +35,55 @@ num_elem = 32;
 
 @testSymbol(w)                    # sets the symbol for a test function
 
-T = 1
-@timeInterval(T)                    # (start, end) using this sets problem to time dependent
+#T = 2 # set manually using setSteps above
+#@timeInterval(T)                    # (start, end) using this sets problem to time dependent
 @initial(u, "y > 0.99 ? 1 : 0")  # initial condition needed if time dependent
-#@initial(u, "1")  # initial condition needed if time dependent
-@initial(uold, "y > 0.99 ? 1 : 0")  # initial condition needed if time dependent
-@initial(du, "0")  # initial condition needed if time dependent
-@initial(v, "0")  # initial condition needed if time dependent
-@initial(vold, "0")  # initial condition needed if time dependent
-@initial(dv, "0")  # initial condition needed if time dependent
-@initial(p, "0")  # initial condition needed if time dependent
-@initial(dp, "0")  # initial condition needed if time dependent
+@initial(uold, "y > 0.99 ? 1 : 0")
+@initial(du, "0")
+@initial(v, "0")
+@initial(vold, "0")
+@initial(dv, "0")
+@initial(p, "0")
+@initial(dp, "0")
 
-#@boundary(u, 1, DIRICHLET, 0)
 @boundary(du, 1, DIRICHLET, 0)
-#@boundary(v, 1, DIRICHLET, 0)
-@boundary(dv, 1, DIRICHLET, 0)
-#@boundary(p, 1, DIRICHLET, 0)
-@boundary(dp, 1, NO_BC, 0)
-#@boundary(u, 2, DIRICHLET, 0)
 @boundary(du, 2, DIRICHLET, 0)
-#@boundary(v, 2, DIRICHLET, 0)
-@boundary(dv, 2, DIRICHLET, 0)
-#@boundary(p, 2, DIRICHLET, 0)
-@boundary(dp, 2, NO_BC, 0)
-#@boundary(u, 3, DIRICHLET, 0)
 @boundary(du, 3, DIRICHLET, 0)
-#@boundary(v, 3, DIRICHLET, 0)
-@boundary(dv, 3, DIRICHLET, 0)
-#@boundary(p, 3, DIRICHLET, 0)
-@boundary(dp, 3, NO_BC, 0)
-#@boundary(u, 4, DIRICHLET, 1)
 @boundary(du, 4, DIRICHLET, 0)
-#@boundary(v, 4, DIRICHLET, 0)
+
+@boundary(dv, 1, DIRICHLET, 0)
+@boundary(dv, 2, DIRICHLET, 0)
+@boundary(dv, 3, DIRICHLET, 0)
 @boundary(dv, 4, DIRICHLET, 0)
-#@boundary(p, 4, DIRICHLET, 0)
-@boundary(dp, 4, NO_BC, 0)
+
+@boundary(dp, 1, NO_BC)
+@boundary(dp, 2, NO_BC)
+@boundary(dp, 3, NO_BC)
+@boundary(dp, 4, NO_BC)
+@referencePoint(dp, [0,0], 0)
 
 
 # Write the weak form
 @coefficient(mu, 0.01)
-@coefficient(dtc, 0.05)
+@coefficient(dtc, dt)
 @coefficient(h, 1.0 / 32)
 @coefficient(coe1, 4.0)
 @coefficient(coe2, 6.0)
 
 @parameter(tauM, "1.0 ./ (coe1 ./ dtc ./ dtc+ (u*u+v*v) ./ h ./ h+coe2*mu*mu ./ h ./ h ./ h ./ h) .^ 0.5")
 @parameter(tauC, "0.1*h*h* ((u*u+v*v) ./ h ./ h+coe2*mu*mu ./ h ./ h ./ h ./ h) .^ 0.5")
-#@parameter(tauC, "10*h*h* (coe1 ./ dtc ./ dtc+ (u*u+v*v) ./ h ./ h+coe2*mu*mu ./ h ./ h ./ h ./ h) .^ 0.5")
-#@parameter(tauC, "(h.^2 ./ tauM")
 
 @weakForm([du, dv, dp], ["w*(du ./ dtc + (u*deriv(du,1)+v*deriv(du,2) + deriv(u,2)*dv)) - deriv(w,1)*dp + mu*dot(grad(w), grad(du)) + tauM*(u*deriv(w,1)+v*deriv(w,2))*(du ./ dtc + (u*deriv(du,1)+v*deriv(du,2)) + deriv(dp,1)) - (w*((u-uold) ./ dtc + (u*deriv(u,1)+v*deriv(u,2))) - deriv(w,1)*p + mu*dot(grad(w), grad(u)) + tauM*(u*deriv(w,1)+v*deriv(w,2))*((u-uold) ./ dtc + (u*deriv(u,1)+v*deriv(u,2)) + deriv(p,1)))", 
-#@weakForm([du, dv, dp], ["mu*dot(grad(w), grad(du)) + (w*u)", 
                          "w*(dv ./ dtc + (u*deriv(dv,1)+v*deriv(dv,2) + deriv(v,1)*du)) - deriv(w,2)*dp + mu*dot(grad(w), grad(dv)) + tauM*(u*deriv(w,1)+v*deriv(w,2))*(dv ./ dtc + (u*deriv(dv,1)+v*deriv(dv,2)) + deriv(dp,2)) - (w*((v-vold) ./ dtc + (u*deriv(v,1)+v*deriv(v,2))) - deriv(w,2)*p + mu*dot(grad(w), grad(v)) + tauM*(u*deriv(w,1)+v*deriv(w,2))*((v-vold) ./ dtc + (u*deriv(v,1)+v*deriv(v,2)) + deriv(p,2)))", 
 	                     "w*(deriv(du,1)+deriv(dv,2)) + tauC*(deriv(w,1)*( du ./ dtc + (u*deriv(du,1)+v*deriv(du,2)) + deriv(dp,1) ) + deriv(w,2)*( dv ./ dtc + (u*deriv(dv,1)+v*deriv(dv,2)) + deriv(dp,2) )) - (w*(deriv(u,1)+deriv(v,2)) + tauC*(deriv(w,1)*( (u-uold) ./ dtc + (u*deriv(u,1)+v*deriv(u,2)) + deriv(p,1) ) + deriv(w,2)*( (v-vold) ./ dtc + (u*deriv(v,1)+v*deriv(v,2)) + deriv(p,2) )))"])
 						  
 solve([du, dv, dp], [u, v, p, uold, vold], nonlinear=true);
 
-#analytical
-#=
-x = collect(1:1/num_elem/order:2);
-u_a = zeros(length(x));
-for i = 1:length(x)
-    u_a[i] = x[i]*(1+1.0/3*x[i]^2)^(-1/2);
-end
-
-#check integral error
-err_l2 = 0.0;
-for i = 1:length(x)-1
-    err_a = ((u.values[i]-u_a[i])^2+(u.values[i+1]-u_a[i+1])^2)/2.0*(1.0/num_elem/order);
-    global err_l2 += err_a;
-end
-
-print("L2 error = ", err_l2, "\n")
-=#
 # solution is stored in the variable's "values"
 #using Plots
 #pyplot();
-#display(plot(Femshop.grid_data.allnodes[:,1], Femshop.grid_data.allnodes[:,2], u.values, st = :surface))
+#display(plot(Femshop.grid_data.allnodes[1,:], Femshop.grid_data.allnodes[2,:], u.values[:], st = :surface, reuse=false))
+#display(plot(Femshop.grid_data.allnodes[1,:], Femshop.grid_data.allnodes[2,:], v.values[:], st = :surface, reuse=false))
 
 # check
 log_dump_config(Femshop.config);
