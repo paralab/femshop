@@ -12,8 +12,8 @@ img {float: right;}
 <h3>Poisson</h3> 
 <p> <img src="images/poisson1d.png" alt="poisson1d" width="200">
 The simplest example possible. 1D Poisson with homogeneous Dirichlet boundary. It demonstrates the basics of setting up and solving a problem directly in femshop.
-<br>Page: [poisson 1D page](https://github.com/paralab/femshop/blob/master/femshop/pages/poisson1d.html)
-<br>Script: [example-poisson1d.jl](https://github.com/paralab/femshop/blob/master/femshop/examples/example-poisson1d.jl)
+<br>Page: <a href="https://github.com/paralab/femshop/blob/master/femshop/pages/poisson1d.html")>poisson 1D page<\a>
+<br>Script: <a href="https://github.com/paralab/femshop/blob/master/femshop/examples/example-poisson1d.jl)">example-poisson1d.jl<\a>
 </p>
 
 <h3>Linear Elasticity</h3>
