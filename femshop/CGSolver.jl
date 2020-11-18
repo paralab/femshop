@@ -497,9 +497,7 @@ function assemble_rhs_only(var, linear, t=0.0, dt=0.0)
 
         end
     end
-
-    # Just for testing. This should really be a loop over BIDs with corresponding calls
-    #b = dirichlet_bc_rhs_only(b, prob.bc_func[var.index, 1], grid_data.bdry[1,:], t);
+    
     # Boundary conditions
     bidcount = length(grid_data.bids); # the number of BIDs
     if dofs_per_node > 1

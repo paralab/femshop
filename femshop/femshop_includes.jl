@@ -29,6 +29,7 @@ include("mesh_data.jl");
 include("mesh_read.jl");
 include("mesh_write.jl")
 include("grid.jl");
+include("dg_grid.jl");
 include("simple_mesh.jl");
 include("recursive_ordering.jl");
 include("tiled_ordering.jl");
@@ -42,7 +43,6 @@ include("coefficient.jl");
 include("parameter.jl");
 include("geometric_factors.jl");
 include("time_steppers.jl");
-#include("nonlinear.jl");
 
 # Femshop submodules
 include("cachesim/CachesimOut.jl");
@@ -51,8 +51,8 @@ include("SymbolicParser.jl")
 using .SymbolicParser
 include("CodeGenerator.jl");
 using .CodeGenerator
-#include("DGSolver.jl");
-#using .DGSolver
+include("DGSolver.jl");
+using .DGSolver
 include("CGSolver.jl");
 using .CGSolver
 

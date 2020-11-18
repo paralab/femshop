@@ -145,6 +145,9 @@ function add_mesh(mesh)
         global refel = mesh[2];
         global face_refel = mesh[3];
         global grid_data = mesh[4];
+        if config.solver_type == DG
+            global grid_data = cg_grid_to_dg_grid(grid_data, mesh_data);
+        end
     else
         global mesh_data = mesh;
     end

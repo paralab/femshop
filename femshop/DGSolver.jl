@@ -20,10 +20,9 @@ import ..Femshop: geometric_factors, build_deriv_matrix
 
 using LinearAlgebra, SparseArrays
 
-include("cg_boundary.jl");
+include("cg_boundary.jl"); # Can we use the CG versions here? 
 include("nonlinear.jl")
 include("cg_matrixfree.jl");
-include("cachsim_solve.jl");
 
 function init_dgsolver()
     dim = config.dimension;
@@ -65,14 +64,14 @@ function init_dgsolver()
     end
 end
 
-function linear_solve(var, bilinear, linear, stepper=nothing)
+function linear_solve(var, bilinear, linear, face_bilinear, face_linear, stepper=nothing)
     if config.linalg_matrixfree
         return solve_matrix_free_sym(var, bilinear, linear, stepper);
         #return solve_matrix_free_asym(var, bilinear, linear, stepper);
     end
     if prob.time_dependent && !(stepper === nothing)
         #TODO time dependent coefficients
-        assemble_t = @elapsed((A, b) = assemble(var, bilinear, linear, 0, stepper.dt));
+        assemble_t = @elapsed((A, b) = assemble(var, bilinear, linear, face_bilinear, face_linear, 0, stepper.dt));
         log_entry("Assembly took "*string(assemble_t)*" seconds");
 
         log_entry("Beginning "*string(stepper.Nsteps)*" time steps.");
@@ -80,7 +79,7 @@ function linear_solve(var, bilinear, linear, stepper=nothing)
         sol = [];
         start_t = Base.Libc.time();
         for i=1:stepper.Nsteps
-            b = assemble_rhs_only(var, linear, t, stepper.dt);
+            b = assemble_rhs_only(var, linear, face_linear, t, stepper.dt);
             sol = A\b;
             # place the values in the variable value arrays
             if typeof(var) <: Array
@@ -118,7 +117,7 @@ function linear_solve(var, bilinear, linear, stepper=nothing)
         return sol;
 
     else
-        assemble_t = @elapsed((A, b) = assemble(var, bilinear, linear));
+        assemble_t = @elapsed((A, b) = assemble(var, bilinear, linear, face_bilinear, face_linear));
         # uncomment to look at A
         #global Amat = A;
         
@@ -187,7 +186,7 @@ function nonlinear_solve(var, nlvar, bilinear, linear, stepper=nothing)
 end
 
 # assembles the A and b in Au=b
-function assemble(var, bilinear, linear, t=0.0, dt=0.0)
+function assemble(var, bilinear, linear, face_bilinear, face_linear, t=0.0, dt=0.0)
     Np = refel.Np;
     nel = mesh_data.nel;
     N1 = size(grid_data.allnodes,2);
@@ -334,6 +333,11 @@ function assemble(var, bilinear, linear, t=0.0, dt=0.0)
     # Boundary conditions
     bc_time = Base.Libc.time();
     bidcount = length(grid_data.bids); # the number of BIDs
+    dirichlet_rows = zeros(0);
+    neumann_rows = zeros(0);
+    neumann_Is = zeros(Int,0);
+    neumann_Js = zeros(Int,0);
+    neumann_Vs = zeros(0);
     if dofs_per_node > 1
         if multivar
             dofind = 0;
@@ -342,9 +346,16 @@ function assemble(var, bilinear, linear, t=0.0, dt=0.0)
                     dofind = dofind + 1;
                     for bid=1:bidcount
                         if prob.bc_type[var[vi].index, bid] == DIRICHLET
-                            (A, b) = dirichlet_bc(A, b, prob.bc_func[var[vi].index, bid][compo], grid_data.bdry[bid], t, dofind, dofs_per_node);
+                            #(A, b) = dirichlet_bc(A, b, prob.bc_func[var[vi].index, bid][compo], grid_data.bdry[bid], t, dofind, dofs_per_node);
+                            (tmprows, b) = dirichlet_bc(A, b, prob.bc_func[var[vi].index, bid][compo], grid_data.bdry[bid], t, dofind, dofs_per_node);
+                            append!(dirichlet_rows, tmprows);
                         elseif prob.bc_type[var[vi].index, bid] == NEUMANN
-                            (A, b) = neumann_bc(A, b, prob.bc_func[var[vi].index, bid][compo], grid_data.bdry[bid], bid, t, dofind, dofs_per_node);
+                            #(A, b) = neumann_bc(A, b, prob.bc_func[var[vi].index, bid][compo], grid_data.bdry[bid], bid, t, dofind, dofs_per_node);
+                            (tmprows, tmpIs, tmpJs, tmpVs, b) = neumann_bc(A, b, prob.bc_func[var[vi].index, bid][compo], grid_data.bdry[bid], bid, t, dofind, dofs_per_node);
+                            append!(neumann_rows, tmprows);
+                            append!(neumann_Is, tmpIs);
+                            append!(neumann_Js, tmpJs);
+                            append!(neumann_Vs, tmpVs);
                         elseif prob.bc_type[var[vi].index, bid] == ROBIN
                             printerr("Robin BCs not ready.");
                         elseif prob.bc_type[var[vi].index, bid] == NO_BC
@@ -360,9 +371,16 @@ function assemble(var, bilinear, linear, t=0.0, dt=0.0)
                 dofind = d;
                 for bid=1:bidcount
                     if prob.bc_type[var.index, bid] == DIRICHLET
-                        (A, b) = dirichlet_bc(A, b, prob.bc_func[var.index, bid][d], grid_data.bdry[bid], t, dofind, dofs_per_node);
+                        #(A, b) = dirichlet_bc(A, b, prob.bc_func[var.index, bid][d], grid_data.bdry[bid], t, dofind, dofs_per_node);
+                        (tmprows, b) = dirichlet_bc(A, b, prob.bc_func[var.index, bid][d], grid_data.bdry[bid], t, dofind, dofs_per_node);
+                        append!(dirichlet_rows, tmprows);
                     elseif prob.bc_type[var.index, bid] == NEUMANN
-                        (A, b) = neumann_bc(A, b, prob.bc_func[var.index, bid][d], grid_data.bdry[bid], bid, t, dofind, dofs_per_node);
+                        #(A, b) = neumann_bc(A, b, prob.bc_func[var.index, bid][d], grid_data.bdry[bid], bid, t, dofind, dofs_per_node);
+                        (tmprows, tmpIs, tmpJs, tmpVs, b) = neumann_bc(A, b, prob.bc_func[var.index, bid][compo], grid_data.bdry[bid], bid, t, dofind, dofs_per_node);
+                        append!(neumann_rows, tmprows);
+                        append!(neumann_Is, tmpIs);
+                        append!(neumann_Js, tmpJs);
+                        append!(neumann_Vs, tmpVs);
                     elseif prob.bc_type[var.index, bid] == ROBIN
                         printerr("Robin BCs not ready.");
                     elseif prob.bc_type[var.index, bid] == NO_BC
@@ -376,9 +394,16 @@ function assemble(var, bilinear, linear, t=0.0, dt=0.0)
     else
         for bid=1:bidcount
             if prob.bc_type[var.index, bid] == DIRICHLET
-                (A, b) = dirichlet_bc(A, b, prob.bc_func[var.index, bid][1], grid_data.bdry[bid], t);
+                #(A, b) = dirichlet_bc(A, b, prob.bc_func[var.index, bid][1], grid_data.bdry[bid], t);
+                (tmprows, b) = dirichlet_bc(A, b, prob.bc_func[var.index, bid][1], grid_data.bdry[bid], t);
+                append!(dirichlet_rows, tmprows);
             elseif prob.bc_type[var.index, bid] == NEUMANN
-                (A, b) = neumann_bc(A, b, prob.bc_func[var.index, bid][1], grid_data.bdry[bid], bid, t);
+                #(A, b) = neumann_bc(A, b, prob.bc_func[var.index, bid][1], grid_data.bdry[bid], bid, t);
+                (tmprows, tmpIs, tmpJs, tmpVs, b) = neumann_bc(A, b, prob.bc_func[var.index, bid][1], grid_data.bdry[bid], bid, t);
+                append!(neumann_rows, tmprows);
+                append!(neumann_Is, tmpIs);
+                append!(neumann_Js, tmpJs);
+                append!(neumann_Vs, tmpVs);
             elseif prob.bc_type[var.index, bid] == ROBIN
                 printerr("Robin BCs not ready.");
             elseif prob.bc_type[var.index, bid] == NO_BC
@@ -389,37 +414,46 @@ function assemble(var, bilinear, linear, t=0.0, dt=0.0)
         end
     end
     
+    if length(dirichlet_rows)>0
+        A = identity_rows(A, dirichlet_rows, length(b));
+    end
+    if length(neumann_rows)>0
+        A = insert_sparse_rows(A, neumann_Is, neumann_Js, neumann_Vs);
+    end
+    
     # Reference points
-    if multivar
-        posind = zeros(Int,0);
-        vals = zeros(0);
-        for vi=1:length(var)
-            if prob.ref_point[var[vi].index,1]
-                eii = prob.ref_point[var[vi].index, 2];
-                tmp = (grid_data.glbvertex[eii[1], eii[2]] - 1)*dofs_per_node + var_to_dofs[vi][1];
-                if length(prob.ref_point[var[vi].index, 3]) > 1
-                    tmp = tmp:(tmp+length(prob.ref_point[var[vi].index, 3])-1);
+    if size(prob.ref_point,1) >= maxvarindex
+        if multivar
+            posind = zeros(Int,0);
+            vals = zeros(0);
+            for vi=1:length(var)
+                if prob.ref_point[var[vi].index,1]
+                    eii = prob.ref_point[var[vi].index, 2];
+                    tmp = (grid_data.glbvertex[eii[1], eii[2]] - 1)*dofs_per_node + var_to_dofs[vi][1];
+                    if length(prob.ref_point[var[vi].index, 3]) > 1
+                        tmp = tmp:(tmp+length(prob.ref_point[var[vi].index, 3])-1);
+                    end
+                    posind = [posind; tmp];
+                    vals = [vals; prob.ref_point[var[vi].index, 3]];
                 end
-                posind = [posind; tmp];
-                vals = [vals; prob.ref_point[var[vi].index, 3]];
             end
-        end
-        if length(vals) > 0
-            A = identity_rows(A, posind, length(b));
-            b[posind] = vals;
-        end
-        
-    else
-        if prob.ref_point[var.index,1]
-            eii = prob.ref_point[var.index, 2];
-            posind = (grid_data.glbvertex[eii[1], eii[2]] - 1)*dofs_per_node + 1;
-            if length(prob.ref_point[var.index, 3]) > 1
-                posind = posind:(posind+length(prob.ref_point[var[vi].index, 3])-1);
-            else
-                posind = [posind];
+            if length(vals) > 0
+                A = identity_rows(A, posind, length(b));
+                b[posind] = vals;
             end
-            A = identity_rows(A, posind, length(b));
-            b[posind] = prob.ref_point[var.index, 3];
+            
+        else
+            if prob.ref_point[var.index,1]
+                eii = prob.ref_point[var.index, 2];
+                posind = (grid_data.glbvertex[eii[1], eii[2]] - 1)*dofs_per_node + 1;
+                if length(prob.ref_point[var.index, 3]) > 1
+                    posind = posind:(posind+length(prob.ref_point[var[vi].index, 3])-1);
+                else
+                    posind = [posind];
+                end
+                A = identity_rows(A, posind, length(b));
+                b[posind] = prob.ref_point[var.index, 3];
+            end
         end
     end
     
@@ -432,7 +466,7 @@ function assemble(var, bilinear, linear, t=0.0, dt=0.0)
 end
 
 # assembles the A and b in Au=b
-function assemble_rhs_only(var, linear, t=0.0, dt=0.0)
+function assemble_rhs_only(var, linear, face_linear, t=0.0, dt=0.0)
     Np = refel.Np;
     nel = mesh_data.nel;
     N1 = size(grid_data.allnodes,2);
@@ -503,8 +537,6 @@ function assemble_rhs_only(var, linear, t=0.0, dt=0.0)
         end
     end
 
-    # Just for testing. This should really be a loop over BIDs with corresponding calls
-    #b = dirichlet_bc_rhs_only(b, prob.bc_func[var.index, 1], grid_data.bdry[1,:], t);
     # Boundary conditions
     bidcount = length(grid_data.bids); # the number of BIDs
     if dofs_per_node > 1
@@ -546,32 +578,34 @@ function assemble_rhs_only(var, linear, t=0.0, dt=0.0)
     end
     
     # Reference points
-    if multivar
-        posind = zeros(Int,0);
-        vals = zeros(0);
-        for vi=1:length(var)
-            if prob.ref_point[var[vi].index,1]
-                eii = prob.ref_point[var[vi].index, 2];
-                tmp = (grid_data.glbvertex[eii[1], eii[2]] - 1)*dofs_per_node + var_to_dofs[vi][1];
-                if length(prob.ref_point[var[vi].index, 3]) > 1
-                    tmp = tmp:(tmp+length(prob.ref_point[var[vi].index, 3])-1);
+    if size(prob.ref_point,1) >= maxvarindex
+        if multivar
+            posind = zeros(Int,0);
+            vals = zeros(0);
+            for vi=1:length(var)
+                if prob.ref_point[var[vi].index,1]
+                    eii = prob.ref_point[var[vi].index, 2];
+                    tmp = (grid_data.glbvertex[eii[1], eii[2]] - 1)*dofs_per_node + var_to_dofs[vi][1];
+                    if length(prob.ref_point[var[vi].index, 3]) > 1
+                        tmp = tmp:(tmp+length(prob.ref_point[var[vi].index, 3])-1);
+                    end
+                    posind = [posind; tmp];
+                    vals = [vals; prob.ref_point[var[vi].index, 3]];
                 end
-                posind = [posind; tmp];
-                vals = [vals; prob.ref_point[var[vi].index, 3]];
             end
-        end
-        if length(vals) > 0
-            b[posind] = vals;
-        end
-        
-    else
-        if prob.ref_point[var.index,1]
-            eii = prob.ref_point[var.index, 2];
-            posind = (grid_data.glbvertex[eii[1], eii[2]] - 1)*dofs_per_node + 1;
-            if length(prob.ref_point[var.index, 3]) > 1
-                posind = posind:(posind+length(prob.ref_point[var[vi].index, 3])-1);
+            if length(vals) > 0
+                b[posind] = vals;
             end
-            b[posind] = prob.ref_point[var.index, 3];
+            
+        else
+            if prob.ref_point[var.index,1]
+                eii = prob.ref_point[var.index, 2];
+                posind = (grid_data.glbvertex[eii[1], eii[2]] - 1)*dofs_per_node + 1;
+                if length(prob.ref_point[var.index, 3]) > 1
+                    posind = posind:(posind+length(prob.ref_point[var[vi].index, 3])-1);
+                end
+                b[posind] = prob.ref_point[var.index, 3];
+            end
         end
     end
 
