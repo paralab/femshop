@@ -151,17 +151,39 @@ function insert_rows(A, S, rows, N)
     end
 end
 
+function insert_sparse_rows(A, SI, SJ, SV)
+    (I, J, V) = findnz(A);
+    (M,N) = size(A);
+    
+    # Zero existing elements in SI rows
+    sort!(rows);
+    for k in 1:length(I)
+        if is_in_rows(I[k], SI)
+            V[k] = 0;
+        end
+    end
+    
+    # append S values
+    append!(I, SI);
+    append!(J, SJ);
+    append!(V, SV);
+    
+    # Form sparse matrix
+    return sparse(I, J, V, M, N);
+end
+
 function dirichlet_bc(A, b, val, bdryind, t=0, dofind = 1, totaldofs = 1)
     N = length(b);
     bdry = copy(bdryind);
     if totaldofs > 1
         bdry = (bdry .- 1) .* totaldofs .+ dofind;
     end
-    A = identity_rows(A, bdry, N);
+    #A = identity_rows(A, bdry, N);
     
     b = dirichlet_bc_rhs_only(b, val, bdryind, t, dofind, totaldofs); # how convenient
     
-    return (A, b);
+    #return (A, b);
+    return (bdry, b);
 end
 
 function dirichlet_bc_rhs_only(b, val, bdryind, t=0, dofind = 1, totaldofs = 1)
@@ -219,12 +241,56 @@ function neumann_bc(A, b, val, bdryind, bid, t=0, dofind = 1, totaldofs = 1)
     end
     
     # Assemble the differentiation matrix and swap rows in A
-    (na, nb) = size(A);
-    S1 = spzeros(na, nb);
-    S2 = spzeros(na, nb);
-    S3 = spzeros(na, nb);
-    S = spzeros(na, nb);
+    # (na, nb) = size(A);
+    # S1 = spzeros(na, nb);
+    # S2 = spzeros(na, nb);
+    # S3 = spzeros(na, nb);
+    # S = spzeros(na, nb);
+    S_I = zeros(Int, 0);
+    S_J = zeros(Int, 0);
+    S1_V = zeros(0);
+    S2_V = zeros(0);
+    S3_V = zeros(0);
+    S_V = zeros(0);
+    
     bfc = grid_data.bdryface[bid];
+    
+     # Stiffness and mass are precomputed for uniform grid meshes
+     if config.mesh_type == UNIFORM_GRID && config.geometry == SQUARE
+        precomputed = true;
+        glb = grid_data.loc2glb[:,1];
+        xe = grid_data.allnodes[:,glb[:]];
+        (detJ, J) = geometric_factors(refel, xe);
+        if config.dimension == 1
+            # R1matrix = diagm(J.rx);
+            # D1matrix = refel.Dr;
+            R1D1 = diagm(J.rx) * refel.Dr;
+            
+        elseif config.dimension == 2
+            # R1matrix = [diagm(J.rx) diagm(J.sx) diagm(J.tx)];
+            # D1matrix = [refel.Ddr ; refel.Dds ; refel.Ddt];
+            # R2matrix = [diagm(J.ry) diagm(J.sy) diagm(J.ty)];
+            # D2matrix = [refel.Ddr ; refel.Dds ; refel.Ddt];
+            # R3matrix = [diagm(J.rz) diagm(J.sz) diagm(J.tz)];
+            # D3matrix = [refel.Ddr ; refel.Dds ; refel.Ddt];
+            R1D1 = [diagm(J.rx) diagm(J.sx) diagm(J.tx)] * [refel.Ddr ; refel.Dds ; refel.Ddt]; #R1matrix * D1matrix;
+            R2D2 = [diagm(J.ry) diagm(J.sy) diagm(J.ty)] * [refel.Ddr ; refel.Dds ; refel.Ddt]; #R2matrix * D2matrix;
+            R3D3 = [diagm(J.rz) diagm(J.sz) diagm(J.tz)] * [refel.Ddr ; refel.Dds ; refel.Ddt]; #R3matrix * D3matrix;
+            
+        elseif config.dimension == 3
+            # R1matrix = [diagm(J.rx) diagm(J.sx) diagm(J.tx)];
+            # D1matrix = [refel.Ddr ; refel.Dds ; refel.Ddt];
+            # R2matrix = [diagm(J.ry) diagm(J.sy) diagm(J.ty)];
+            # D2matrix = [refel.Ddr ; refel.Dds ; refel.Ddt];
+            # R3matrix = [diagm(J.rz) diagm(J.sz) diagm(J.tz)];
+            # D3matrix = [refel.Ddr ; refel.Dds ; refel.Ddt];
+            R1D1 = [diagm(J.rx) diagm(J.sx) diagm(J.tx)] * [refel.Ddr ; refel.Dds ; refel.Ddt]; #R1matrix * D1matrix;
+            R2D2 = [diagm(J.ry) diagm(J.sy) diagm(J.ty)] * [refel.Ddr ; refel.Dds ; refel.Ddt]; #R2matrix * D2matrix;
+            R3D3 = [diagm(J.rz) diagm(J.sz) diagm(J.tz)] * [refel.Ddr ; refel.Dds ; refel.Ddt]; #R3matrix * D3matrix;
+        end
+    else
+        precomputed = false;
+    end
     
     for fi = 1:length(bfc)
         # find the relevant element
@@ -239,53 +305,86 @@ function neumann_bc(A, b, val, bdryind, bid, t=0, dofind = 1, totaldofs = 1)
             sglb = glb;
         end
         
-        (detJ, J) = geometric_factors(refel, xe);
+        # Build diff matrices if needed
+        if !precomputed
+            (detJ, J) = geometric_factors(refel, xe);
+            if config.dimension == 1
+                # R1matrix = diagm(J.rx);
+                # D1matrix = refel.Dr;
+                R1D1 = diagm(J.rx) * refel.Dr;
+                
+            elseif config.dimension == 2
+                # R1matrix = [diagm(J.rx) diagm(J.sx)];
+                # D1matrix = [refel.Ddr ; refel.Dds];
+                # R2matrix = [diagm(J.ry) diagm(J.sy)];
+                # D2matrix = [refel.Ddr ; refel.Dds];
+                R1D1 = [diagm(J.rx) diagm(J.sx)] * [refel.Ddr ; refel.Dds]; #R1matrix * D1matrix;
+                R2D2 = [diagm(J.ry) diagm(J.sy)] * [refel.Ddr ; refel.Dds]; #R2matrix * D2matrix;
+                
+            elseif config.dimension == 3
+                # R1matrix = [diagm(J.rx) diagm(J.sx) diagm(J.tx)];
+                # D1matrix = [refel.Ddr ; refel.Dds ; refel.Ddt];
+                # R2matrix = [diagm(J.ry) diagm(J.sy) diagm(J.ty)];
+                # D2matrix = [refel.Ddr ; refel.Dds ; refel.Ddt];
+                # R3matrix = [diagm(J.rz) diagm(J.sz) diagm(J.tz)];
+                # D3matrix = [refel.Ddr ; refel.Dds ; refel.Ddt];
+                R1D1 = [diagm(J.rx) diagm(J.sx) diagm(J.tx)] * [refel.Ddr ; refel.Dds ; refel.Ddt]; #R1matrix * D1matrix;
+                R2D2 = [diagm(J.ry) diagm(J.sy) diagm(J.ty)] * [refel.Ddr ; refel.Dds ; refel.Ddt]; #R2matrix * D2matrix;
+                R3D3 = [diagm(J.rz) diagm(J.sz) diagm(J.tz)] * [refel.Ddr ; refel.Dds ; refel.Ddt]; #R3matrix * D3matrix;
+            end
+        end
+        
+        # Add to S matrix
+        Imat = zeros(Int,length(sglb),length(sglb));
+        Jmat = zeros(Int,size(Imat));
+        for i=1:length(sglb)
+            Imat[:,i] = sglb[:];
+            Jmat[:,i] = fill(sglb[i], length(sglb));
+        end
+        append!(S_I, Imat[:]);
+        append!(S_J, Jmat[:]);
         if config.dimension == 1
-            R1matrix = diagm(J.rx);
-            D1matrix = refel.Dr;
-            
-            S1[sglb,sglb] = R1matrix*D1matrix;
+            #S1[sglb,sglb] = R1matrix*D1matrix;
+            append!(S1_V, R1D1[:]);
             
         elseif config.dimension == 2
-            R1matrix = [diagm(J.rx) diagm(J.sx)];
-            D1matrix = [refel.Ddr ; refel.Dds];
-            R2matrix = [diagm(J.ry) diagm(J.sy)];
-            D2matrix = [refel.Ddr ; refel.Dds];
-            
-            S1[sglb,sglb] = R1matrix*D1matrix;
-            S2[sglb,sglb] = R2matrix*D2matrix;
+            # S1[sglb,sglb] = R1matrix*D1matrix;
+            # S2[sglb,sglb] = R2matrix*D2matrix;
+            append!(S1_V, R1D1[:]);
+            append!(S2_V, R2D2[:]);
             
         elseif config.dimension == 3
-            R1matrix = [diagm(J.rx) diagm(J.sx) diagm(J.tx)];
-            D1matrix = [refel.Ddr ; refel.Dds ; refel.Ddt];
-            R2matrix = [diagm(J.ry) diagm(J.sy) diagm(J.ty)];
-            D2matrix = [refel.Ddr ; refel.Dds ; refel.Ddt];
-            R3matrix = [diagm(J.rz) diagm(J.sz) diagm(J.tz)];
-            D3matrix = [refel.Ddr ; refel.Dds ; refel.Ddt];
-            
-            S1[sglb,sglb] = R1matrix*D1matrix;
-            S2[sglb,sglb] = R2matrix*D2matrix;
-            S3[sglb,sglb] = R3matrix*D3matrix;
+            # S1[sglb,sglb] = R1matrix*D1matrix;
+            # S2[sglb,sglb] = R2matrix*D2matrix;
+            # S3[sglb,sglb] = R3matrix*D3matrix;
+            append!(S1_V, R1D1[:]);
+            append!(S2_V, R2D2[:]);
+            append!(S3_V, R3D3[:]);
         end
     end
     
     # Add the right components of S1,S2,S3 according to normal vector
+    S_V = zeros(length(S1_V));
     for i=1:length(bdry)
         norm = grid_data.bdrynorm[bid][:,i];
         if config.dimension == 1
-            S[bdry[i],:] = norm[1] .* S1[bdry[i],:];
+            # S[bdry[i],:] = norm[1] .* S1[bdry[i],:];
+            S_V = norm[1] .* S1_V;
         elseif config.dimension == 2
-            S[bdry[i],:] = norm[1] .* S1[bdry[i],:] + norm[2] .* S2[bdry[i],:];
+            # S[bdry[i],:] = norm[1] .* S1[bdry[i],:] + norm[2] .* S2[bdry[i],:];
+            S_V = norm[1] .* S1_V + norm[2] .* S2_V;
         elseif config.dimension == 3
-            S[bdry[i],:] = norm[1] .* S1[bdry[i],:] + norm[2] .* S2[bdry[i],:] + norm[3] .* S3[bdry[i],:];
+            # S[bdry[i],:] = norm[1] .* S1[bdry[i],:] + norm[2] .* S2[bdry[i],:] + norm[3] .* S3[bdry[i],:];
+            S_V = norm[1] .* S1_V + norm[2] .* S2_V + norm[3] .* S3_V;
         end
     end
     
-    A = insert_rows(A, S, bdry, N);
+    #A = insert_rows(A, S, bdry, N);
     
-    dirichlet_bc_rhs_only(b, val, bdryind, t, dofind, totaldofs); # how convenient
+    b = dirichlet_bc_rhs_only(b, val, bdryind, t, dofind, totaldofs); # how convenient
     
-    return (A, b);
+    #return (A, b);
+    return (bdry, S_I, S_J, S_V, b);
 end
 
 function neumann_bc_rhs_only(b, val, bdryind, bid, t=0, dofind = 1, totaldofs = 1)

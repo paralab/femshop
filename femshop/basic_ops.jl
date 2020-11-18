@@ -149,8 +149,16 @@ function sym_grad_op(u)
             result = reshape(result, d,d);
         elseif rank == 2
             # not yet ready
-            printerr("unsupported operator, grad(tensor)");
-            return nothing;
+            # printerr("unsupported operator, grad(tensor)");
+            # return nothing;
+            for i=1:d
+                for j=1:d
+                    for k=1:d
+                        push!(result, sym_deriv(u[i+(j-1)*d], k));
+                    end
+                end
+            end
+            result = reshape(result, d,d,d);
         end
     elseif typeof(u) == Basic
         # result is a vector
