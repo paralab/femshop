@@ -281,26 +281,49 @@ function assemble(var, bilinear, linear, t=0.0, dt=0.0)
         end
     end
 
+	# surface assembly for dg
 	for fid = 1:size(face2v,2)
 		face = FaceData(fid, face2v, normals); 
 		# always 2 sides
 		node_s1 = face.nodes[:,1];
 		node_s2 = face.nodes[:,2];
+		# xe1 and xe2 should be the same
+        xe1 = grid_data.allnodes[:,node_s1[:]];      # coordinates of this element's nodes for evaluating coefficient functions
+        xe2 = grid_data.allnodes[:,node_s2[:]];      # coordinates of this element's nodes for evaluating coefficient functions
+
 		#extract nodal values 
 		val_s1 = sol[node_s1];
 		val_s2 = sol[node_s2];
 		#evaluate average 
-		val_avg = 0.5.*(val_s1 + val_s2);
+		#val_avg = 0.5.*(val_s1 + val_s2);
 		normal_s1 = face.normal[:,1];
 		normal_s2 = face.normal[:,2];
-		#evaluate weak form on for s1
-		# using val_avg, node_s1, normal_s1
-		#assemble to global system
+		
+		#evaluate weak form on for s1 and s2 and assemble
+        rhsargs = (val_s1, node_s1, normal_s1, xe1, val_s2, node_s2, normal_s2, xe2, refel, RHS, t, dt);
+        lhsargs = (val_s1, node_s1, normal_s1, xe1, val_s2, node_s2, normal_s2, xe2, refel, LHS, t, dt);
+        if dofs_per_node == 1
+            linchunk = face_linear.func(rhsargs);  # get the elemental linear part
+            b[node_s1] .+= linchunk[1];
+            b[node_s2] .+= linchunk[2];
 
-		#evaluate weak form on for s2
-		# using val_avg, node_s2, normal_s2
-		#assemble to global system
-			 	
+            bilinchunk = face_bilinear.func(lhsargs); # the elemental bilinear part
+            #A[glb, glb] .+= bilinchunk;         # This will be very inefficient for sparse A
+            for jj=1:length(node_s1)
+                for ii=1:length(node_s1)
+                    AI.append(node_s1[ii]);
+                    AJ.append(node_s1[jj]);
+                    AV.append(bilinchunk[ii, jj, 1]);
+                end
+            end
+            for jj=1:length(node_s2)
+                for ii=1:length(node_s1)
+                    AI.append(node_s2[ii]);
+                    AJ.append(node_s2[jj]);
+                    AV.append(bilinchunk[ii, jj, 2]);
+                end
+            end
+		end	 	
 	end
 
     loop_time = Base.Libc.time() - loop_time;
