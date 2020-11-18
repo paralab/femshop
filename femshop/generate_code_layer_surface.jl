@@ -523,9 +523,9 @@ function generate_code_layer_julia_surface(symex, var, lorr)
             
         else # there were no terms. Just return arrays of zeros
             if lorr == LHS
-                result = :(zeros(face_refel.Np, face_refel.Np));
+                return :(return zeros(face_refel.Np, face_refel.Np));
             else
-                result = :(zeros(face_refel.Np));
+                return :(return zeros(face_refel.Np));
             end
         end
     end

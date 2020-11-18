@@ -396,7 +396,7 @@ macro weakForm(var, ex)
         if length(result_exprs) == 4
             lhs_surf_code = generate_code_layer_surface(lhs_surf_expr, $var, LHS);
             rhs_surf_code = generate_code_layer_surface(rhs_surf_expr, $var, RHS);
-            Femshop.log_entry("Weak form, code layer: LHS = "*string(lhs_code)*"\n  + surface("*string(lhs_surf_code)*") \n  RHS = "*string(rhs_code)*"\n  + surface("*string(rhs_surf_code)*")");
+            Femshop.log_entry("Weak form, code layer: LHS = "*string(lhs_code)*"\nsurfaceLHS = "*string(lhs_surf_code)*" \nRHS = "*string(rhs_code)*"\nsurfaceRHS = "*string(rhs_surf_code));
         else
             Femshop.log_entry("Weak form, code layer: LHS = "*string(lhs_code)*" \n  RHS = "*string(rhs_code));
         end
