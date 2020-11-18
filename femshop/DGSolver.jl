@@ -1,9 +1,9 @@
 #=
-# CG solver
+# DG solver
 =#
-module CGSolver
+module DGSolver
 
-export init_cgsolver, solve, nonlinear_solve
+export init_dgsolver, solve, nonlinear_solve
 
 import ..Femshop: JULIA, CPP, MATLAB, SQUARE, IRREGULAR, UNIFORM_GRID, TREE, UNSTRUCTURED, CG, DG, HDG,
             NODAL, MODAL, LEGENDRE, UNIFORM, GAUSS, LOBATTO, NONLINEAR_NEWTON,
@@ -14,7 +14,7 @@ import ..Femshop: JULIA, CPP, MATLAB, SQUARE, IRREGULAR, UNIFORM_GRID, TREE, UNS
             LHS, RHS,
             LINEMESH, QUADMESH, HEXMESH
 import ..Femshop: log_entry, printerr
-import ..Femshop: config, prob, variables, mesh_data, grid_data, refel, time_stepper, elemental_order
+import ..Femshop: config, prob, variables, mesh_data, grid_data, refel, time_stepper, elemental_order, face_data
 import ..Femshop: Variable, Coefficient, GenFunction
 import ..Femshop: geometric_factors, build_deriv_matrix
 
@@ -25,7 +25,7 @@ include("nonlinear.jl")
 include("cg_matrixfree.jl");
 include("cachsim_solve.jl");
 
-function init_cgsolver()
+function init_dgsolver()
     dim = config.dimension;
 
     # build initial conditions
@@ -280,6 +280,28 @@ function assemble(var, bilinear, linear, t=0.0, dt=0.0)
             insert_bilinear!(AI, AJ, AV, Astart, bilinchunk, glb, 1:dofs_per_node, dofs_per_node);
         end
     end
+
+	for fid = 1:size(face2v,2)
+		face = FaceData(fid, face2v, normals); 
+		# always 2 sides
+		node_s1 = face.nodes[:,1];
+		node_s2 = face.nodes[:,2];
+		#extract nodal values 
+		val_s1 = sol[node_s1];
+		val_s2 = sol[node_s2];
+		#evaluate average 
+		val_avg = 0.5.*(val_s1 + val_s2);
+		normal_s1 = face.normal[:,1];
+		normal_s2 = face.normal[:,2];
+		#evaluate weak form on for s1
+		# using val_avg, node_s1, normal_s1
+		#assemble to global system
+
+		#evaluate weak form on for s2
+		# using val_avg, node_s2, normal_s2
+		#assemble to global system
+			 	
+	end
 
     loop_time = Base.Libc.time() - loop_time;
     
