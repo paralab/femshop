@@ -325,7 +325,7 @@ macro weakForm(var, ex)
             if length(result_exprs) == 4
                 log_entry("Weak form, before modifying for time: Dt("*string(lhs_expr[1])*") + "*string(lhs_expr[2])*" + surface("*string(lhs_surf_expr)*") = "*string(rhs_expr)*" + surface("*string(rhs_surf_expr)*")");
                 
-                (newlhs, newrhs) = reformat_for_stepper(lhs_expr, rhs_expr, Femshop.config.stepper);
+                (newlhs, newrhs) = reformat_for_stepper(lhs_expr, rhs_expr, lhs_surf_expr, rhs_surf_expr, Femshop.config.stepper);
                 #TODO reformat surface terms
                 
                 log_entry("Weak form, modified for time stepping: "*string(newlhs)*" + surface("*string(lhs_surf_expr)*") = "*string(newrhs)*" + surface("*string(rhs_surf_expr)*")");

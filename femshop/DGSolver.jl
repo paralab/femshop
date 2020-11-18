@@ -14,15 +14,16 @@ import ..Femshop: JULIA, CPP, MATLAB, SQUARE, IRREGULAR, UNIFORM_GRID, TREE, UNS
             LHS, RHS,
             LINEMESH, QUADMESH, HEXMESH
 import ..Femshop: log_entry, printerr
-import ..Femshop: config, prob, variables, mesh_data, grid_data, refel, time_stepper, elemental_order, face_data
+import ..Femshop: config, prob, variables, mesh_data, grid_data, refel, time_stepper, elemental_order
 import ..Femshop: Variable, Coefficient, GenFunction
 import ..Femshop: geometric_factors, build_deriv_matrix
 
 using LinearAlgebra, SparseArrays
 
 include("cg_boundary.jl"); # Can we use the CG versions here? 
-include("nonlinear.jl")
+include("nonlinear.jl");
 include("cg_matrixfree.jl");
+include("face_data.jl");
 
 function init_dgsolver()
     dim = config.dimension;
@@ -299,8 +300,8 @@ function assemble(var, bilinear, linear, face_bilinear, face_linear, t=0.0, dt=0
 		normal_s2 = face.normal[:,2];
 		
 		#evaluate weak form on for s1 and s2 and assemble
-        rhsargs = (val_s1, node_s1, normal_s1, xe1, val_s2, node_s2, normal_s2, xe2, refel, RHS, t, dt);
-        lhsargs = (val_s1, node_s1, normal_s1, xe1, val_s2, node_s2, normal_s2, xe2, refel, LHS, t, dt);
+        rhsargs = (var, val_s1, node_s1, normal_s1, xe1, val_s2, node_s2, normal_s2, xe2, refel, RHS, t, dt);
+        lhsargs = (var, val_s1, node_s1, normal_s1, xe1, val_s2, node_s2, normal_s2, xe2, refel, LHS, t, dt);
         if dofs_per_node == 1
             linchunk = face_linear.func(rhsargs);  # get the elemental linear part
             b[node_s1] .+= linchunk[1];

@@ -520,8 +520,15 @@ function generate_code_layer_julia(symex, var, lorr)
                 # end
                 
             end
-        else# one term (one variable)
+        elseif length(terms) == 1# one term (one variable)
             result = terms[1];
+            
+        else # there were no terms. Just return arrays of zeros
+            if lorr == LHS
+                result = :(zeros(refel.Np, refel.Np));
+            else
+                result = :(zeros(refel.Np));
+            end
         end
     end
     

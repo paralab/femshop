@@ -8,10 +8,10 @@ function generate_code_layer_surface(ex, var, lorr)
             printerr("surface integrals not ready for cachesim")
             return nothing;
         elseif language == CPP
-            printerr("Using cachesim. Not generating external code.")
+            printerr("surface integrals not ready for cachesim")
             return "";
         elseif language == MATLAB
-            printerr("Using cachesim. Not generating external code.")
+            printerr("surface integrals not ready for cachesim")
             return "";
         end
     else
@@ -36,25 +36,28 @@ end
 # Julia version returns an expression for the generated function for linear or bilinear term
 function generate_code_layer_julia_surface(symex, var, lorr)
     # This is the basic info passed in "args"
+    # args = (var, val_s1, node_s1, normal_s1, xe1, val_s2, node_s2, normal_s2, xe2, refel, face_refel, RHS/LHS, t, dt);
     code = Expr(:block);
-    push!(code.args, :(var = args[1]));
-    push!(code.args, :(x = args[2]));    # global coords of element's nodes
-    push!(code.args, :(gbl = args[3]));  # global indices of the nodes
-    push!(code.args, :(refel = args[4]));# 
-    push!(code.args, :(borl = args[5])); # bilinear or linear? lhs or rhs?
-    push!(code.args, :(time = args[6])); # time for time dependent coefficients
-    if prob.time_dependent
-        push!(code.args, :(dt = args[7])); # dt for time dependent problems
-    end
+    push!(code.args, :(var = args[1]));         # list of unknown variables for this expression
+    push!(code.args, :(val_s1 = args[2]));      # ??
+    push!(code.args, :(node_s1 = args[3]));     # global indices of the nodes on side 1
+    push!(code.args, :(normal_s1 = args[4]));   # normal vector on side 1
+    push!(code.args, :(xf1 = args[5]));         # global coords of element's nodes on side 1
+    push!(code.args, :(val_s2 = args[6]));      # ??
+    push!(code.args, :(node_s2 = args[7]));     # global indices of the nodes on side 2
+    push!(code.args, :(normal_s2 = args[8]));   # normal vector on side 2
+    push!(code.args, :(xf2 = args[9]));         # global coords of element's nodes on side 1
+    push!(code.args, :(refel = args[10]));      # reference element for volume
+    push!(code.args, :(face_refel = args[11])); # reference element for face
+    push!(code.args, :(borl = args[12]));       # bilinear or linear? lhs or rhs?
+    push!(code.args, :(time = args[13]));       # time for time dependent coefficients
+    push!(code.args, :(dt = args[14]));         # dt for time dependent problems
     
-    # A trick for uniform grids to avoid repeated work
-    if config.mesh_type == UNIFORM_GRID && config.geometry == SQUARE
-        push!(code.args, :(stiffness = args[8])); # dt for time dependent problems
-        push!(code.args, :(mass = args[9])); # dt for time dependent problems
-    end
-    
+    # Build geometric factors for both volume and surface
     push!(code.args, :((detJ, J) = geometric_factors(refel, x)));
+    push!(code.args, :((face_detJ, face_J) = geometric_factors(face_refel, xf1)));
     push!(code.args, :(wgdetj = refel.wg .* detJ));
+    push!(code.args, :(face_wgdetj = face_refel.wg .* face_detJ));
     
     need_derivative = false;
     needed_coef = [];
@@ -515,8 +518,15 @@ function generate_code_layer_julia_surface(symex, var, lorr)
                 # end
                 
             end
-        else# one term (one variable)
+        elseif length(terms) == 1# one term (one variable)
             result = terms[1];
+            
+        else # there were no terms. Just return arrays of zeros
+            if lorr == LHS
+                result = :(zeros(face_refel.Np, face_refel.Np));
+            else
+                result = :(zeros(face_refel.Np));
+            end
         end
     end
     

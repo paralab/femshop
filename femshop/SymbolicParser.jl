@@ -77,11 +77,12 @@ end
 # lhs contains terms including the unknown variable
 # rhs contains terms without it
 function sp_parse(ex, var)
+    debug = true;
     lhs = nothing;
     rhs = nothing;
     varcount = 1;
     timederiv = false;
-    #println("expr = "*string(ex));
+    if debug println("expr = "*string(ex)); end
     
     # Check that there are as many vars as exs
     if typeof(var) <: Array
@@ -97,19 +98,19 @@ function sp_parse(ex, var)
     
     # Insert parameters
     symex = insert_parameters(symex);
-    #println("insert parameters -> "*string(symex));
+    if debug println("insert parameters -> "*string(symex)); end
     
     # Replace symbols for variables, coefficients, test functions, and special operators
     symex = replace_symbols(symex);
-    #println("replace symbols -> "*string(symex));
+    if debug println("replace symbols -> "*string(symex)); end
     
     # Evaluate the expression to apply symbolic operators
     symex = apply_ops(symex);
-    #println("apply ops -> "*string(symex));
+    if debug println("apply ops -> "*string(symex)); end
     
     # Expand the expression and separate terms
     sterms = get_sym_terms(symex);
-    #println("sterms = "*string(sterms));
+    if debug println("sterms = "*string(sterms)); end
     
     # Check for time derivatives
     timederiv = check_for_dt(sterms);
@@ -170,12 +171,14 @@ function sp_parse(ex, var)
         end
     end
     
-    #println("LHS = "*string(lhs));
-    #println("RHS = "*string(rhs));
+    if debug println("volLHS = "*string(lhs)); end
+    if debug println("volRHS = "*string(rhs)); end
     if timederiv
-        #println("dtLHS = "*string(dtlhs));
-        #println("dtRHS = "*string(dtrhs));
+        if debug println("dtLHS = "*string(dtlhs)); end
+        if debug println("dtRHS = "*string(dtrhs)); end
         if has_surface
+            if debug println("surfLHS = "*string(surflhs)); end
+            if debug println("surfRHS = "*string(surfrhs)); end
             return ((dtlhs,lhs), rhs, surflhs, surfrhs);
         else
             return ((dtlhs,lhs), rhs);
@@ -183,6 +186,8 @@ function sp_parse(ex, var)
         
     else
         if has_surface
+            if debug println("surfLHS = "*string(surflhs)); end
+            if debug println("surfRHS = "*string(surfrhs)); end
             return (lhs, rhs, surflhs, surfrhs);
         else
             return (lhs, rhs);

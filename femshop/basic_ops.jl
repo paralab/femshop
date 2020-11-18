@@ -60,20 +60,84 @@ function sym_surface_op(ex)
             newex[i] = sym_surface_op(newex[i]);
         end
     elseif typeof(ex) == Basic
-        return SURF*ex;
+        return SURFACEINTEGRAL*ex;
     elseif typeof(ex) <: Number
-        return SURF*ex;
+        return SURFACEINTEGRAL*ex;
     end
     
     return newex;
 end
 
-function sym_ave_op(ex)
-    return ex;
+function sym_ave_op(var)
+    prefix = "DGAVERAGE_";
+    if typeof(var) <: Array
+        result = copy(var);
+        for i=1:length(result)
+            result[i] = sym_ave_op(var[i]);
+        end
+    elseif typeof(var) == Basic
+        result = symbols(prefix*string(var));
+    elseif typeof(var) <: Number
+        result = Basic(var);
+    end
+    return result;
 end
 
-function sym_jump_op(ex)
-    return ex;
+function sym_jump_op(var)
+    prefix = "DGJUMP_";
+    if typeof(var) <: Array
+        result = copy(var);
+        for i=1:length(result)
+            result[i] = sym_jump_op(var[i]);
+        end
+    elseif typeof(var) == Basic
+        result = symbols(prefix*string(var));
+    elseif typeof(var) <: Number
+        result = Basic(0);
+    end
+    return result;
+end
+
+function sym_ave_normdotgrad_op(var)
+    prefix = "DGAVENORMDOTGRAD_";
+    if typeof(var) <: Array
+        result = copy(var);
+        for i=1:length(result)
+            result[i] = sym_ave_normdotgrad_op(var[i]);
+        end
+    elseif typeof(var) == Basic
+        result = symbols(prefix*string(var));
+    elseif typeof(var) <: Number
+        result = Basic(0);
+    end
+    return result;
+end
+
+function sym_jump_normdotgrad_op(var)
+    prefix = "DGJUMPNORMDOTGRAD_";
+    if typeof(var) <: Array
+        result = copy(var);
+        for i=1:length(result)
+            result[i] = sym_jump_normdotgrad_op(var[i]);
+        end
+    elseif typeof(var) == Basic
+        result = symbols(prefix*string(var));
+    elseif typeof(var) <: Number
+        result = Basic(0);
+    end
+    return result;
+end
+
+function sym_normal_op()
+    DGNORMAL = symbols("DGNORMAL");
+    d = config.dimension;
+    if d==1
+        return [DGNORMAL_1];
+    elseif d==2
+        return [DGNORMAL_1, DGNORMAL_2];
+    elseif d==3
+        return [DGNORMAL_1, DGNORMAL_2, DGNORMAL_3];
+    end
 end
 
 #########################################################################
@@ -258,8 +322,11 @@ function sym_laplacian_op(u)
 end
 
 # Load them into the global arrays
-op_names = [:dot, :inner, :cross, :transpose, :surface, :ave, :jump, :Dt, :deriv, :grad, :div, :curl, :laplacian];
-_handles = [sym_dot_op, sym_inner_op, sym_cross_op, sym_transpose_op, sym_surface_op, sym_ave_op, sym_jump_op, sym_Dt_op, sym_deriv_op, sym_grad_op, sym_div_op, sym_curl_op, sym_laplacian_op];
+op_names = [:dot, :inner, :cross, :transpose, :surface, :ave, :jump, :ave_normdotgrad, :jump_normdotgrad, :normal, 
+            :Dt, :deriv, :grad, :div, :curl, :laplacian];
+_handles = [sym_dot_op, sym_inner_op, sym_cross_op, sym_transpose_op, sym_surface_op, sym_ave_op, sym_jump_op, 
+            sym_ave_normdotgrad_op, sym_jump_normdotgrad_op, sym_normal_op, sym_Dt_op, sym_deriv_op, sym_grad_op, 
+            sym_div_op, sym_curl_op, sym_laplacian_op];
 for i=1:length(op_names)
     push!(ops, SymOperator(op_names[i], _handles[i]));
 end
