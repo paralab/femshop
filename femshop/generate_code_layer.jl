@@ -1133,6 +1133,13 @@ function extract_symbols(ex)
         end
     end
     
+    # Change index from [a, b] to [a*d + b]
+    newindex = index[end];
+    for i=1:(length(index)-1)
+        newindex = newindex + (index[i]-1)*config.dimension^(length(index)-i);
+    end
+    index = [newindex];
+    
     # extract the modifiers like D1_ -> :Dx
     if b>1
         e = b-1;
