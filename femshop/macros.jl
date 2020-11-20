@@ -360,11 +360,11 @@ macro weakForm(var, ex)
                     global rhsstring = rhsstring*" + "*string(rhs_expr[i][j]);
                 end
                 if length(result_exprs) == 4
-                    for j=1:length(lhs_surf_expr[i])
-                        global lhsstring = lhsstring*" + surface("*string(lhs_surf_expr[i][j])*")";
+                    for j=1:length(lhs_surf_expr)
+                        global lhsstring = lhsstring*" + surface("*string(lhs_surf_expr[j])*")";
                     end
-                    for j=1:length(rhs_surf_expr[i])
-                        global rhsstring = rhsstring*" + surface("*string(rhs_surf_expr[i][j])*")";
+                    for j=1:length(rhs_surf_expr)
+                        global rhsstring = rhsstring*" + surface("*string(rhs_surf_expr[j])*")";
                     end
                 end
                 lhsstring = lhsstring*"\n";

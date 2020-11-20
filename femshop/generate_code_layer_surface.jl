@@ -97,8 +97,8 @@ function generate_code_layer_julia_surface(symex, var, lorr)
         terms = terms_to_expr(symex);
     end
     
-    # two sets for two sides
-    terms = [terms, terms];
+    # 4 sets
+    terms = [copy(terms),copy(terms),copy(terms),copy(terms)];
     
     # Process the terms turning them into the code layer
     if multivar
@@ -143,6 +143,8 @@ function generate_code_layer_julia_surface(symex, var, lorr)
             push!(trial_ind, trialj);
             terms[1][i] = codeterms[1];
             terms[2][i] = codeterms[2];
+            terms[3][i] = codeterms[3];
+            terms[4][i] = codeterms[4];
         end
     end
     
@@ -421,16 +423,18 @@ function generate_code_layer_julia_surface(symex, var, lorr)
     end
     
     # If it was empty, just return zeros without doing any work
-    if length(terms[1])==0 && length(terms[2])==0
+    if length(terms[1])==0 && length(terms[2])==0 && length(terms[3])==0 && length(terms[4])==0
         if lorr == LHS
-            return :(return (zeros(args[14].Np*$dofsper, args[14].Np*$dofsper), zeros(args[14].Np*$dofsper, args[14].Np*$dofsper)));
+            return :(A=zeros(args[14].Np*$dofsper, args[14].Np*$dofsper); return (A, A, A, A));
         else
-            return :(return (zeros(args[14].Np*$dofsper), zeros(args[14].Np*$dofsper)));
+            return :(b=zeros(args[14].Np*$dofsper); return (b, b, b, b));
         end
     end
     
-    result1 = nothing; # Will hold the returned expression
-    result2 = nothing;
+    result = Array{Any,1}(undef,4); # Will hold the returned expression
+    for i=1:4
+        result[i] = nothing;
+    end
     if typeof(var) <: Array # multivar
         println("multivar not ready");
         # for vi=1:length(var)
@@ -509,208 +513,131 @@ function generate_code_layer_julia_surface(symex, var, lorr)
         #     end
         # end
     else
-        if length(terms[1]) > 1
-            if var.type == SCALAR # Only one component
-                tmp1 = :(a+b);
-                tmp1.args = [:+];
-                for i=1:length(terms[1])
-                    push!(tmp1.args, terms[1][i]);
-                end
-                result1 = tmp1;
-            else # More than one component
-                # Add terms into full matrix according to testind/trialind
-                # Each component/dof should have one expression so that submatrix is only modified once.
-                if lorr == LHS
-                    comps = length(var.symvar.vals);
-                    submatrices = Array{Any,2}(undef, comps, comps);
-                    for smi=1:length(submatrices)
-                        submatrices[smi] = nothing;
+        for termind=1:4
+            if length(terms[termind]) > 1
+                if var.type == SCALAR # Only one component
+                    tmp1 = :(a.+b);
+                    tmp1.args = [:.+];
+                    for i=1:length(terms[termind])
+                        push!(tmp1.args, terms[termind][i]);
                     end
-                    for i=1:length(terms[1])
-                        ti = test_ind[i][1];
-                        tj = trial_ind[i][1];
-                        
-                        if submatrices[ti, tj] === nothing
-                            submatrices[ti, tj] = terms[1][i];
-                        else
-                            addexpr = :(a+b);
-                            addexpr.args[2] = submatrices[ti, tj];
-                            addexpr.args[3] = terms[1][i];
-                            submatrices[ti, tj] = addexpr;
+                    result[termind] = tmp1;
+                else # More than one component
+                    # Add terms into full matrix according to testind/trialind
+                    # Each component/dof should have one expression so that submatrix is only modified once.
+                    if lorr == LHS
+                        comps = length(var.symvar.vals);
+                        submatrices = Array{Any,2}(undef, comps, comps);
+                        for smi=1:length(submatrices)
+                            submatrices[smi] = nothing;
                         end
-                    end
-                    
-                    for cj=1:comps
-                        for ci=1:comps
-                            if !(submatrices[ci, cj] === nothing)
-                                ti = ci-1;
-                                tj = cj-1;
-                                sti = :($ti*refel.Np + 1);
-                                eni = :(($ti + 1)*refel.Np);
-                                stj = :($tj*refel.Np + 1);
-                                enj = :(($tj + 1)*refel.Np);
-                                
-                                push!(code.args, Expr(:(+=), :(element_matrix_s1[$sti:$eni, $stj:$enj]), submatrices[ci, cj]));
+                        for i=1:length(terms[termind])
+                            ti = test_ind[i][1];
+                            tj = trial_ind[i][1];
+                            
+                            if submatrices[ti, tj] === nothing
+                                submatrices[ti, tj] = terms[termind][i];
+                            else
+                                addexpr = :(a.+b);
+                                addexpr.args[2] = submatrices[ti, tj];
+                                addexpr.args[3] = terms[termind][i];
+                                submatrices[ti, tj] = addexpr;
                             end
                         end
-                    end
-                    
-                    result2 = :element_matrix_s1;
-                    
-                else #RHS
-                    comps = length(var.symvar.vals);
-                    submatrices = Array{Any,1}(undef, comps);
-                    for smi=1:length(submatrices)
-                        submatrices[smi] = nothing;
-                    end
-                    for i=1:length(terms[1])
-                        ti = test_ind[i][1];
                         
-                        if submatrices[ti] === nothing
-                            submatrices[ti] = terms[1][i];
-                        else
-                            addexpr = :(a+b);
-                            addexpr.args[2] = submatrices[ti];
-                            addexpr.args[3] = terms[1][i];
-                            submatrices[ti] = addexpr;
-                        end
-                    end
-                    
-                    for ci=1:comps
-                        if !(submatrices[ci] === nothing)
-                            ti = ci-1;
-                            sti = :($ti*refel.Np + 1);
-                            eni = :(($ti + 1)*refel.Np);
-                            
-                            push!(code.args, Expr(:(+=), :(element_vector_s1[$sti:$eni]), submatrices[ci]));
-                        end
-                    end
-                    
-                    result1 = :element_vector_s1;
-                    
-                end
-            end
-        elseif length(terms[1]) == 1# one term (one variable)
-            result1 = terms[1][1];
-        end
-        # Do the same for side 2
-        if length(terms[2]) > 1
-            if var.type == SCALAR # Only one component
-                tmp2 = :(a+b);
-                tmp2.args = [:+];
-                for i=1:length(terms[2])
-                    push!(tmp2.args, terms[2][i]);
-                end
-                result2 = tmp1;
-            else # More than one component
-                # Add terms into full matrix according to testind/trialind
-                # Each component/dof should have one expression so that submatrix is only modified once.
-                if lorr == LHS
-                    comps = length(var.symvar.vals);
-                    submatrices = Array{Any,2}(undef, comps, comps);
-                    for smi=1:length(submatrices)
-                        submatrices[smi] = nothing;
-                    end
-                    for i=1:length(terms[2])
-                        ti = test_ind[i][1];
-                        tj = trial_ind[i][1];
-                        
-                        if submatrices[ti, tj] === nothing
-                            submatrices[ti, tj] = terms[2][i];
-                        else
-                            addexpr = :(a+b);
-                            addexpr.args[2] = submatrices[ti, tj];
-                            addexpr.args[3] = terms[2][i];
-                            submatrices[ti, tj] = addexpr;
-                        end
-                    end
-                    
-                    for cj=1:comps
-                        for ci=1:comps
-                            if !(submatrices[ci, cj] === nothing)
-                                ti = ci-1;
-                                tj = cj-1;
-                                sti = :($ti*refel.Np + 1);
-                                eni = :(($ti + 1)*refel.Np);
-                                stj = :($tj*refel.Np + 1);
-                                enj = :(($tj + 1)*refel.Np);
-                                
-                                push!(code.args, Expr(:(+=), :(element_matrix_s2[$sti:$eni, $stj:$enj]), submatrices[ci, cj]));
+                        for cj=1:comps
+                            for ci=1:comps
+                                if !(submatrices[ci, cj] === nothing)
+                                    ti = ci-1;
+                                    tj = cj-1;
+                                    sti = :($ti*refel.Np + 1);
+                                    eni = :(($ti + 1)*refel.Np);
+                                    stj = :($tj*refel.Np + 1);
+                                    enj = :(($tj + 1)*refel.Np);
+                                    
+                                    push!(code.args, Expr(:(+=), :(element_matrix_s1[$sti:$eni, $stj:$enj]), submatrices[ci, cj]));
+                                end
                             end
                         end
-                    end
-                    
-                    result2 = :element_matrix_s2;
-                    
-                else #RHS
-                    comps = length(var.symvar.vals);
-                    submatrices = Array{Any,1}(undef, comps);
-                    for smi=1:length(submatrices)
-                        submatrices[smi] = nothing;
-                    end
-                    for i=1:length(terms[2])
-                        ti = test_ind[i][1];
                         
-                        if submatrices[ti] === nothing
-                            submatrices[ti] = terms[2][i];
-                        else
-                            addexpr = :(a+b);
-                            addexpr.args[2] = submatrices[ti];
-                            addexpr.args[3] = terms[2][i];
-                            submatrices[ti] = addexpr;
+                        result[termind]= :element_matrix_s1;
+                        
+                    else #RHS
+                        comps = length(var.symvar.vals);
+                        submatrices = Array{Any,1}(undef, comps);
+                        for smi=1:length(submatrices)
+                            submatrices[smi] = nothing;
                         end
-                    end
-                    
-                    for ci=1:comps
-                        if !(submatrices[ci] === nothing)
-                            ti = ci-1;
-                            sti = :($ti*refel.Np + 1);
-                            eni = :(($ti + 1)*refel.Np);
+                        for i=1:length(terms[termind])
+                            ti = test_ind[i][1];
                             
-                            push!(code.args, Expr(:(+=), :(element_vector_s2[$sti:$eni]), submatrices[ci]));
+                            if submatrices[ti] === nothing
+                                submatrices[ti] = terms[termind][i];
+                            else
+                                addexpr = :(a.+b);
+                                addexpr.args[2] = submatrices[ti];
+                                addexpr.args[3] = terms[termind][i];
+                                submatrices[ti] = addexpr;
+                            end
                         end
+                        
+                        for ci=1:comps
+                            if !(submatrices[ci] === nothing)
+                                ti = ci-1;
+                                sti = :($ti*refel.Np + 1);
+                                eni = :(($ti + 1)*refel.Np);
+                                
+                                push!(code.args, Expr(:(+=), :(element_vector_s1[$sti:$eni]), submatrices[ci]));
+                            end
+                        end
+                        
+                        result[termind] = :element_vector_s1;
+                        
                     end
-                    
-                    result2 = :element_vector_s2;
-                    
                 end
+            elseif length(terms[termind]) == 1# one term (one variable)
+                result[termind] = terms[termind][1];
             end
-        elseif length(terms[2]) == 1# one term (one variable)
-            result2 = terms[2][1];
         end
+        
     end
     
-    result = :((a,b));
-    result.args[1] = result1;
-    result.args[2] = result2;
-    push!(code.args, Expr(:return, result));
+    finalresult = :((a,b,c,d));
+    finalresult.args[1] = result[1];
+    finalresult.args[2] = result[2];
+    finalresult.args[3] = result[3];
+    finalresult.args[4] = result[4];
+    push!(code.args, Expr(:return, finalresult));
     return code;
 end
 
 # Changes the symbolic layer term into a code layer term
 # also records derivative and coefficient needs
 function process_surface_term_julia(sterm, var, lorr, offset_ind=0)
-    term1 = copy(sterm);
-    term2 = copy(sterm);
+    terms = [copy(sterm),copy(sterm),copy(sterm),copy(sterm)];
     need_derivative = false;
     need_derivative_for_coefficient = false;
     needed_coef = [];
     needed_coef_ind = [];
     needed_coef_deriv = [];
     
-    test_part1 = nothing;
-    trial_part1 = nothing;
-    coef_part1 = nothing;
-    test_part2 = nothing;
-    trial_part2 = nothing;
-    coef_part2 = nothing;
-    weight_part1 = :face_wgdetj_s1;
-    weight_part2 = :face_wgdetj_s2;
+    # test_parts = [nothing,nothing,nothing,nothing];
+    # coef_parts = [nothing,nothing,nothing,nothing];
+    # trial_parts = [nothing,nothing,nothing,nothing];
+    test_parts = Array{Any,1}(undef,4);
+    coef_parts = Array{Any,1}(undef,4);
+    trial_parts = Array{Any,1}(undef,4);
+    for i=1:4
+        test_parts[i] = nothing;
+        coef_parts[i] = nothing;
+        trial_parts[i] = nothing;
+    end
+    weight_parts = [:face_wgdetj_s1,:face_wgdetj_s2,:face_wgdetj_s1,:face_wgdetj_s2];
     test_component = 0;
     trial_component = 0;
     
     # extract each of the factors.
-    factors = separate_factors(term1);
+    factors = separate_factors(terms[1]);
     
     # strip off all negatives, combine and reattach at the end
     neg = false;
@@ -742,7 +669,7 @@ function process_surface_term_julia(sterm, var, lorr, offset_ind=0)
                 append!(needed_coef, nc);
                 append!(needed_coef_ind, nci);
                 append!(needed_coef_deriv, ncd);
-                factors[i].args[3] = piece[1];
+                factors[i].args[3] = piece;
                 push!(coef_expr_facs, factors[i]);
                 #push!(coef_inds, 0);
                 
@@ -753,14 +680,14 @@ function process_surface_term_julia(sterm, var, lorr, offset_ind=0)
                 append!(needed_coef, nc);
                 append!(needed_coef_ind, nci);
                 append!(needed_coef_deriv, ncd);
-                factors[i].args[2] = piece1[1];
+                factors[i].args[2] = piece1;
                 # Do the same for the power just in case
                 (piece2, nd, nc, nci, ncd) = process_known_expr_julia(factors[i].args[3]);
                 need_derivative = need_derivative || nd;
                 append!(needed_coef, nc);
                 append!(needed_coef_ind, nci);
                 append!(needed_coef_deriv, ncd);
-                factors[i].args[3] = piece2[1];
+                factors[i].args[3] = piece2;
                 
                 push!(coef_expr_facs, factors[i]);
                 #push!(coef_inds, 0);
@@ -772,7 +699,7 @@ function process_surface_term_julia(sterm, var, lorr, offset_ind=0)
                 append!(needed_coef, nc);
                 append!(needed_coef_ind, nci);
                 append!(needed_coef_deriv, ncd);
-                factors[i].args[2] = piece1[1];
+                factors[i].args[2] = piece1;
                 # add a 1/2 power argument
                 push!(factors[i].args, 1/2);
                 
@@ -794,30 +721,46 @@ function process_surface_term_julia(sterm, var, lorr, offset_ind=0)
                             #test_part = :((TRQ1[:,fmap_s1] .* normal_s1[1] + TRQ1[:,fmap_s2] .* normal_s1[1]) .* 0.5);
                             # test_part1 = :((TRQ1[:,fmap_s1] .* normal_s1[1]) .* 0.5);
                             # test_part2 = :((TRQ1[:,fmap_s2] .* normal_s1[1]) .* 0.5);
-                            test_part1 = :((TRQ1 .* normal_s1[1]) .* 0.5);
-                            test_part2 = :((TRQ1 .* normal_s1[1]) .* 0.5);
+                            # test_part1 = :((TRQ1 .* normal_s1[1]) .* 0.5);
+                            # test_part2 = :((TRQ1 .* normal_s1[1]) .* 0.5);
+                            test_parts[1] = :((TRQ1 .* normal_s1[1]) .* 0.5);
+                            test_parts[2] = :((TRQ1 .* normal_s1[1]) .* 0.5);
+                            test_parts[3] = :((TRQ1 .* normal_s2[1]) .* 0.5);
+                            test_parts[4] = :((TRQ1 .* normal_s2[1]) .* 0.5);
                         elseif config.dimension == 2
                             # test_part = :((TRQ1[:,fmap_s1] .* normal_s1[1] + TRQ2[:,fmap_s1] .* normal_s1[2] + 
                             #                 TRQ1[:,fmap_s2] .* normal_s1[1] + TRQ2[:,fmap_s2] .* normal_s1[2]) .* 0.5);
                             # test_part1 = :((TRQ1[:,fmap_s1] .* normal_s1[1] + TRQ2[:,fmap_s1] .* normal_s1[2]) .* 0.5);
                             # test_part2 = :((TRQ1[:,fmap_s2] .* normal_s1[1] + TRQ2[:,fmap_s2] .* normal_s1[2]) .* 0.5);
-                            test_part1 = :((TRQ1 .* normal_s1[1] + TRQ2 .* normal_s1[2]) .* 0.5);
-                            test_part2 = :((TRQ1 .* normal_s1[1] + TRQ2 .* normal_s1[2]) .* 0.5);
+                            # test_part1 = :((TRQ1 .* normal_s1[1] + TRQ2 .* normal_s1[2]) .* 0.5);
+                            # test_part2 = :((TRQ1 .* normal_s1[1] + TRQ2 .* normal_s1[2]) .* 0.5);
+                            test_parts[1] = :((TRQ1 .* normal_s1[1] + TRQ2 .* normal_s1[2]) .* 0.5);
+                            test_parts[2] = :((TRQ1 .* normal_s1[1] + TRQ2 .* normal_s1[2]) .* 0.5);
+                            test_parts[3] = :((TRQ1 .* normal_s2[1] + TRQ2 .* normal_s2[2]) .* 0.5);
+                            test_parts[4] = :((TRQ1 .* normal_s2[1] + TRQ2 .* normal_s2[2]) .* 0.5);
                         elseif config.dimension == 3
                             # test_part = :((TRQ1[:,fmap_s1] .* normal_s1[1] + TRQ2[:,fmap_s1] .* normal_s1[2] + TRQ3[:,fmap_s1] .* normal_s1[3] +
                             #                 TRQ1[:,fmap_s2] .* normal_s1[1] + TRQ2[:,fmap_s2] .* normal_s1[2] + TRQ3[:,fmap_s2] .* normal_s1[3]) .* 0.5);
                             # test_part1 = :((TRQ1[:,fmap_s1] .* normal_s1[1] + TRQ2[:,fmap_s1] .* normal_s1[2] + TRQ3[:,fmap_s1] .* normal_s1[3]) .* 0.5);
                             # test_part2 = :((TRQ1[:,fmap_s2] .* normal_s1[1] + TRQ2[:,fmap_s2] .* normal_s1[2] + TRQ3[:,fmap_s2] .* normal_s1[3]) .* 0.5);
-                            test_part1 = :((TRQ1 .* normal_s1[1] + TRQ2 .* normal_s1[2] + TRQ3 .* normal_s1[3]) .* 0.5);
-                            test_part2 = :((TRQ1 .* normal_s1[1] + TRQ2 .* normal_s1[2] + TRQ3 .* normal_s1[3]) .* 0.5);
+                            # test_part1 = :((TRQ1 .* normal_s1[1] + TRQ2 .* normal_s1[2] + TRQ3 .* normal_s1[3]) .* 0.5);
+                            # test_part2 = :((TRQ1 .* normal_s1[1] + TRQ2 .* normal_s1[2] + TRQ3 .* normal_s1[3]) .* 0.5);
+                            test_parts[1] = :((TRQ1 .* normal_s1[1] + TRQ2 .* normal_s1[2] + TRQ3 .* normal_s1[3]) .* 0.5);
+                            test_parts[2] = :((TRQ1 .* normal_s1[1] + TRQ2 .* normal_s1[2] + TRQ3 .* normal_s1[3]) .* 0.5);
+                            test_parts[3] = :((TRQ1 .* normal_s2[1] + TRQ2 .* normal_s2[2] + TRQ3 .* normal_s2[3]) .* 0.5);
+                            test_parts[4] = :((TRQ1 .* normal_s2[1] + TRQ2 .* normal_s2[2] + TRQ3 .* normal_s2[3]) .* 0.5);
                         end
                     elseif occursin("DGAVE", mods[1])
                         # {{u}} -> (fmap_s1(Q) + fmap_s2(Q))*0.5
                         #test_part = :((refel.Q[fmap_s1,:] + refel.Q[fmap_s2,:])' .* 0.5);
                         # test_part1 = :((refel.Q[fmap_s1,:])' .* 0.5);
                         # test_part2 = :((refel.Q[fmap_s2,:])' .* 0.5);
-                        test_part1 = :((refel.Q)' .* 0.5);
-                        test_part2 = :((refel.Q)' .* 0.5);
+                        # test_part1 = :((refel.Q)' .* 0.5);
+                        # test_part2 = :((refel.Q)' .* 0.5);
+                        test_parts[1] = :((refel.Q)' .* 0.5);
+                        test_parts[2] = :((refel.Q)' .* 0.5);
+                        test_parts[3] = :((refel.Q)' .* 0.5);
+                        test_parts[4] = :((refel.Q)' .* 0.5);
                     elseif occursin("DGJUMPNORMDOTGRAD", mods[1])
                         # [[n.grad(u)]]
                         need_derivative = true;
@@ -825,48 +768,68 @@ function process_surface_term_julia(sterm, var, lorr, offset_ind=0)
                             #test_part = :((TRQ1[:,fmap_s1] .* normal_s1[1] - TRQ1[:,fmap_s2] .* normal_s1[1]));
                             # test_part1 = :((TRQ1[:,fmap_s1] .* normal_s1[1]));
                             # test_part2 = :((TRQ1[:,fmap_s2] .* -normal_s1[1]));
-                            test_part1 = :((TRQ1 .* normal_s1[1]));
-                            test_part2 = :((TRQ1 .* -normal_s1[1]));
+                            # test_part1 = :((TRQ1 .* normal_s1[1]));
+                            # test_part2 = :((TRQ1 .* -normal_s1[1]));
+                            test_parts[1] = :((TRQ1 .* normal_s1[1]));
+                            test_parts[2] = :((TRQ1 .* -normal_s1[1]));
+                            test_parts[3] = :((TRQ1 .* normal_s2[1]));
+                            test_parts[4] = :((TRQ1 .* -normal_s2[1]));
                         elseif config.dimension == 2
                             # test_part = :((TRQ1[:,fmap_s1] .* normal_s1[1] + TRQ2[:,fmap_s1] .* normal_s1[2] - 
                             #                 TRQ1[:,fmap_s2] .* normal_s1[1] - TRQ2[:,fmap_s2] .* normal_s1[2]));
                             # test_part1 = :((TRQ1[:,fmap_s1] .* normal_s1[1] + TRQ2[:,fmap_s1] .* normal_s1[2]));
                             # test_part2 = :((TRQ1[:,fmap_s2] .* -normal_s1[1] + TRQ2[:,fmap_s2] .* -normal_s1[2]));
-                            test_part1 = :((TRQ1 .* normal_s1[1] + TRQ2 .* normal_s1[2]));
-                            test_part2 = :((TRQ1 .* -normal_s1[1] + TRQ2 .* -normal_s1[2]));
+                            # test_part1 = :((TRQ1 .* normal_s1[1] + TRQ2 .* normal_s1[2]));
+                            # test_part2 = :((TRQ1 .* -normal_s1[1] + TRQ2 .* -normal_s1[2]));
+                            test_parts[1] = :((TRQ1 .* normal_s1[1] + TRQ2 .* normal_s1[2]));
+                            test_parts[2] = :((TRQ1 .* -normal_s1[1] + TRQ2 .* -normal_s1[2]));
+                            test_parts[3] = :((TRQ1 .* normal_s2[1] + TRQ2 .* normal_s2[2]));
+                            test_parts[4] = :((TRQ1 .* -normal_s2[1] + TRQ2 .* -normal_s2[2]));
                         elseif config.dimension == 3
                             # test_part = :((TRQ1[:,fmap_s1] .* normal_s1[1] + TRQ2[:,fmap_s1] .* normal_s1[2] + TRQ3[:,fmap_s1] .* normal_s1[3] -
                             #                 TRQ1[:,fmap_s2] .* normal_s1[1] - TRQ2[:,fmap_s2] .* normal_s1[2] - TRQ3[:,fmap_s2] .* normal_s1[3]));
                             # test_part1 = :((TRQ1[:,fmap_s1] .* normal_s1[1] + TRQ2[:,fmap_s1] .* normal_s1[2] + TRQ3[:,fmap_s1] .* normal_s1[3]));
                             # test_part2 = :((TRQ1[:,fmap_s2] .* -normal_s1[1] + TRQ2[:,fmap_s2] .* -normal_s1[2] + TRQ3[:,fmap_s2] .* -normal_s1[3]));
-                            test_part1 = :((TRQ1 .* normal_s1[1] + TRQ2 .* normal_s1[2] + TRQ3 .* normal_s1[3]));
-                            test_part2 = :((TRQ1 .* -normal_s1[1] + TRQ2 .* -normal_s1[2] + TRQ3 .* -normal_s1[3]));
+                            # test_part1 = :((TRQ1 .* normal_s1[1] + TRQ2 .* normal_s1[2] + TRQ3 .* normal_s1[3]));
+                            # test_part2 = :((TRQ1 .* -normal_s1[1] + TRQ2 .* -normal_s1[2] + TRQ3 .* -normal_s1[3]));
+                            test_parts[1] = :((TRQ1 .* normal_s1[1] + TRQ2 .* normal_s1[2] + TRQ3 .* normal_s1[3]));
+                            test_parts[2] = :((TRQ1 .* -normal_s1[1] + TRQ2 .* -normal_s1[2] + TRQ3 .* -normal_s1[3]));
+                            test_parts[3] = :((TRQ1 .* normal_s2[1] + TRQ2 .* normal_s2[2] + TRQ3 .* normal_s2[3]));
+                            test_parts[4] = :((TRQ1 .* -normal_s2[1] + TRQ2 .* -normal_s2[2] + TRQ3 .* -normal_s2[3]));
                         end
                     elseif occursin("DGJUMP", mods[1])
                         # [[u]] -> (fmap_s1(Q) - fmap_s2(Q))
                         #test_part = :((refel.Q[fmap_s1,:] - refel.Q[fmap_s2,:])');
                         # test_part1 = :((refel.Q[fmap_s1,:])');
                         # test_part2 = :((-refel.Q[fmap_s2,:])');
-                        test_part1 = :((refel.Q)');
-                        test_part2 = :((-refel.Q)');
+                        # test_part1 = :((refel.Q)');
+                        # test_part2 = :((-refel.Q)');
+                        test_parts[1] = :((refel.Q)');
+                        test_parts[2] = :(-(refel.Q)');
+                        test_parts[3] = :(-(refel.Q)');
+                        test_parts[4] = :((refel.Q)');
                     elseif occursin("D", mods[1])
                         # TODO more than one derivative mod
                         need_derivative = true;
                         dmat = Symbol("TRQ"*mods[1][2]);
-                        test_part1 = dmat;
-                        test_part2 = dmat;
+                        test_parts[1] = dmat;
+                        test_parts[2] = 0;
+                        test_parts[3] = dmat;
+                        test_parts[4] = 0;
                     end
                 else
                     # no mods
-                    test_part1 = :(refel.Q');
-                    test_part2 = :(refel.Q');
+                    test_parts[1] = :(refel.Q');
+                    test_parts[2] = 0;
+                    test_parts[3] = :(refel.Q');
+                    test_parts[4] = 0;
                 end
             elseif is_unknown_var(v, var) && lorr == LHS # If rhs, treat as a coefficient
-                if !(trial_part1 === nothing)
-                    # Two unknowns multiplied in this term. Nonlinear. abort.
-                    printerr("Nonlinear term. Code layer incomplete.");
-                    return (-1, -1, -1, -1, -1, -1);
-                end
+                # if !(trial_parts[1] === nothing)
+                #     # Two unknowns multiplied in this term. Nonlinear. abort.
+                #     printerr("Nonlinear term. Code layer incomplete.");
+                #     return (-1, -1, -1, -1, -1, -1);
+                # end
                 trial_component = index;
                 #offset component for multivar
                 trial_var = var;
@@ -884,59 +847,65 @@ function process_surface_term_julia(sterm, var, lorr, offset_ind=0)
                         # {{n.grad(u)}}
                         need_derivative = true;
                         if config.dimension == 1
-                            #trial_part = :((RQ1[fmap_s1,:] .* normal_s1[1] + RQ1[fmap_s2,:] .* normal_s1[1]) .* 0.5);
-                            trial_part1 = :((RQ1 .* normal_s1[1]) .* 0.5);
-                            trial_part2 = :((RQ1 .* normal_s1[1]) .* 0.5);
+                            trial_parts[1] = :((RQ1 .* normal_s1[1]) .* 0.5);
+                            trial_parts[2] = :((RQ1 .* normal_s1[1]) .* 0.5);
+                            trial_parts[3] = :((RQ1 .* normal_s2[1]) .* 0.5);
+                            trial_parts[4] = :((RQ1 .* normal_s2[1]) .* 0.5);
                         elseif config.dimension == 2
-                            # trial_part = :((RQ1[fmap_s1,:] .* normal_s1[1] + RQ2[fmap_s1,:] .* normal_s1[2] + 
-                            #                 RQ1[fmap_s2,:] .* normal_s1[1] + RQ2[fmap_s2,:] .* normal_s1[2]) .* 0.5);
-                            trial_part1 = :((RQ1 .* normal_s1[1] + RQ2 .* normal_s1[2]) .* 0.5);
-                            trial_part2 = :((RQ1 .* normal_s1[1] + RQ2 .* normal_s1[2]) .* 0.5);
+                            trial_parts[1] = :((RQ1 .* normal_s1[1] + RQ2 .* normal_s1[2]) .* 0.5);
+                            trial_parts[2] = :((RQ1 .* normal_s1[1] + RQ2 .* normal_s1[2]) .* 0.5);
+                            trial_parts[3] = :((RQ1 .* normal_s2[1] + RQ2 .* normal_s2[2]) .* 0.5);
+                            trial_parts[4] = :((RQ1 .* normal_s2[1] + RQ2 .* normal_s2[2]) .* 0.5);
                         elseif config.dimension == 3
-                            # trial_part = :((RQ1[fmap_s1,:] .* normal_s1[1] + RQ2[fmap_s1,:] .* normal_s1[2] + RQ3[fmap_s1,:] .* normal_s1[3] +
-                            #                 RQ1[fmap_s2,:] .* normal_s1[1] + RQ2[fmap_s2,:] .* normal_s1[2] + RQ3[fmap_s2,:] .* normal_s1[3]) .* 0.5);
-                            trial_part1 = :((RQ1 .* normal_s1[1] + RQ2 .* normal_s1[2] + RQ3 .* normal_s1[3]) .* 0.5);
-                            trial_part2 = :((RQ1 .* normal_s1[1] + RQ2 .* normal_s1[2] + RQ3 .* normal_s1[3]) .* 0.5);
+                            trial_parts[1] = :((RQ1 .* normal_s1[1] + RQ2 .* normal_s1[2] + RQ3 .* normal_s1[3]) .* 0.5);
+                            trial_parts[2] = :((RQ1 .* normal_s1[1] + RQ2 .* normal_s1[2] + RQ3 .* normal_s1[3]) .* 0.5);
+                            trial_parts[3] = :((RQ1 .* normal_s2[1] + RQ2 .* normal_s2[2] + RQ3 .* normal_s2[3]) .* 0.5);
+                            trial_parts[4] = :((RQ1 .* normal_s2[1] + RQ2 .* normal_s2[2] + RQ3 .* normal_s2[3]) .* 0.5);
                         end
                     elseif occursin("DGAVE", mods[1])
-                        # {{u}} -> (fmap_s1(Q) + fmap_s2(Q))*0.5
-                        #trial_part = :((refel.Q[fmap_s1,:] + refel.Q[fmap_s2,:])' .* 0.5);
-                        trial_part1 = :((refel.Q) .* 0.5);
-                        trial_part2 = :((refel.Q) .* 0.5);
+                        trial_parts[1] = :((refel.Q) .* 0.5);
+                        trial_parts[2] = :((refel.Q) .* 0.5);
+                        trial_parts[3] = :((refel.Q) .* 0.5);
+                        trial_parts[4] = :((refel.Q) .* 0.5);
                     elseif occursin("DGJUMPNORMDOTGRAD", mods[1])
                         # [[n.grad(u)]]
                         need_derivative = true;
                         if config.dimension == 1
-                            #trial_part = :((RQ1[fmap_s1,:] .* normal_s1[1] - RQ1[fmap_s2,:] .* normal_s1[1]));
-                            trial_part1 = :((RQ1 .* normal_s1[1]));
-                            trial_part2 = :((RQ1 .* -normal_s1[1]));
+                            trial_parts[1] = :((RQ1 .* normal_s1[1]));
+                            trial_parts[2] = :((RQ1 .* -normal_s1[1]));
+                            trial_parts[3] = :((RQ1 .* normal_s2[1]));
+                            trial_parts[4] = :((RQ1 .* -normal_s2[1]));
                         elseif config.dimension == 2
-                            # trial_part = :((RQ1[fmap_s1,:] .* normal_s1[1] + RQ2[fmap_s1,:] .* normal_s1[2] - 
-                            #                 RQ1[fmap_s2,:] .* normal_s1[1] - RQ2[fmap_s2,:] .* normal_s1[2]));
-                            trial_part1 = :((RQ1 .* normal_s1[1] + RQ2 .* normal_s1[2]));
-                            trial_part2 = :((RQ1 .* -normal_s1[1] + RQ2 .* -normal_s1[2]));
+                            trial_parts[1] = :((RQ1 .* normal_s1[1] + RQ2 .* normal_s1[2]));
+                            trial_parts[2] = :((RQ1 .* -normal_s1[1] + RQ2 .* -normal_s1[2]));
+                            trial_parts[3] = :((RQ1 .* normal_s2[1] + RQ2 .* normal_s2[2]));
+                            trial_parts[4] = :((RQ1 .* -normal_s2[1] + RQ2 .* -normal_s2[2]));
                         elseif config.dimension == 3
-                            # trial_part = :((RQ1[fmap_s1,:] .* normal_s1[1] + RQ2[fmap_s1,:] .* normal_s1[2] + RQ3[fmap_s1,:] .* normal_s1[3] -
-                            #                 RQ1[fmap_s2,:] .* normal_s1[1] - RQ2[fmap_s2,:] .* normal_s1[2] - RQ3[fmap_s2,:] .* normal_s1[3]));
-                            trial_part1 = :((RQ1 .* normal_s1[1] + RQ2 .* normal_s1[2] + RQ3 .* normal_s1[3]));
-                            trial_part2 = :((RQ1 .* -normal_s1[1] + RQ2 .* -normal_s1[2] + RQ3 .* -normal_s1[3]));
+                            trial_parts[1] = :((RQ1 .* normal_s1[1] + RQ2 .* normal_s1[2] + RQ3 .* normal_s1[3]));
+                            trial_parts[2] = :((RQ1 .* -normal_s1[1] + RQ2 .* -normal_s1[2] + RQ3 .* -normal_s1[3]));
+                            trial_parts[3] = :((RQ1 .* normal_s2[1] + RQ2 .* normal_s2[2] + RQ3 .* normal_s2[3]));
+                            trial_parts[4] = :((RQ1 .* -normal_s2[1] + RQ2 .* -normal_s2[2] + RQ3 .* -normal_s2[3]));
                         end
                     elseif occursin("DGJUMP", mods[1])
-                        # [[u]] -> (fmap_s1(Q) - fmap_s2(Q))
-                        #trial_part = :((refel.Q[fmap_s1,:] - refel.Q[fmap_s2,:])');
-                        trial_part1 = :((refel.Q));
-                        trial_part2 = :((-refel.Q));
+                        trial_parts[1] = :(refel.Q);
+                        trial_parts[2] = :(-refel.Q);
+                        trial_parts[3] = :(-refel.Q);
+                        trial_parts[4] = :(refel.Q);
                     elseif occursin("D", mods[1])
                         # TODO more than one derivative mod
                         need_derivative = true;
                         dmat = Symbol("RQ"*mods[1][2]);
-                        trial_part1 = dmat;
-                        trial_part2 = dmat;
+                        trial_parts[1] = dmat;
+                        trial_parts[2] = 0;
+                        trial_parts[3] = dmat;
+                        trial_parts[4] = 0;
                     end
                 else
                     # no mods
-                    trial_part1 = :(refel.Q);
-                    trial_part2 = :(refel.Q);
+                    trial_parts[1] = :(refel.Q);
+                    trial_parts[2] = 0;
+                    trial_parts[3] = :(refel.Q);
+                    trial_parts[4] = 0;
                 end
                 
             else # coefficients
@@ -993,14 +962,15 @@ function process_surface_term_julia(sterm, var, lorr, offset_ind=0)
     # build coefficient parts
     if length(coef_facs) > 0
         for j=1:length(coef_facs)
-            tmp = coef_facs[j];
+            tmp1 = coef_facs[j];
+            tmp2 = coef_facs[j];
             #println("coef_facs: "*string(tmp)*" : "*string(typeof(tmp)));
-            if typeof(tmp) == Symbol && !(tmp ===:dt)
+            if typeof(tmp1) == Symbol && !(tmp1 ===:dt)
                 ind = get_coef_index(coef_facs[j]);
                 if ind >= 0
                     tag = string(ind);
                 else
-                    tag = string(tmp);
+                    tag = string(tmp1);
                 end
                 #derivatives of coefficients
                 tag = coef_derivs[j][2] * tag;
@@ -1011,11 +981,15 @@ function process_surface_term_julia(sterm, var, lorr, offset_ind=0)
                 
             end
             if j>1
-                coef_part1 = :($coef_par1 .* $tm1);
-                coef_part2 = :($coef_par2 .* $tm2);
+                coef_parts[1] = :($coef_parts[1] .* $tmp1);
+                coef_parts[2] = :($coef_parts[2] .* $tmp2);
+                coef_parts[3] = :($coef_parts[3] .* $tmp1);
+                coef_parts[4] = :($coef_parts[4] .* $tmp2);
             else
-                coef_part1 = tmp1;
-                coef_part2 = tmp2;
+                coef_parts[1] = tmp1;
+                coef_parts[2] = tmp2;
+                coef_parts[3] = tmp1;
+                coef_parts[4] = tmp2;
             end
         end
     end
@@ -1023,76 +997,51 @@ function process_surface_term_julia(sterm, var, lorr, offset_ind=0)
     if length(coef_expr_facs) > 0
         for j=1:length(coef_expr_facs)
             tmp = coef_expr_facs[j];
-            if !(coef_part1 === nothing)
-                coef_part1 = :($coef_part1 .* $tmp);
-            else
-                coef_part1 = tmp;
-            end
-            if !(coef_part2 === nothing)
-                coef_part2 = :($coef_part2 .* $tmp);
-            else
-                coef_part2 = tmp;
+            for cind=1:4
+                if !(coef_parts[cind] === nothing)
+                    coef_parts[cind] = :($coef_parts[cind] .* $tmp);
+                else
+                    coef_parts[cind] = tmp;
+                end
             end
         end
     end
     
-    # If there's no test part this is probably a denominator expression being processed and should only contain coefficients/knowns
-    if test_part1 === nothing
-        #
-        #
-    else
-        term1 = test_part1;
-        if !(coef_part1 === nothing)
-            if lorr == LHS
-                term1 = :($test_part1 * (diagm($weight_part1 .* $coef_part1) * $trial_part1));
-            else # RHS
-                if trial_part1 === nothing
-                    term1 = :($test_part1 * ($weight_part1 .* ($coef_part1)));
-                else
-                    # This should never happen
-                    # term = :($test_part * ($weight_part1 .* ($trial_part * $coef_part)));
-                    println("There should be no trial part in rhs.")
+    for tind=1:4
+        # If there's no test part this is probably a denominator expression being processed and should only contain coefficients/knowns
+        if test_parts[tind] === nothing
+            #
+            #
+        else
+            terms[tind] = test_parts[tind];
+            tp = test_parts[tind];
+            wp = weight_parts[tind];
+            trp = trial_parts[tind];
+            if !(coef_parts[tind] === nothing)
+                cp = coef_parts[tind];
+                if lorr == LHS
+                    terms[tind] = :($tp * (diagm($wp .* $cp) * $trp));
+                else # RHS
+                    if trial_parts[tind] === nothing
+                        terms[tind] = :($tp * ($wp .* ($cp)));
+                    else
+                        # This should never happen
+                        # term = :($test_part * ($weight_part1 .* ($trial_part * $coef_part)));
+                        println("There should be no trial part in rhs.")
+                    end
                 end
+                
+            else
+                terms[tind]= :($tp * diagm($wp) * $trp);
             end
             
-        else
-            term1 = :($test_part1 * diagm($weight_part1) * $trial_part1);
-        end
-        
-        if neg
-            negex = :(-a);
-            negex.args[2] = copy(term1);
-            term1 = negex;
-        end
-    end
-    if test_part2 === nothing
-        #
-        #
-    else
-        term2 = test_part2
-        if !(coef_part2 === nothing)
-            if lorr == LHS
-                term2 = :($test_part2 * (diagm($weight_part2 .* $coef_part2) * $trial_part2));
-            else # RHS
-                if trial_part2 === nothing
-                    term2 = :($test_part2 * ($weight_part2 .* ($coef_part2)));
-                else
-                    # This should never happen
-                    # term = :($test_part * ($weight_part2 .* ($trial_part * $coef_part)));
-                    println("There should be no trial part in rhs.")
-                end
+            if neg
+                negex = :(-a);
+                negex.args[2] = copy(terms[tind]);
+                terms[tind] = negex;
             end
-            
-        else
-            term2 = :($test_part2 * diagm($weight_part2) * $trial_part2);
-        end
-        
-        if neg
-            negex = :(-a);
-            negex.args[2] = copy(term2);
-            term2 = negex;
         end
     end
     
-    return ((term1, term2), need_derivative, needed_coef, needed_coef_ind, needed_coef_deriv, test_component, trial_component);
+    return (terms, need_derivative, needed_coef, needed_coef_ind, needed_coef_deriv, test_component, trial_component);
 end

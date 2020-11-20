@@ -418,8 +418,8 @@ function generate_code_layer_julia(symex, var, lorr)
     else
         if length(terms) > 1
             if var.type == SCALAR # Only one component
-                tmp = :(a+b);
-                tmp.args = [:+];
+                tmp = :(a.+b);
+                tmp.args = [:.+];
                 for i=1:length(terms)
                     push!(tmp.args, terms[i]);
                 end
@@ -440,7 +440,7 @@ function generate_code_layer_julia(symex, var, lorr)
                         if submatrices[ti, tj] === nothing
                             submatrices[ti, tj] = terms[i];
                         else
-                            addexpr = :(a+b);
+                            addexpr = :(a.+b);
                             addexpr.args[2] = submatrices[ti, tj];
                             addexpr.args[3] = terms[i];
                             submatrices[ti, tj] = addexpr;
@@ -476,7 +476,7 @@ function generate_code_layer_julia(symex, var, lorr)
                         if submatrices[ti] === nothing
                             submatrices[ti] = terms[i];
                         else
-                            addexpr = :(a+b);
+                            addexpr = :(a.+b);
                             addexpr.args[2] = submatrices[ti];
                             addexpr.args[3] = terms[i];
                             submatrices[ti] = addexpr;
