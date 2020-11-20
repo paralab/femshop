@@ -77,7 +77,7 @@ end
 # lhs contains terms including the unknown variable
 # rhs contains terms without it
 function sp_parse(ex, var)
-    debug = true;
+    debug = false;
     lhs = nothing;
     rhs = nothing;
     varcount = 1;

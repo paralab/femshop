@@ -37,7 +37,7 @@ function grid_from_mesh_1d(mesh)
     nel = mesh.nel;
     
     refel = build_refel(1, ord, nfaces, config.elemental_nodes);
-    refelfc = Refel(0, ord, 1, 1);
+    refelfc = build_refel(0, ord, 0, config.elemental_nodes);
     N = (nx-1)*ord + 1;         # number of total nodes
     Np = refel.Np;              # number of nodes per element
     x = zeros(1,N);             # coordinates of all nodes

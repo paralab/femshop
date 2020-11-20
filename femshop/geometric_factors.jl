@@ -15,7 +15,11 @@ function geometric_factors(refel, pts)
     # pts = element node global coords
     # J = detJ
     # D = Jacobian
-    if refel.dim == 1
+    if refel.dim == 0
+        J = [1];
+        D = Jacobian([1],[],[],[],[],[],[],[],[]);
+        
+    elseif refel.dim == 1
         xr  = refel.Dg*pts[:];
         J = xr[:];
         rx = 1 ./ J;

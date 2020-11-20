@@ -23,10 +23,10 @@ init_femshop("test");
 @boundary(u, 1, DIRICHLET, 0)
 
 @coefficient(f, "-pi*pi*sin(pi*x)")
-@coefficient(beta, 0.1)
+@coefficient(beta, 1)
 @weakForm(u, "dot(grad(u),grad(v)) + f*v - surface( ave_normdotgrad(u) * jump(v) - jump(u) * ave_normdotgrad(v) + beta*jump(u)*jump(v) )")
 
-# solve(u);
+solve(u);
 
 # solution is stored in the variable's "values"
 # using Plots

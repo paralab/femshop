@@ -52,10 +52,10 @@ genfunc_count = 0;
 genfunctions = [];
 #rhs
 linears = [];
-surface_linears = [];
+face_linears = [];
 #lhs
 bilinears = [];
-surface_bilinears = [];
+face_bilinears = [];
 #time stepper
 time_stepper = nothing;
 specified_dt = 0;
@@ -94,8 +94,8 @@ function init_femshop(name="unnamedProject")
     global genfunctions = [];
     global linears = [];
     global bilinears = [];
-    global surface_linears = [];
-    global surface_bilinears = [];
+    global face_linears = [];
+    global face_bilinears = [];
     global time_stepper = nothing;
     global specified_dt = 0;
     global specified_Nsteps = 0;
@@ -195,8 +195,8 @@ function add_variable(var)
 
     global linears = [linears; nothing];
     global bilinears = [bilinears; nothing];
-    global surface_linears = [surface_linears; nothing];
-    global surface_bilinears = [surface_bilinears; nothing];
+    global face_linears = [face_linears; nothing];
+    global face_bilinears = [face_bilinears; nothing];
 
     log_entry("Added variable: "*string(var.symbol)*" of type: "*var.type);
 end
@@ -427,45 +427,45 @@ function set_lhs(var, code="")
 end
 
 function set_rhs_surface(var, code="")
-    global surface_linears;
+    global face_linears;
     if language == 0 || language == JULIA
         if typeof(var) <:Array
             for i=1:length(var)
-                surface_linears[var[i].index] = genfunctions[end];
+                face_linears[var[i].index] = genfunctions[end];
             end
         else
-            surface_linears[var.index] = genfunctions[end];
+            face_linears[var.index] = genfunctions[end];
         end
         
     else # external generation
         if typeof(var) <:Array
             for i=1:length(var)
-                surface_linears[var[i].index] = code;
+                face_linears[var[i].index] = code;
             end
         else
-            surface_linears[var.index] = code;
+            face_linears[var.index] = code;
         end
     end
 end
 
 function set_lhs_surface(var, code="")
-    global surface_bilinears;
+    global face_bilinears;
     if language == 0 || language == JULIA
         if typeof(var) <:Array
             for i=1:length(var)
-                surface_bilinears[var[i].index] = genfunctions[end];
+                face_bilinears[var[i].index] = genfunctions[end];
             end
         else
-            surface_bilinears[var.index] = genfunctions[end];
+            face_bilinears[var.index] = genfunctions[end];
         end
         
     else # external generation
         if typeof(var) <:Array
             for i=1:length(var)
-                surface_bilinears[var[i].index] = code;
+                face_bilinears[var[i].index] = code;
             end
         else
-            surface_bilinears[var.index] = code;
+            face_bilinears[var.index] = code;
         end
     end
 end
@@ -581,7 +581,56 @@ function solve(var, nlvar=nothing; nonlinear=false)
             log_entry("Solved for "*varnames*".(took "*string(t)*" seconds)");
             
         elseif config.solver_type == DG
-            #TODO DG solve
+            init_dgsolver();
+            
+            lhs = bilinears[varind];
+            rhs = linears[varind];
+            slhs = face_bilinears[varind];
+            srhs = face_linears[varind];
+            
+            if prob.time_dependent
+                global time_stepper = init_stepper(grid_data.allnodes, time_stepper);
+                if use_specified_steps
+                    Femshop.time_stepper.dt = specified_dt;
+				    Femshop.time_stepper.Nsteps = specified_Nsteps;
+                end
+				if (nonlinear)
+                	t = @elapsed(result = DGSolver.nonlinear_solve(var, nlvar, lhs, rhs, slhs, srhs, time_stepper));
+				else
+                	t = @elapsed(result = DGSolver.linear_solve(var, lhs, rhs, slhs, srhs, time_stepper));
+				end
+                # result is already stored in variables
+            else
+                # solve it!
+				if (nonlinear)
+                	t = @elapsed(result = DGSolver.nonlinear_solve(var, nlvar, lhs, rhs, slhs, srhs));
+                else
+                    t = @elapsed(result = DGSolver.linear_solve(var, lhs, rhs, slhs, srhs));
+				end
+                
+                # place the values in the variable value arrays
+                if typeof(var) <: Array && length(result) > 1
+                    tmp = 0;
+                    totalcomponents = 0;
+                    for vi=1:length(var)
+                        totalcomponents = totalcomponents + length(var[vi].symvar.vals);
+                    end
+                    for vi=1:length(var)
+                        components = length(var[vi].symvar.vals);
+                        for compi=1:components
+                            var[vi].values[compi,:] = result[(compi+tmp):totalcomponents:end];
+                            tmp = tmp + 1;
+                        end
+                    end
+                elseif length(result) > 1
+                    components = length(var.symvar.vals);
+                    for compi=1:components
+                        var.values[compi,:] = result[compi:components:end];
+                    end
+                end
+            end
+            
+            log_entry("Solved for "*varnames*".(took "*string(t)*" seconds)");
         end
     end
 

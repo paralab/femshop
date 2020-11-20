@@ -14,7 +14,7 @@ import ..Femshop: JULIA, CPP, MATLAB, SQUARE, IRREGULAR, UNIFORM_GRID, TREE, UNS
             LHS, RHS,
             LINEMESH, QUADMESH, HEXMESH
 import ..Femshop: log_entry, printerr
-import ..Femshop: config, prob, variables, mesh_data, grid_data, refel, time_stepper, elemental_order
+import ..Femshop: config, prob, variables, mesh_data, grid_data, refel, face_refel, time_stepper, elemental_order
 import ..Femshop: Variable, Coefficient, GenFunction
 import ..Femshop: geometric_factors, build_deriv_matrix
 
@@ -192,6 +192,7 @@ function assemble(var, bilinear, linear, face_bilinear, face_linear, t=0.0, dt=0
     nel = mesh_data.nel;
     N1 = size(grid_data.allnodes,2);
     multivar = typeof(var) <: Array;
+    maxvarindex = 0;
     if multivar
         # multiple variables being solved for simultaneously
         dofs_per_node = 0;
@@ -200,10 +201,12 @@ function assemble(var, bilinear, linear, face_bilinear, face_linear, t=0.0, dt=0
             tmp = dofs_per_node;
             dofs_per_node += length(var[vi].symvar.vals);
             push!(var_to_dofs, (tmp+1):dofs_per_node);
+            maxvarindex = max(maxvarindex,var[vi].index);
         end
     else
         # one variable
         dofs_per_node = length(var.symvar.vals);
+        maxvarindex = var.index;
     end
     Nn = dofs_per_node * N1;
 
@@ -282,46 +285,56 @@ function assemble(var, bilinear, linear, face_bilinear, face_linear, t=0.0, dt=0
     end
 
 	# surface assembly for dg
-	for fid = 1:size(face2v,2)
-		face = FaceData(fid, face2v, normals); 
+    for fid = 1:size(grid_data.face2glb,3)
+        # the elements on either side
+        e1 = mesh_data.face2element[1,fid];
+        e2 = mesh_data.face2element[2,fid];
+        
+        # skip boundary faces
+        if e1*e2==0
+            continue;
+        end
+        
+		# face = FaceData(fid, grid_data.face2glb, grid_data.facenorm); 
 		# always 2 sides
-		node_s1 = face.nodes[:,1];
-		node_s2 = face.nodes[:,2];
+		node_s1 = grid_data.face2glb[:,1,fid];
+		node_s2 = grid_data.face2glb[:,2,fid];
 		# xe1 and xe2 should be the same
-        xe1 = grid_data.allnodes[:,node_s1[:]];      # coordinates of this element's nodes for evaluating coefficient functions
-        xe2 = grid_data.allnodes[:,node_s2[:]];      # coordinates of this element's nodes for evaluating coefficient functions
+        xf1 = grid_data.allnodes[:,node_s1[:]];      # coordinates of this face's nodes for evaluating coefficient functions
+        xf2 = grid_data.allnodes[:,node_s2[:]];      # coordinates of this face's nodes for evaluating coefficient functions
 
-		#extract nodal values 
-		val_s1 = sol[node_s1];
-		val_s2 = sol[node_s2];
+        #extract nodal values
+        enode_e1 = grid_data.loc2glb[:,e1];           # global indices of this element's nodes for extracting values from var arrays
+        enode_e2 = grid_data.loc2glb[:,e2];           # global indices of this element's nodes for extracting values from var arrays
+        
+        xe1 = grid_data.allnodes[:,grid_data.loc2glb[:,e1]];      # coordinates of this element's nodes for derivative matrices
+        xe2 = grid_data.allnodes[:,grid_data.loc2glb[:,e2]];      # coordinates of this element's nodes
+        
+		fmap_s1 = get_face_map(node_s1, grid_data.loc2glb[:,e1]);
+        fmap_s2 = get_face_map(node_s2, grid_data.loc2glb[:,e2]);
+        
 		#evaluate average 
 		#val_avg = 0.5.*(val_s1 + val_s2);
-		normal_s1 = face.normal[:,1];
-		normal_s2 = face.normal[:,2];
+		normal_s1 = grid_data.facenorm[:,fid];
+		normal_s2 = -grid_data.facenorm[:,fid];
 		
 		#evaluate weak form on for s1 and s2 and assemble
-        rhsargs = (var, val_s1, node_s1, normal_s1, xe1, val_s2, node_s2, normal_s2, xe2, refel, RHS, t, dt);
-        lhsargs = (var, val_s1, node_s1, normal_s1, xe1, val_s2, node_s2, normal_s2, xe2, refel, LHS, t, dt);
+        rhsargs = (var, fmap_s1, node_s1, enode_e1, normal_s1, xf1, xe1, fmap_s2, node_s2, enode_e2, normal_s2, xf2, xe2, refel, face_refel, RHS, t, dt);
+        lhsargs = (var, fmap_s1, node_s1, enode_e1, normal_s1, xf1, xe1, fmap_s2, node_s2, enode_e2, normal_s2, xf2, xe2, refel, face_refel, LHS, t, dt);
         if dofs_per_node == 1
             linchunk = face_linear.func(rhsargs);  # get the elemental linear part
-            b[node_s1] .+= linchunk[1];
-            b[node_s2] .+= linchunk[2];
+            b[enode_e1] .+= linchunk[1];
+            b[enode_e2] .+= linchunk[2];
 
             bilinchunk = face_bilinear.func(lhsargs); # the elemental bilinear part
-            #A[glb, glb] .+= bilinchunk;         # This will be very inefficient for sparse A
-            for jj=1:length(node_s1)
-                for ii=1:length(node_s1)
-                    AI.append(node_s1[ii]);
-                    AJ.append(node_s1[jj]);
-                    AV.append(bilinchunk[ii, jj, 1]);
-                end
-            end
-            for jj=1:length(node_s2)
-                for ii=1:length(node_s1)
-                    AI.append(node_s2[ii]);
-                    AJ.append(node_s2[jj]);
-                    AV.append(bilinchunk[ii, jj, 2]);
-                end
+            
+            for jj=1:length(enode_e1)
+                append!(AI, enode_e1);
+                append!(AJ, enode_e1[jj]*ones(length(enode_e1)));
+                append!(AV, bilinchunk[1][:,jj]);
+                append!(AI, enode_e2);
+                append!(AJ, enode_e2[jj]*ones(length(enode_e1)));
+                append!(AV, bilinchunk[2][:,jj]);
             end
 		end	 	
 	end
@@ -647,6 +660,19 @@ function insert_bilinear!(AI, AJ, AV, Astart, ael, glb, dof, Ndofs)
         end
     end
     
+end
+
+function get_face_map(fn, en)
+    fmap = zeros(Int, length(fn));
+    for i=1:length(fn)
+        for j=1:length(en)
+            if en[j] == fn[i]
+                fmap[i] = j;
+                break;
+            end
+        end
+    end
+    return fmap;
 end
 
 end #module

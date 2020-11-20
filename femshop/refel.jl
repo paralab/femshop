@@ -75,12 +75,14 @@ end
 
 function build_refel(dimension, order, nfaces, nodetype)
     # Check for errors
-    if (dimension == 1 && nfaces != 2) || nfaces < dimension+1 || order < 1
+    if (dimension == 1 && nfaces != 2) || (dimension > 1 && nfaces < dimension+1)
         println("Error: buildRefel(dimension, order, nfaces, nodetype), check for valid parameters.");
         return nothing;
     end
+    
     # Number of points determined by order element type
-    if (dimension == 1)     Np = order+1; # line segment
+    if (dimension == 0) Np = 1; #point
+    elseif (dimension == 1)     Np = order+1; # line segment
     elseif (dimension == 2 && nfaces == 3) Np = (Int)((order+1)*(order+2)/2); # triangle
     elseif (dimension == 2 && nfaces == 4) Np = (Int)((order+1)*(order+1)); # quad
     elseif (dimension == 3 && nfaces == 4) Np = (Int)((order+1)*(order+2)*(order+3)/6); # tet
@@ -92,6 +94,11 @@ function build_refel(dimension, order, nfaces, nodetype)
     
     # Get nodes on the reference element
     refel_nodes!(refel, nodetype);
+    
+    # don't bother for 0D refels
+    if dimension == 0
+        return refel;
+    end
     
     # Vandermonde matrix and grad,inv
     refel.V = zeros(order+1, order+1);

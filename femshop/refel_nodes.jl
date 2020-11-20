@@ -4,7 +4,18 @@
 include("jacobi_gauss_quad.jl");
 
 function refel_nodes!(refel, nodetype)
-    if refel.dim == 1
+    if refel.dim == 0
+        # 0D is a point
+        refel.r1d = [0];
+        refel.wr1d = [1];
+        refel.g1d = [0];
+        refel.wg1d = [1];
+        refel.r = [0];
+        refel.wr = [1];
+        refel.g = [0];
+        refel.wg = [1];
+        
+    elseif refel.dim == 1
         # 1D has segments
         if nodetype == UNIFORM
             refel.r1d = Array(-1:(2/(refel.Np-1)):1);
