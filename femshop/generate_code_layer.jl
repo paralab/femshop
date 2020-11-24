@@ -1124,7 +1124,7 @@ function extract_symbols(ex)
                     end
                     
                 end
-            elseif b==l
+            elseif b==l && i>0
                 if str[i] == '_'
                     b = i+1;
                 end

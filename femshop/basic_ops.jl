@@ -129,14 +129,16 @@ function sym_jump_normdotgrad_op(var)
 end
 
 function sym_normal_op()
-    DGNORMAL = symbols("DGNORMAL");
+    _DGNORMAL_1 = symbols("_DGNORMAL_1");
+    _DGNORMAL_2 = symbols("_DGNORMAL_2");
+    _DGNORMAL_3 = symbols("_DGNORMAL_3");
     d = config.dimension;
     if d==1
-        return [DGNORMAL_1];
+        return [_DGNORMAL_1];
     elseif d==2
-        return [DGNORMAL_1, DGNORMAL_2];
+        return [_DGNORMAL_1, _DGNORMAL_2];
     elseif d==3
-        return [DGNORMAL_1, DGNORMAL_2, DGNORMAL_3];
+        return [_DGNORMAL_1, _DGNORMAL_2, _DGNORMAL_3];
     end
 end
 

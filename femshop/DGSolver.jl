@@ -344,18 +344,23 @@ function assemble(var, bilinear, linear, face_bilinear, face_linear, t=0.0, dt=0
                 
                 for jj=1:length(enode_e1)
                     append!(AI, enode_e1);
-                    append!(AJ, enode_e1[jj]*ones(length(enode_e1)));
+                    append!(AJ, enode_e1[jj]*ones(Int, length(enode_e1)));
                     append!(AV, bilinchunk[1][:,jj]);
-                    append!(AI, enode_e1);
-                    append!(AJ, enode_e2[jj]*ones(length(enode_e1)));
-                    append!(AV, bilinchunk[2][:,jj]);
                     
                     append!(AI, enode_e2);
-                    append!(AJ, enode_e1[jj]*ones(length(enode_e1)));
-                    append!(AV, bilinchunk[3][:,jj]);
-                    append!(AI, enode_e2);
-                    append!(AJ, enode_e2[jj]*ones(length(enode_e1)));
+                    append!(AJ, enode_e2[jj]*ones(Int, length(enode_e1)));
                     append!(AV, bilinchunk[4][:,jj]);
+                end
+                for ii=1:length(fmap_s1)
+                    row1 = enode_e1[fmap_s1[ii]];
+                    append!(AI, row1*ones(Int, length(enode_e1)));
+                    append!(AJ, enode_e2);
+                    append!(AV, bilinchunk[2][fmap_s2[ii],:]);
+                    
+                    row2 = enode_e2[fmap_s2[ii]];
+                    append!(AI, row2*ones(Int, length(enode_e1)));
+                    append!(AJ, enode_e1);
+                    append!(AV, bilinchunk[3][fmap_s1[ii],:]);
                 end
             end	 	
         end

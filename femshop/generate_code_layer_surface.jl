@@ -224,7 +224,7 @@ function generate_code_layer_julia_surface(symex, var, lorr)
         end
         
         for i=1:length(needed_coef)
-            if !(typeof(needed_coef[i]) <: Number || needed_coef[i] === :dt)
+            if !(typeof(needed_coef[i]) <: Number || needed_coef[i] === :dt || needed_coef[i] === :DGNORMAL)
                 cind = get_coef_index(needed_coef[i]);
                 if cind >= 0
                     tag = string(cind);
@@ -1006,13 +1006,18 @@ function process_surface_term_julia(sterm, var, lorr, offset_ind=0)
                 else
                     tag = string(tmp1);
                 end
-                #derivatives of coefficients
-                tag = coef_derivs[j][2] * tag;
-                tmps1 = "coef_"*tag*"_"*string(coef_inds[j])*"_s1";
-                tmp1 = Symbol(tmps1);
-                tmps2 = "coef_"*tag*"_"*string(coef_inds[j])*"_s2";
-                tmp2 = Symbol(tmps2);
-                
+                if tmp1 === :DGNORMAL
+                    ind = coef_inds[j];
+                    tmp1 = :(normal_s1[$ind]);
+                    tmp2 = :(normal_s2[$ind]);
+                else
+                    #derivatives of coefficients
+                    tag = coef_derivs[j][2] * tag;
+                    tmps1 = "coef_"*tag*"_"*string(coef_inds[j])*"_s1";
+                    tmp1 = Symbol(tmps1);
+                    tmps2 = "coef_"*tag*"_"*string(coef_inds[j])*"_s2";
+                    tmp2 = Symbol(tmps2);
+                end
             end
             if j>1
                 c1=coef_parts[1];
