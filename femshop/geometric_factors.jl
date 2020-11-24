@@ -107,6 +107,42 @@ function build_deriv_matrix(refel, J)
     end
 end
 
+function build_face_deriv_matrix(refel, J)
+    if refel.dim == 1
+        RQ1 = zeros(size(refel.Q));
+        for i=1:length(J.rx)
+            for j=1:length(J.rx)
+                RQ1[i,j] = J.rx[i]*refel.Qr[i,j];
+            end
+        end
+        return (RQ1,);
+        
+    elseif refel.dim == 2
+        RQ1 = zeros(size(refel.Q));
+        RQ2 = zeros(size(refel.Q));
+        for i=1:length(J.rx)
+            for j=1:length(J.rx)
+                RQ1[i,j] = J.rx[i]*refel.Qr[i,j] + J.sx[i]*refel.Qs[i,j];
+                RQ2[i,j] = J.ry[i]*refel.Qr[i,j] + J.sy[i]*refel.Qs[i,j];
+            end
+        end
+        return (RQ1, RQ2);
+        
+    elseif refel.dim == 3
+        RQ1 = zeros(size(refel.Q));
+        RQ2 = zeros(size(refel.Q));
+        RQ3 = zeros(size(refel.Q));
+        for i=1:length(J.rx)
+            for j=1:length(J.rx)
+                RQ1[i,j] = J.rx[i]*refel.Qr[i,j] + J.sx[i]*refel.Qs[i,j] + J.tx[i]*refel.Qt[i,j];
+                RQ2[i,j] = J.ry[i]*refel.Qr[i,j] + J.sy[i]*refel.Qs[i,j] + J.ty[i]*refel.Qt[i,j];
+                RQ3[i,j] = J.rz[i]*refel.Qr[i,j] + J.sz[i]*refel.Qs[i,j] + J.tz[i]*refel.Qt[i,j];
+            end
+        end
+        return (RQ1, RQ2, RQ3);
+    end
+end
+
 ###################################################################################################################################
 function geometric_factors_cachesim(refel, pts)
     # pts = element node global coords

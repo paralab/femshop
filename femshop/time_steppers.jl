@@ -186,10 +186,10 @@ function reformat_for_stepper(lhs, rhs, face_lhs, face_rhs,stepper, wrap=true)
                 rhs[1][i] = rhs[1][i]*dt; # dt*rhs
             end
             for i=1:length(face_rhs[1])
-                face_rhs[1][i] = face_rhs[1][i]*dt; # dt*facelhs
+                face_rhs[1][i] = -face_rhs[1][i]*dt; # -dt*facelhs
             end
             for i=1:length(face_lhs[1])
-                face_lhs[1][i] = face_lhs[1][i]*dt; # dt*facerhs
+                face_lhs[1][i] = -face_lhs[1][i]*dt; # -dt*facerhs
             end
             
             newlhs = copy(lhs[1][1]);# lhs1

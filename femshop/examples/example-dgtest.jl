@@ -25,6 +25,7 @@ init_femshop("test");
 @coefficient(f, "-pi*pi*sin(pi*x)")
 @coefficient(beta, 1)
 @weakForm(u, "dot(grad(u),grad(v)) + f*v - surface( ave_normdotgrad(u) * jump(v)) - surface(jump(u) * ave_normdotgrad(v)) + surface(beta*jump(u)*jump(v))")
+@weakForm(u, "dot(grad(u),grad(v)) + f*v - surface( ave_normdotgrad(u) * jump(v)) - surface(jump(u) * ave_normdotgrad(v)) + surface(beta*jump(u)*jump(v))")
 
 solve(u);
 

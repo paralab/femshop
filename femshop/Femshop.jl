@@ -39,7 +39,7 @@ log_line_index = 1;
 mesh_data = nothing;
 grid_data = nothing;
 refel = nothing;
-face_refel = nothing;
+face_refels = [];
 elemental_order = [];
 #problem variables
 var_count = 0;
@@ -83,7 +83,7 @@ function init_femshop(name="unnamedProject")
     global mesh_data = nothing;
     global grid_data = nothing;
     global refel = nothing;
-    global face_refel = nothing;
+    global face_refels = [];
     global elemental_order = [];
     global var_count = 0;
     global variables = [];
@@ -143,7 +143,7 @@ function add_mesh(mesh)
     if typeof(mesh) <: Tuple
         global mesh_data = mesh[1];
         global refel = mesh[2];
-        global face_refel = mesh[3];
+        global face_refels = mesh[3];
         global grid_data = mesh[4];
         if config.solver_type == DG
             global grid_data = cg_grid_to_dg_grid(grid_data, mesh_data);

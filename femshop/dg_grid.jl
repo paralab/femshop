@@ -15,6 +15,7 @@ struct DG_Grid
     face2glb::Array{Int,3}          # local to global map for faces
     faceVertex2glb::Array{Int,3}    # global indices of face vertices
     facenorm::Array{Float64,2}      # Normal vector for each face
+    faceRefelInd::Array{Int,2}      # Refel index in face_refels for each side
 end
 
 function cg_grid_to_dg_grid(cggrid, mesh)
@@ -43,6 +44,7 @@ function cg_grid_to_dg_grid(cggrid, mesh)
     dgface2glb = zeros(Int, nfp, 2, nface);
     dgfaceVertex2glb = zeros(Int, size(cggrid.faceVertex2glb,1), 2, nface);
     dgfacenorm = copy(mesh.normals);
+    dgfaceRefelInd = zeros(Int, 2, nface);
     
     # Loop over elements.
     #   Add each element's nodes to dgnodes.
@@ -105,6 +107,10 @@ function cg_grid_to_dg_grid(cggrid, mesh)
                 end
             end
         end
+        
+        dgfaceRefelInd[1,fi] = which_face(dgface2glb[:,1,fi], dgloc2glb[:,e1], dim, nfp);
+        dgfaceRefelInd[2,fi] = which_face(dgface2glb[:,2,fi], dgloc2glb[:,e2], dim, nfp);
+        
     end
     
     # bdry loop
@@ -117,6 +123,70 @@ function cg_grid_to_dg_grid(cggrid, mesh)
         end
     end
     
-    return DG_Grid(dgnodes, dgbdry, dgbdryface, dgbdrynorm, dgbids, dgloc2glb, dgglbvertex, dgface2glb, dgfaceVertex2glb, dgfacenorm);
+    return DG_Grid(dgnodes, dgbdry, dgbdryface, dgbdrynorm, dgbids, dgloc2glb, dgglbvertex, dgface2glb, dgfaceVertex2glb, dgfacenorm, dgfaceRefelInd);
     
+end
+
+function which_face(f2g, l2g, dim, nfp)
+    # To determine face refel index, look at first two nodes
+    ind = 0;
+    if dim == 1
+        if f2g[1] == l2g[1]
+            # left face
+            ind = 1;
+        else
+            # right face
+            ind = 2;
+        end
+        
+    elseif dim == 2
+        if f2g[1] == l2g[1]
+            if f2g[2] == l2g[2]
+                # bottom
+                ind = 3;
+            else
+                # left
+                ind = 1;
+            end
+        else
+            if f2g[1] == l2g[nfp]
+                # right
+                ind = 2;
+            else
+                # top
+                ind = 4;
+            end
+        end
+        
+    elseif dim == 3
+        if f2g[1] == l2g[1]
+            if f2g[2] == l2g[2]
+                if f2g[nfp] == l2g[nfp]
+                    # front
+                    ind = 5;
+                else
+                    # bottom
+                    ind = 3;
+                end
+            else
+                # left
+                ind = 1;
+            end
+        else
+            if f2g[nfp-1] == l2g[end-1]
+                if f2g[1] == l2g[end-nfp+1]
+                    # back
+                    ind = 6;
+                else
+                    # top
+                    ind = 4;
+                end
+            else
+                # right
+                ind = 2;
+            end
+        end
+    end
+    
+    return ind;
 end

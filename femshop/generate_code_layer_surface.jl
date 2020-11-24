@@ -36,7 +36,7 @@ end
 # Julia version returns an expression for the generated function for linear or bilinear term
 function generate_code_layer_julia_surface(symex, var, lorr)
     # This is the basic info passed in "args"
-    # args = (var, val_s1, node_s1, normal_s1, xe1, val_s2, node_s2, normal_s2, xe2, refel, face_refel, RHS/LHS, t, dt);
+    # args = (var, val_s1, node_s1, normal_s1, xe1, val_s2, node_s2, normal_s2, xe2, refel, refel_s1, refel_s2, RHS/LHS, t, dt);
     code = Expr(:block);
     push!(code.args, :(var = args[1]));         # list of unknown variables for this expression
     push!(code.args, :(fmap_s1 = args[2]));     # extracts face nodes from the full element
@@ -47,24 +47,29 @@ function generate_code_layer_julia_surface(symex, var, lorr)
     push!(code.args, :(xe1 = args[7]));         # global coords of element's nodes on side 1
     push!(code.args, :(fmap_s2 = args[8]));     # extracts face nodes from the full element
     push!(code.args, :(node_s2 = args[9]));     # global indices of the nodes on side 2
-    push!(code.args, :(enode_e1 = args[10]));    # global indices of the elemental nodes on side 1
-    push!(code.args, :(normal_s2 = args[11]));   # normal vector on side 2
+    push!(code.args, :(enode_e2 = args[10]));   # global indices of the elemental nodes on side 1
+    push!(code.args, :(normal_s2 = args[11]));  # normal vector on side 2
     push!(code.args, :(xf2 = args[12]));        # global coords of face nodes on side 1
     push!(code.args, :(xe2 = args[13]));        # global coords of element's nodes on side 1
     push!(code.args, :(refel = args[14]));      # reference element for volume
-    push!(code.args, :(face_refel = args[15])); # reference element for face
-    push!(code.args, :(borl = args[16]));       # bilinear or linear? lhs or rhs?
-    push!(code.args, :(time = args[17]));       # time for time dependent coefficients
-    push!(code.args, :(dt = args[18]));         # dt for time dependent problems
+    push!(code.args, :(refel_s1 = args[15]));   # reference element for face1
+    push!(code.args, :(refel_s2 = args[16]));   # reference element for face2
+    push!(code.args, :(face_detJ = args[17]));  # geometric factor for face
+    push!(code.args, :(face_J = args[18]));     # geometric factor for face
+    push!(code.args, :(borl = args[19]));       # bilinear or linear? lhs or rhs?
+    push!(code.args, :(time = args[20]));       # time for time dependent coefficients
+    push!(code.args, :(dt = args[21]));         # dt for time dependent problems
     
     # Build geometric factors for both volume and surface
     push!(code.args, :((detJ, J) = geometric_factors(refel, xe1)));
-    push!(code.args, :((face_detJ, face_J) = geometric_factors(face_refel, xf1)));
-    #push!(code.args, :(wgdetj = refel.wg .* detJ));
-    push!(code.args, :(face_wgdetj_s1 = zeros(length(refel.wg))));
-    push!(code.args, :(face_wgdetj_s2 = zeros(length(refel.wg))));
-    push!(code.args, :(face_wgdetj_s1[fmap_s1] = face_refel.wg .* face_detJ));
-    push!(code.args, :(face_wgdetj_s2[fmap_s2] = face_refel.wg .* face_detJ));
+    #push!(code.args, :((face_detJ, face_J) = geometric_factors(refel_s1, xe1)));
+    # push!(code.args, :(wgdetj = refel.wg .* detJ));
+    # push!(code.args, :(face_wgdetj_s1 = zeros(length(refel.wg))));
+    # push!(code.args, :(face_wgdetj_s2 = zeros(length(refel.wg))));
+    # push!(code.args, :(face_wgdetj_s1[fmap_s1] = face_refel.wg .* face_detJ));
+    # push!(code.args, :(face_wgdetj_s2[fmap_s2] = face_refel.wg .* face_detJ));
+    push!(code.args, :(face_wgdetj_s1 = refel_s1.wg .* face_detJ));
+    push!(code.args, :(face_wgdetj_s2 = refel_s2.wg .* face_detJ));
     
     need_derivative = false;
     needed_coef = [];
@@ -151,14 +156,20 @@ function generate_code_layer_julia_surface(symex, var, lorr)
     # If derivatives are needed, prepare the appropriate matrices
     if need_derivative
         if config.dimension == 1
-            push!(code.args, :((RQ1,RD1) = build_deriv_matrix(refel, J)));
-            push!(code.args, :(TRQ1 = RQ1'));
+            push!(code.args, :((RQ1_s1,RD1_s1) = build_deriv_matrix(refel_s1, face_J)));
+            push!(code.args, :((RQ1_s2,RD1_s2) = build_deriv_matrix(refel_s2, face_J)));
+            push!(code.args, :(TRQ1_s1 = RQ1_s1'));
+            push!(code.args, :(TRQ1_s2 = RQ1_s2'));
         elseif config.dimension == 2
-            push!(code.args, :((RQ1,RQ2,RD1,RD2) = build_deriv_matrix(refel, J)));
-            push!(code.args, :((TRQ1,TRQ2) = (RQ1',RQ2')));
+            push!(code.args, :((RQ1_s1,RQ2_s1,RD1_s1,RD2_s1) = build_deriv_matrix(refel_s1, face_J)));
+            push!(code.args, :((RQ1_s2,RQ2_s2,RD1_s2,RD2_s2) = build_deriv_matrix(refel_s2, face_J)));
+            push!(code.args, :((TRQ1_s1,TRQ2_s1) = (RQ1_s1',RQ2_s1')));
+            push!(code.args, :((TRQ1_s2,TRQ2_s2) = (RQ1_s2',RQ2_s2')));
         elseif config.dimension == 3
-            push!(code.args, :((RQ1,RQ2,RQ3,RD1,RD2,RD3) = build_deriv_matrix(refel, J)));
-            push!(code.args, :((TRQ1,TRQ2,TRQ3) = (RQ1',RQ2',RQ3')));
+            push!(code.args, :((RQ1_s1,RQ2_s1,RQ3_s1,RD1_s1,RD2_s1,RD3_s1) = build_deriv_matrix(refel_s1, face_J)));
+            push!(code.args, :((RQ1_s2,RQ2_s2,RQ3_s2,RD1_s2,RD2_s2,RD3_s2) = build_deriv_matrix(refel_s2, face_J)));
+            push!(code.args, :((TRQ1_s1,TRQ2_s1,TRQ3_s1) = (RQ1_s1',RQ2_s1',RQ3_s1')));
+            push!(code.args, :((TRQ1_s2,TRQ2_s2,TRQ3_s2) = (RQ1_s2',RQ2_s2',RQ3_s2')));
         end
     end
     
@@ -200,6 +211,8 @@ function generate_code_layer_julia_surface(symex, var, lorr)
     #     coef_n_i[coefi] = a.value[i].func(x[coefi,1], x[coefi,2],x[coefi,3],time);
     # end
     ######################################
+    coefs_to_shrink = [];
+    shrinkside = [];
     if length(needed_coef) > 0
         cloop = :(for coefi=1:refel.Np end);
         cloopin = Expr(:block);
@@ -246,6 +259,10 @@ function generate_code_layer_julia_surface(symex, var, lorr)
                     push!(code.args, Expr(:(=), tmpc2, :(zeros(refel.Np))));
                     #push!(code.args, Expr(:(=), tmpc, tmpc1));
                     push!(cloopin.args, Expr(:(=), tmpv, tmpb)); # add it to the loop
+                    push!(coefs_to_shrink, tmpc1);
+                    push!(coefs_to_shrink, tmpc2);
+                    push!(shrinkside, 1);
+                    push!(shrinkside, 2);
                     
                 elseif ctype == 3
                     # variable values -> coef_n = variable.values
@@ -261,6 +278,11 @@ function generate_code_layer_julia_surface(symex, var, lorr)
                     push!(code.args, Expr(:(=), tmpc1, tmpb1));
                     push!(code.args, Expr(:(=), tmpc2, tmpb2));
                     #push!(code.args, Expr(:(=), tmpc, tmpb1));
+                    
+                    push!(coefs_to_shrink, tmpc1);
+                    push!(coefs_to_shrink, tmpc2);
+                    push!(shrinkside, 1);
+                    push!(shrinkside, 2);
                 end
                 
             end# number?
@@ -296,8 +318,8 @@ function generate_code_layer_julia_surface(symex, var, lorr)
                 if length(needed_coef_deriv[i][3]) > 0 && !(typeof(needed_coef[i]) <: Number || needed_coef[i] === :dt)
                     
                     
-                    dmat1 = Symbol("RD"*needed_coef_deriv[i][3]);
-                    dmat2 = Symbol("RD"*needed_coef_deriv[i][3]);
+                    dmat1 = Symbol("RD"*needed_coef_deriv[i][3]*"_s1");
+                    dmat2 = Symbol("RD"*needed_coef_deriv[i][3]*"_s2");
                     tmpb1= :(length($tmpc1) == 1 ? 0 : $dmat1 * $tmpc1);
                     tmpb2= :(length($tmpc2) == 1 ? 0 : $dmat2 * $tmpc2);
                     
@@ -315,66 +337,66 @@ function generate_code_layer_julia_surface(symex, var, lorr)
                             #tmpb = :((RD1[fmap_s1,:]*$tmpc1 .* normal_s1[1] + RD1[fmap_s2,:]*$tmpc2 .* normal_s1[1]) .* 0.5);
                             # tmpb1 = :((RD1[fmap_s1,:]*$tmpc1 .* (normal_s1[1] * 0.5)));
                             # tmpb2 = :((RD1[fmap_s2,:]*$tmpc2 .* (normal_s1[1] * 0.5)));
-                            tmpb1 = :((RD1*$tmpc1 .* (normal_s1[1] * 0.5)));
-                            tmpb2 = :((RD1*$tmpc2 .* (normal_s1[1] * 0.5)));
+                            tmpb1 = :((RD1_s1*$tmpc1 .* (normal_s1[1] * 0.5)));
+                            tmpb2 = :((RD1_s2*$tmpc2 .* (normal_s1[1] * 0.5)));
                         elseif config.dimension == 2
                             # tmpb = :((RD1[fmap_s1,:]*$tmpc1 .* normal_s1[1] + RD2[fmap_s1,:]*$tmpc1 .* normal_s1[2] + 
                             #                 RD1[fmap_s2,:]*$tmpc2 .* normal_s1[1] + RD2[fmap_s2,:]*$tmpc2 .* normal_s1[2]) .* 0.5);
                             # tmpb1 = :((RD1[fmap_s1,:]*$tmpc1 .* normal_s1[1] + RD2[fmap_s1,:]*$tmpc1 .* normal_s1[2]) .* 0.5);
                             # tmpb2 = :((RD1[fmap_s2,:]*$tmpc2 .* normal_s1[1] + RD2[fmap_s2,:]*$tmpc2 .* normal_s1[2]) .* 0.5);
-                            tmpb1 = :((RD1*$tmpc1 .* normal_s1[1] + RD2*$tmpc1 .* normal_s1[2]) .* 0.5);
-                            tmpb2 = :((RD1*$tmpc2 .* normal_s1[1] + RD2*$tmpc2 .* normal_s1[2]) .* 0.5);
+                            tmpb1 = :((RD1_s1*$tmpc1 .* normal_s1[1] + RD2_s1*$tmpc1 .* normal_s1[2]) .* 0.5);
+                            tmpb2 = :((RD1_s2*$tmpc2 .* normal_s1[1] + RD2_s2*$tmpc2 .* normal_s1[2]) .* 0.5);
                         elseif config.dimension == 3
                             # tmpb = :((RD1[fmap_s1,:]*$tmpc1 .* normal_s1[1] + RD2[fmap_s1,:]*$tmpc1 .* normal_s1[2] + RD3[fmap_s1,:]*$tmpc1 .* normal_s1[3] +
                             #                 RD1[fmap_s2,:]*$tmpc2 .* normal_s1[1] + RD2[fmap_s2,:]*$tmpc2 .* normal_s1[2] + RD3[fmap_s2,:]*$tmpc2 .* normal_s1[3]) .* 0.5);
                             # tmpb1 = :((RD1[fmap_s1,:]*$tmpc1 .* normal_s1[1] + RD2[fmap_s1,:]*$tmpc1 .* normal_s1[2] + RD3[fmap_s1,:]*$tmpc1 .* normal_s1[3]) .* 0.5);
                             # tmpb2 = :((RD1[fmap_s2,:]*$tmpc2 .* normal_s1[1] + RD2[fmap_s2,:]*$tmpc2 .* normal_s1[2] + RD3[fmap_s2,:]*$tmpc2 .* normal_s1[3]) .* 0.5);
-                            tmpb1 = :((RD1*$tmpc1 .* normal_s1[1] + RD2*$tmpc1 .* normal_s1[2] + RD3*$tmpc1 .* normal_s1[3]) .* 0.5);
-                            tmpb2 = :((RD1*$tmpc2 .* normal_s1[1] + RD2*$tmpc2 .* normal_s1[2] + RD3*$tmpc2 .* normal_s1[3]) .* 0.5);
+                            tmpb1 = :((RD1_s1*$tmpc1 .* normal_s1[1] + RD2_s1*$tmpc1 .* normal_s1[2] + RD3_s1*$tmpc1 .* normal_s1[3]) .* 0.5);
+                            tmpb2 = :((RD1_s2*$tmpc2 .* normal_s1[1] + RD2_s2*$tmpc2 .* normal_s1[2] + RD3_s2*$tmpc2 .* normal_s1[3]) .* 0.5);
                         end
                     elseif occursin("DGAVE", needed_coef_deriv[i][2])
                         # {{u}} -> (fmap_s1(Q) + fmap_s2(Q))*0.5
                         #tmpb = :((refel.Q[fmap_s1,:]*$tmpc1 + refel.Q[fmap_s2,:]*$tmpc2) .* 0.5);
                         # tmpb1 = :((refel.Q[fmap_s1,:]*$tmpc1) .* 0.5);
                         # tmpb2 = :((refel.Q[fmap_s2,:]*$tmpc2) .* 0.5);
-                        tmpb1 = :((refel.Q*$tmpc1) .* 0.5);
-                        tmpb2 = :((refel.Q*$tmpc2) .* 0.5);
+                        tmpb1 = :($tmpc1 .* 0.5);
+                        tmpb2 = :($tmpc2 .* 0.5);
                     elseif occursin("DGJUMPNORMDOTGRAD", needed_coef_deriv[i][2])
                         # [[n.grad(u)]]
                         if config.dimension == 1
                             #tmpb = :((RD1[fmap_s1,:]*$tmpc1 .* normal_s1[1] - RD1[fmap_s2,:]*$tmpc2 .* normal_s1[1]));
                             # tmpb1 = :((RD1[fmap_s1,:]*$tmpc1 .* normal_s1[1]));
                             # tmpb2 = :((RD1[fmap_s2,:]*$tmpc2 .* -normal_s1[1]));
-                            tmpb1 = :((RD1*$tmpc1 .* normal_s1[1]));
-                            tmpb2 = :((RD1*$tmpc2 .* -normal_s1[1]));
+                            tmpb1 = :((RD1_s1*$tmpc1 .* normal_s1[1]));
+                            tmpb2 = :((RD1_s2*$tmpc2 .* -normal_s1[1]));
                         elseif config.dimension == 2
                             # tmpb = :((RD1[fmap_s1,:]*$tmpc1 .* normal_s1[1] + RD2[fmap_s1,:]*$tmpc1 .* normal_s1[2] - 
                             #                 RD1[fmap_s2,:]*$tmpc2 .* normal_s1[1] - RD2[fmap_s2,:]*$tmpc2 .* normal_s1[2]));
                             # tmpb1 = :((RD1[fmap_s1,:]*$tmpc1 .* normal_s1[1] + RD2[fmap_s1,:]*$tmpc1 .* normal_s1[2]));
                             # tmpb2 = :((RD1[fmap_s2,:]*$tmpc2 .* -normal_s1[1] + RD2[fmap_s2,:]*$tmpc2 .* -normal_s1[2]));
-                            tmpb1 = :((RD1*$tmpc1 .* normal_s1[1] + RD2*$tmpc1 .* normal_s1[2]));
-                            tmpb2 = :((RD1*$tmpc2 .* -normal_s1[1] + RD2*$tmpc2 .* -normal_s1[2]));
+                            tmpb1 = :((RD1_s1*$tmpc1 .* normal_s1[1] + RD2_s1*$tmpc1 .* normal_s1[2]));
+                            tmpb2 = :((RD1_s2*$tmpc2 .* -normal_s1[1] + RD2_s2*$tmpc2 .* -normal_s1[2]));
                         elseif config.dimension == 3
                             # tmpb = :((RD1[fmap_s1,:]*$tmpc1 .* normal_s1[1] + RD2[fmap_s1,:]*$tmpc1 .* normal_s1[2] + RD3[fmap_s1,:]*$tmpc1 .* normal_s1[3] -
                             #                 RD1[fmap_s2,:]*$tmpc2 .* normal_s1[1] - RD2[fmap_s2,:]*$tmpc2 .* normal_s1[2] - RD3[fmap_s2,:]*$tmpc2 .* normal_s1[3]));
                             # tmpb1 = :((RD1[fmap_s1,:]*$tmpc1 .* normal_s1[1] + RD2[fmap_s1,:]*$tmpc1 .* normal_s1[2] + RD3[fmap_s1,:]*$tmpc1 .* normal_s1[3]));
                             # tmpb2 = :((RD1[fmap_s2,:]*$tmpc2 .* -normal_s1[1] + RD2[fmap_s2,:]*$tmpc2 .* -normal_s1[2] + RD3[fmap_s2,:]*$tmpc2 .* -normal_s1[3]));
-                            tmpb1 = :((RD1*$tmpc1 .* normal_s1[1] + RD2*$tmpc1 .* normal_s1[2] + RD3*$tmpc1 .* normal_s1[3]));
-                            tmpb2 = :((RD1*$tmpc2 .* -normal_s1[1] + RD2*$tmpc2 .* -normal_s1[2] + RD3*$tmpc2 .* -normal_s1[3]));
+                            tmpb1 = :((RD1_s1*$tmpc1 .* normal_s1[1] + RD2_s1*$tmpc1 .* normal_s1[2] + RD3_s1*$tmpc1 .* normal_s1[3]));
+                            tmpb2 = :((RD1_s2*$tmpc2 .* -normal_s1[1] + RD2_s2*$tmpc2 .* -normal_s1[2] + RD3_s2*$tmpc2 .* -normal_s1[3]));
                         end
                     elseif occursin("DGJUMP", needed_coef_deriv[i][2])
                         # [[u]] -> (fmap_s1(Q) - fmap_s2(Q))
                         #tmpb = :((refel.Q[fmap_s1,:]*$tmpc1 - refel.Q[fmap_s2,:]*$tmpc2));
                         # tmpb1 = :((refel.Q[fmap_s1,:]*$tmpc1));
                         # tmpb2 = :((-refel.Q[fmap_s2,:]*$tmpc2));
-                        tmpb1 = :((refel.Q*$tmpc1));
-                        tmpb2 = :((-refel.Q*$tmpc2));
+                        tmpb1 = :($tmpc1);
+                        tmpb2 = :(-$tmpc2);
                         
                     else
                         # tmpb1 = :(refel.Q[fmap_s1,:]*$tmpc1); # This should not happen?
                         # tmpb2 = :(refel.Q[fmap_s2,:]*$tmpc2);
-                        tmpb1 = :(refel.Q*$tmpc1); # This should not happen?
-                        tmpb2 = :(refel.Q*$tmpc2);
+                        tmpb1 = :($tmpc1); # This should not happen?
+                        tmpb2 = :($tmpc2);
                     end
                     
                     #push!(code.args, Expr(:(=), tmpc, tmpb));
@@ -386,6 +408,16 @@ function generate_code_layer_julia_surface(symex, var, lorr)
                 
             else
                 # nothing?
+            end
+        end
+        
+        # extract surface values 
+        if length(coefs_to_shrink)>0
+            for i=1:length(coefs_to_shrink)
+                newone = coefs_to_shrink[i];
+                tmps = [:(a[fmap_s1]), :(a[fmap_s2])];
+                tmps[shrinkside[i]].args[1] = newone;
+                push!(code.args, Expr(:(=), newone, tmps[shrinkside[i]]));
             end
         end
         
@@ -601,6 +633,10 @@ function generate_code_layer_julia_surface(symex, var, lorr)
         end
         
     end
+    if result[1] == 0 result[1] = :(zeros(refel_s1.Np,refel_s1.Np)); end
+    if result[2] == 0 result[2] = :(zeros(refel_s1.Np,refel_s1.Np)); end
+    if result[3] == 0 result[3] = :(zeros(refel_s1.Np,refel_s1.Np)); end
+    if result[4] == 0 result[4] = :(zeros(refel_s1.Np,refel_s1.Np)); end
     
     finalresult = :((a,b,c,d));
     finalresult.args[1] = result[1];
@@ -723,10 +759,10 @@ function process_surface_term_julia(sterm, var, lorr, offset_ind=0)
                             # test_part2 = :((TRQ1[:,fmap_s2] .* normal_s1[1]) .* 0.5);
                             # test_part1 = :((TRQ1 .* normal_s1[1]) .* 0.5);
                             # test_part2 = :((TRQ1 .* normal_s1[1]) .* 0.5);
-                            test_parts[1] = :((TRQ1 .* normal_s1[1]) .* 0.5);
-                            test_parts[2] = :((TRQ1 .* normal_s1[1]) .* 0.5);
-                            test_parts[3] = :((TRQ1 .* normal_s2[1]) .* 0.5);
-                            test_parts[4] = :((TRQ1 .* normal_s2[1]) .* 0.5);
+                            test_parts[1] = :((TRQ1_s1 .* normal_s1[1]) .* 0.5);
+                            test_parts[2] = :((TRQ1_s2 .* normal_s1[1]) .* 0.5);
+                            test_parts[3] = :((TRQ1_s1 .* normal_s2[1]) .* 0.5);
+                            test_parts[4] = :((TRQ1_s1=2 .* normal_s2[1]) .* 0.5);
                         elseif config.dimension == 2
                             # test_part = :((TRQ1[:,fmap_s1] .* normal_s1[1] + TRQ2[:,fmap_s1] .* normal_s1[2] + 
                             #                 TRQ1[:,fmap_s2] .* normal_s1[1] + TRQ2[:,fmap_s2] .* normal_s1[2]) .* 0.5);
@@ -734,10 +770,10 @@ function process_surface_term_julia(sterm, var, lorr, offset_ind=0)
                             # test_part2 = :((TRQ1[:,fmap_s2] .* normal_s1[1] + TRQ2[:,fmap_s2] .* normal_s1[2]) .* 0.5);
                             # test_part1 = :((TRQ1 .* normal_s1[1] + TRQ2 .* normal_s1[2]) .* 0.5);
                             # test_part2 = :((TRQ1 .* normal_s1[1] + TRQ2 .* normal_s1[2]) .* 0.5);
-                            test_parts[1] = :((TRQ1 .* normal_s1[1] + TRQ2 .* normal_s1[2]) .* 0.5);
-                            test_parts[2] = :((TRQ1 .* normal_s1[1] + TRQ2 .* normal_s1[2]) .* 0.5);
-                            test_parts[3] = :((TRQ1 .* normal_s2[1] + TRQ2 .* normal_s2[2]) .* 0.5);
-                            test_parts[4] = :((TRQ1 .* normal_s2[1] + TRQ2 .* normal_s2[2]) .* 0.5);
+                            test_parts[1] = :((TRQ1_s1 .* normal_s1[1] + TRQ2_s1 .* normal_s1[2]) .* 0.5);
+                            test_parts[2] = :((TRQ1_s2 .* normal_s1[1] + TRQ2_s2 .* normal_s1[2]) .* 0.5);
+                            test_parts[3] = :((TRQ1_s1 .* normal_s2[1] + TRQ2_s1 .* normal_s2[2]) .* 0.5);
+                            test_parts[4] = :((TRQ1_s2 .* normal_s2[1] + TRQ2_s2 .* normal_s2[2]) .* 0.5);
                         elseif config.dimension == 3
                             # test_part = :((TRQ1[:,fmap_s1] .* normal_s1[1] + TRQ2[:,fmap_s1] .* normal_s1[2] + TRQ3[:,fmap_s1] .* normal_s1[3] +
                             #                 TRQ1[:,fmap_s2] .* normal_s1[1] + TRQ2[:,fmap_s2] .* normal_s1[2] + TRQ3[:,fmap_s2] .* normal_s1[3]) .* 0.5);
@@ -745,10 +781,10 @@ function process_surface_term_julia(sterm, var, lorr, offset_ind=0)
                             # test_part2 = :((TRQ1[:,fmap_s2] .* normal_s1[1] + TRQ2[:,fmap_s2] .* normal_s1[2] + TRQ3[:,fmap_s2] .* normal_s1[3]) .* 0.5);
                             # test_part1 = :((TRQ1 .* normal_s1[1] + TRQ2 .* normal_s1[2] + TRQ3 .* normal_s1[3]) .* 0.5);
                             # test_part2 = :((TRQ1 .* normal_s1[1] + TRQ2 .* normal_s1[2] + TRQ3 .* normal_s1[3]) .* 0.5);
-                            test_parts[1] = :((TRQ1 .* normal_s1[1] + TRQ2 .* normal_s1[2] + TRQ3 .* normal_s1[3]) .* 0.5);
-                            test_parts[2] = :((TRQ1 .* normal_s1[1] + TRQ2 .* normal_s1[2] + TRQ3 .* normal_s1[3]) .* 0.5);
-                            test_parts[3] = :((TRQ1 .* normal_s2[1] + TRQ2 .* normal_s2[2] + TRQ3 .* normal_s2[3]) .* 0.5);
-                            test_parts[4] = :((TRQ1 .* normal_s2[1] + TRQ2 .* normal_s2[2] + TRQ3 .* normal_s2[3]) .* 0.5);
+                            test_parts[1] = :((TRQ1_s1 .* normal_s1[1] + TRQ2_s1 .* normal_s1[2] + TRQ3_s1 .* normal_s1[3]) .* 0.5);
+                            test_parts[2] = :((TRQ1_s2 .* normal_s1[1] + TRQ2_s2 .* normal_s1[2] + TRQ3_s2 .* normal_s1[3]) .* 0.5);
+                            test_parts[3] = :((TRQ1_s1 .* normal_s2[1] + TRQ2_s1 .* normal_s2[2] + TRQ3_s1 .* normal_s2[3]) .* 0.5);
+                            test_parts[4] = :((TRQ1_s2 .* normal_s2[1] + TRQ2_s2 .* normal_s2[2] + TRQ3_s2 .* normal_s2[3]) .* 0.5);
                         end
                     elseif occursin("DGAVE", mods[1])
                         # {{u}} -> (fmap_s1(Q) + fmap_s2(Q))*0.5
@@ -757,10 +793,10 @@ function process_surface_term_julia(sterm, var, lorr, offset_ind=0)
                         # test_part2 = :((refel.Q[fmap_s2,:])' .* 0.5);
                         # test_part1 = :((refel.Q)' .* 0.5);
                         # test_part2 = :((refel.Q)' .* 0.5);
-                        test_parts[1] = :((refel.Q)' .* 0.5);
-                        test_parts[2] = :((refel.Q)' .* 0.5);
-                        test_parts[3] = :((refel.Q)' .* 0.5);
-                        test_parts[4] = :((refel.Q)' .* 0.5);
+                        test_parts[1] = :((refel_s1.Q)' .* 0.5);
+                        test_parts[2] = :((refel_s2.Q)' .* 0.5);
+                        test_parts[3] = :((refel_s1.Q)' .* 0.5);
+                        test_parts[4] = :((refel_s2.Q)' .* 0.5);
                     elseif occursin("DGJUMPNORMDOTGRAD", mods[1])
                         # [[n.grad(u)]]
                         need_derivative = true;
@@ -770,10 +806,10 @@ function process_surface_term_julia(sterm, var, lorr, offset_ind=0)
                             # test_part2 = :((TRQ1[:,fmap_s2] .* -normal_s1[1]));
                             # test_part1 = :((TRQ1 .* normal_s1[1]));
                             # test_part2 = :((TRQ1 .* -normal_s1[1]));
-                            test_parts[1] = :((TRQ1 .* normal_s1[1]));
-                            test_parts[2] = :((TRQ1 .* -normal_s1[1]));
-                            test_parts[3] = :((TRQ1 .* normal_s2[1]));
-                            test_parts[4] = :((TRQ1 .* -normal_s2[1]));
+                            test_parts[1] = :((TRQ1_s1 .* normal_s1[1]));
+                            test_parts[2] = :((TRQ1_s2 .* -normal_s1[1]));
+                            test_parts[3] = :((TRQ1_s1 .* normal_s2[1]));
+                            test_parts[4] = :((TRQ1_s2 .* -normal_s2[1]));
                         elseif config.dimension == 2
                             # test_part = :((TRQ1[:,fmap_s1] .* normal_s1[1] + TRQ2[:,fmap_s1] .* normal_s1[2] - 
                             #                 TRQ1[:,fmap_s2] .* normal_s1[1] - TRQ2[:,fmap_s2] .* normal_s1[2]));
@@ -781,10 +817,10 @@ function process_surface_term_julia(sterm, var, lorr, offset_ind=0)
                             # test_part2 = :((TRQ1[:,fmap_s2] .* -normal_s1[1] + TRQ2[:,fmap_s2] .* -normal_s1[2]));
                             # test_part1 = :((TRQ1 .* normal_s1[1] + TRQ2 .* normal_s1[2]));
                             # test_part2 = :((TRQ1 .* -normal_s1[1] + TRQ2 .* -normal_s1[2]));
-                            test_parts[1] = :((TRQ1 .* normal_s1[1] + TRQ2 .* normal_s1[2]));
-                            test_parts[2] = :((TRQ1 .* -normal_s1[1] + TRQ2 .* -normal_s1[2]));
-                            test_parts[3] = :((TRQ1 .* normal_s2[1] + TRQ2 .* normal_s2[2]));
-                            test_parts[4] = :((TRQ1 .* -normal_s2[1] + TRQ2 .* -normal_s2[2]));
+                            test_parts[1] = :((TRQ1_s1 .* normal_s1[1] + TRQ2_s1 .* normal_s1[2]));
+                            test_parts[2] = :((TRQ1_s2 .* -normal_s1[1] + TRQ2_s2 .* -normal_s1[2]));
+                            test_parts[3] = :((TRQ1_s1 .* normal_s2[1] + TRQ2_s1 .* normal_s2[2]));
+                            test_parts[4] = :((TRQ1_s2 .* -normal_s2[1] + TRQ2_s2 .* -normal_s2[2]));
                         elseif config.dimension == 3
                             # test_part = :((TRQ1[:,fmap_s1] .* normal_s1[1] + TRQ2[:,fmap_s1] .* normal_s1[2] + TRQ3[:,fmap_s1] .* normal_s1[3] -
                             #                 TRQ1[:,fmap_s2] .* normal_s1[1] - TRQ2[:,fmap_s2] .* normal_s1[2] - TRQ3[:,fmap_s2] .* normal_s1[3]));
@@ -792,10 +828,10 @@ function process_surface_term_julia(sterm, var, lorr, offset_ind=0)
                             # test_part2 = :((TRQ1[:,fmap_s2] .* -normal_s1[1] + TRQ2[:,fmap_s2] .* -normal_s1[2] + TRQ3[:,fmap_s2] .* -normal_s1[3]));
                             # test_part1 = :((TRQ1 .* normal_s1[1] + TRQ2 .* normal_s1[2] + TRQ3 .* normal_s1[3]));
                             # test_part2 = :((TRQ1 .* -normal_s1[1] + TRQ2 .* -normal_s1[2] + TRQ3 .* -normal_s1[3]));
-                            test_parts[1] = :((TRQ1 .* normal_s1[1] + TRQ2 .* normal_s1[2] + TRQ3 .* normal_s1[3]));
-                            test_parts[2] = :((TRQ1 .* -normal_s1[1] + TRQ2 .* -normal_s1[2] + TRQ3 .* -normal_s1[3]));
-                            test_parts[3] = :((TRQ1 .* normal_s2[1] + TRQ2 .* normal_s2[2] + TRQ3 .* normal_s2[3]));
-                            test_parts[4] = :((TRQ1 .* -normal_s2[1] + TRQ2 .* -normal_s2[2] + TRQ3 .* -normal_s2[3]));
+                            test_parts[1] = :((TRQ1_s1 .* normal_s1[1] + TRQ2_s1 .* normal_s1[2] + TRQ3_s1 .* normal_s1[3]));
+                            test_parts[2] = :((TRQ1_s2 .* -normal_s1[1] + TRQ2_s2 .* -normal_s1[2] + TRQ3_s2 .* -normal_s1[3]));
+                            test_parts[3] = :((TRQ1_s1 .* normal_s2[1] + TRQ2_s1 .* normal_s2[2] + TRQ3_s1 .* normal_s2[3]));
+                            test_parts[4] = :((TRQ1_s2 .* -normal_s2[1] + TRQ2_s2 .* -normal_s2[2] + TRQ3_s2 .* -normal_s2[3]));
                         end
                     elseif occursin("DGJUMP", mods[1])
                         # [[u]] -> (fmap_s1(Q) - fmap_s2(Q))
@@ -804,25 +840,24 @@ function process_surface_term_julia(sterm, var, lorr, offset_ind=0)
                         # test_part2 = :((-refel.Q[fmap_s2,:])');
                         # test_part1 = :((refel.Q)');
                         # test_part2 = :((-refel.Q)');
-                        test_parts[1] = :((refel.Q)');
-                        test_parts[2] = :(-(refel.Q)');
-                        test_parts[3] = :(-(refel.Q)');
-                        test_parts[4] = :((refel.Q)');
+                        test_parts[1] = :((refel_s1.Q)');
+                        test_parts[2] = :(-(refel_s2.Q)');
+                        test_parts[3] = :(-(refel_s1.Q)');
+                        test_parts[4] = :((refel_s2.Q)');
                     elseif occursin("D", mods[1])
                         # TODO more than one derivative mod
                         need_derivative = true;
-                        dmat = Symbol("TRQ"*mods[1][2]);
-                        test_parts[1] = dmat;
+                        test_parts[1] = Symbol("TRQ"*mods[1][2]*"_s1");
                         test_parts[2] = 0;
-                        test_parts[3] = dmat;
+                        test_parts[3] = Symbol("TRQ"*mods[1][2]*"_s2");
                         test_parts[4] = 0;
                     end
                 else
                     # no mods
-                    test_parts[1] = :(refel.Q');
-                    test_parts[2] = 0;
-                    test_parts[3] = :(refel.Q');
-                    test_parts[4] = 0;
+                    test_parts[1] = :(refel_s1.Q');
+                    test_parts[2] = :(refel_s1.Q');
+                    test_parts[3] = :(refel_s2.Q');
+                    test_parts[4] = :(refel_s1.Q');
                 end
             elseif is_unknown_var(v, var) && lorr == LHS # If rhs, treat as a coefficient
                 # if !(trial_parts[1] === nothing)
@@ -847,64 +882,63 @@ function process_surface_term_julia(sterm, var, lorr, offset_ind=0)
                         # {{n.grad(u)}}
                         need_derivative = true;
                         if config.dimension == 1
-                            trial_parts[1] = :((RQ1 .* normal_s1[1]) .* 0.5);
-                            trial_parts[2] = :((RQ1 .* normal_s1[1]) .* 0.5);
-                            trial_parts[3] = :((RQ1 .* normal_s2[1]) .* 0.5);
-                            trial_parts[4] = :((RQ1 .* normal_s2[1]) .* 0.5);
+                            trial_parts[1] = :((RQ1_s1 .* normal_s1[1]) .* 0.5);
+                            trial_parts[2] = :((RQ1_s2 .* normal_s1[1]) .* 0.5);
+                            trial_parts[3] = :((RQ1_s1 .* normal_s2[1]) .* 0.5);
+                            trial_parts[4] = :((RQ1_s2 .* normal_s2[1]) .* 0.5);
                         elseif config.dimension == 2
-                            trial_parts[1] = :((RQ1 .* normal_s1[1] + RQ2 .* normal_s1[2]) .* 0.5);
-                            trial_parts[2] = :((RQ1 .* normal_s1[1] + RQ2 .* normal_s1[2]) .* 0.5);
-                            trial_parts[3] = :((RQ1 .* normal_s2[1] + RQ2 .* normal_s2[2]) .* 0.5);
-                            trial_parts[4] = :((RQ1 .* normal_s2[1] + RQ2 .* normal_s2[2]) .* 0.5);
+                            trial_parts[1] = :((RQ1_s1 .* normal_s1[1] + RQ2_s1 .* normal_s1[2]) .* 0.5);
+                            trial_parts[2] = :((RQ1_s2 .* normal_s1[1] + RQ2_s2 .* normal_s1[2]) .* 0.5);
+                            trial_parts[3] = :((RQ1_s1 .* normal_s2[1] + RQ2_s1 .* normal_s2[2]) .* 0.5);
+                            trial_parts[4] = :((RQ1_s2 .* normal_s2[1] + RQ2_s2 .* normal_s2[2]) .* 0.5);
                         elseif config.dimension == 3
-                            trial_parts[1] = :((RQ1 .* normal_s1[1] + RQ2 .* normal_s1[2] + RQ3 .* normal_s1[3]) .* 0.5);
-                            trial_parts[2] = :((RQ1 .* normal_s1[1] + RQ2 .* normal_s1[2] + RQ3 .* normal_s1[3]) .* 0.5);
-                            trial_parts[3] = :((RQ1 .* normal_s2[1] + RQ2 .* normal_s2[2] + RQ3 .* normal_s2[3]) .* 0.5);
-                            trial_parts[4] = :((RQ1 .* normal_s2[1] + RQ2 .* normal_s2[2] + RQ3 .* normal_s2[3]) .* 0.5);
+                            trial_parts[1] = :((RQ1_s1 .* normal_s1[1] + RQ2_s1 .* normal_s1[2] + RQ3_s1 .* normal_s1[3]) .* 0.5);
+                            trial_parts[2] = :((RQ1_s2 .* normal_s1[1] + RQ2_s2 .* normal_s1[2] + RQ3_s2 .* normal_s1[3]) .* 0.5);
+                            trial_parts[3] = :((RQ1_s1 .* normal_s2[1] + RQ2_s1 .* normal_s2[2] + RQ3_s1 .* normal_s2[3]) .* 0.5);
+                            trial_parts[4] = :((RQ1_s2 .* normal_s2[1] + RQ2_s2 .* normal_s2[2] + RQ3_s2 .* normal_s2[3]) .* 0.5);
                         end
                     elseif occursin("DGAVE", mods[1])
-                        trial_parts[1] = :((refel.Q) .* 0.5);
-                        trial_parts[2] = :((refel.Q) .* 0.5);
-                        trial_parts[3] = :((refel.Q) .* 0.5);
-                        trial_parts[4] = :((refel.Q) .* 0.5);
+                        trial_parts[1] = :((refel_s1.Q) .* 0.5);
+                        trial_parts[2] = :((refel_s2.Q) .* 0.5);
+                        trial_parts[3] = :((refel_s1.Q) .* 0.5);
+                        trial_parts[4] = :((refel_s2.Q) .* 0.5);
                     elseif occursin("DGJUMPNORMDOTGRAD", mods[1])
                         # [[n.grad(u)]]
                         need_derivative = true;
                         if config.dimension == 1
-                            trial_parts[1] = :((RQ1 .* normal_s1[1]));
-                            trial_parts[2] = :((RQ1 .* -normal_s1[1]));
-                            trial_parts[3] = :((RQ1 .* normal_s2[1]));
-                            trial_parts[4] = :((RQ1 .* -normal_s2[1]));
+                            trial_parts[1] = :((RQ1_s1 .* normal_s1[1]));
+                            trial_parts[2] = :((RQ1_s2 .* -normal_s1[1]));
+                            trial_parts[3] = :((RQ1_s1 .* normal_s2[1]));
+                            trial_parts[4] = :((RQ1_s2 .* -normal_s2[1]));
                         elseif config.dimension == 2
-                            trial_parts[1] = :((RQ1 .* normal_s1[1] + RQ2 .* normal_s1[2]));
-                            trial_parts[2] = :((RQ1 .* -normal_s1[1] + RQ2 .* -normal_s1[2]));
-                            trial_parts[3] = :((RQ1 .* normal_s2[1] + RQ2 .* normal_s2[2]));
-                            trial_parts[4] = :((RQ1 .* -normal_s2[1] + RQ2 .* -normal_s2[2]));
+                            trial_parts[1] = :((RQ1_s1 .* normal_s1[1] + RQ2_s1 .* normal_s1[2]));
+                            trial_parts[2] = :((RQ1_s2 .* -normal_s1[1] + RQ2_s2 .* -normal_s1[2]));
+                            trial_parts[3] = :((RQ1_s1 .* normal_s2[1] + RQ2_s1 .* normal_s2[2]));
+                            trial_parts[4] = :((RQ1_s2 .* -normal_s2[1] + RQ2_s2 .* -normal_s2[2]));
                         elseif config.dimension == 3
-                            trial_parts[1] = :((RQ1 .* normal_s1[1] + RQ2 .* normal_s1[2] + RQ3 .* normal_s1[3]));
-                            trial_parts[2] = :((RQ1 .* -normal_s1[1] + RQ2 .* -normal_s1[2] + RQ3 .* -normal_s1[3]));
-                            trial_parts[3] = :((RQ1 .* normal_s2[1] + RQ2 .* normal_s2[2] + RQ3 .* normal_s2[3]));
-                            trial_parts[4] = :((RQ1 .* -normal_s2[1] + RQ2 .* -normal_s2[2] + RQ3 .* -normal_s2[3]));
+                            trial_parts[1] = :((RQ1_s1 .* normal_s1[1] + RQ2_s1 .* normal_s1[2] + RQ3_s1 .* normal_s1[3]));
+                            trial_parts[2] = :((RQ1_s2 .* -normal_s1[1] + RQ2_s2 .* -normal_s1[2] + RQ3_s2 .* -normal_s1[3]));
+                            trial_parts[3] = :((RQ1_s1 .* normal_s2[1] + RQ2_s1 .* normal_s2[2] + RQ3_s1 .* normal_s2[3]));
+                            trial_parts[4] = :((RQ1_s2 .* -normal_s2[1] + RQ2_s2 .* -normal_s2[2] + RQ3_s2 .* -normal_s2[3]));
                         end
                     elseif occursin("DGJUMP", mods[1])
-                        trial_parts[1] = :(refel.Q);
-                        trial_parts[2] = :(-refel.Q);
-                        trial_parts[3] = :(-refel.Q);
-                        trial_parts[4] = :(refel.Q);
+                        trial_parts[1] = :(refel_s1.Q);
+                        trial_parts[2] = :(-refel_s2.Q);
+                        trial_parts[3] = :(-refel_s1.Q);
+                        trial_parts[4] = :(refel_s2.Q);
                     elseif occursin("D", mods[1])
                         # TODO more than one derivative mod
                         need_derivative = true;
-                        dmat = Symbol("RQ"*mods[1][2]);
-                        trial_parts[1] = dmat;
+                        trial_parts[1] = Symbol("RQ"*mods[1][2]("_s1"));
                         trial_parts[2] = 0;
-                        trial_parts[3] = dmat;
+                        trial_parts[3] = Symbol("RQ"*mods[1][2]("_s2"));
                         trial_parts[4] = 0;
                     end
                 else
                     # no mods
-                    trial_parts[1] = :(refel.Q);
+                    trial_parts[1] = :(refel_s1.Q);
                     trial_parts[2] = 0;
-                    trial_parts[3] = :(refel.Q);
+                    trial_parts[3] = :(refel_s2.Q);
                     trial_parts[4] = 0;
                 end
                 
@@ -981,10 +1015,14 @@ function process_surface_term_julia(sterm, var, lorr, offset_ind=0)
                 
             end
             if j>1
-                coef_parts[1] = :($coef_parts[1] .* $tmp1);
-                coef_parts[2] = :($coef_parts[2] .* $tmp2);
-                coef_parts[3] = :($coef_parts[3] .* $tmp1);
-                coef_parts[4] = :($coef_parts[4] .* $tmp2);
+                c1=coef_parts[1];
+                c2=coef_parts[2];
+                c3=coef_parts[3];
+                c4=coef_parts[4];
+                coef_parts[1] = :($c1 .* $tmp1);
+                coef_parts[2] = :($c2 .* $tmp2);
+                coef_parts[3] = :($c3 .* $tmp1);
+                coef_parts[4] = :($c4 .* $tmp2);
             else
                 coef_parts[1] = tmp1;
                 coef_parts[2] = tmp2;
@@ -996,12 +1034,14 @@ function process_surface_term_julia(sterm, var, lorr, offset_ind=0)
     
     if length(coef_expr_facs) > 0
         for j=1:length(coef_expr_facs)
-            tmp = coef_expr_facs[j];
+            tmp1 = coef_expr_facs[j];
+            tmp2 = coef_expr_facs[j];
+            tmp4 = [tmp1,tmp2,tmp1,tmp2];
             for cind=1:4
                 if !(coef_parts[cind] === nothing)
-                    coef_parts[cind] = :($coef_parts[cind] .* $tmp);
+                    coef_parts[cind] = :($coef_parts[cind] .* $tmp4[cind]);
                 else
-                    coef_parts[cind] = tmp;
+                    coef_parts[cind] = tmp[cind];
                 end
             end
         end

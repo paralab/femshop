@@ -52,9 +52,6 @@ mutable struct Refel
     Dds::Array{Float64}      # 
     Ddt::Array{Float64}      # 
     
-    # for DG
-    lift::Array{Float64}    # Surface integral matrix
-    
     # Constructor needs at least this information
     Refel(dim, order, nnodes, nfaces) = new(
         dim,
@@ -69,8 +66,39 @@ mutable struct Refel
         [],[],[],
         [],[],
         [],[],[],[],[],
-        []
+        [],[],[]
     )
+end
+
+import Base.copy
+function copy(ref::Refel)
+    newref = Refel(ref.dim, ref.N, ref.Np, ref.Nfaces);
+    newref.r1d = copy(ref.r1d);
+    newref.r = copy(ref.r);
+    newref.wr1d = copy(ref.wr1d);
+    newref.wr = copy(ref.wr);
+    newref.g1d = copy(ref.g1d);
+    newref.wg1d = copy(ref.wg1d);
+    newref.g = copy(ref.g);
+    newref.wg = copy(ref.wg);
+    newref.V = copy(ref.V);
+    newref.gradV = copy(ref.gradV);
+    newref.invV = copy(ref.invV);
+    newref.Vg = copy(ref.Vg);
+    newref.gradVg = copy(ref.gradVg);
+    newref.invVg = copy(ref.invVg);
+    newref.Dr = copy(ref.Dr);
+    newref.Dg = copy(ref.Dg);
+    newref.Q1d = copy(ref.Q1d);
+    newref.Q = copy(ref.Q);
+    newref.Qr = copy(ref.Qr);
+    newref.Qs = copy(ref.Qs);
+    newref.Qt = copy(ref.Qt);
+    newref.Ddr = copy(ref.Ddr);
+    newref.Dds = copy(ref.Dds);
+    newref.Ddt = copy(ref.Ddt);
+    
+    return newref;
 end
 
 function build_refel(dimension, order, nfaces, nodetype)
@@ -163,3 +191,97 @@ function build_refel(dimension, order, nfaces, nodetype)
     return refel;
 end
 
+function custom_quadrature_refel(oldrefel, nodes, weights)
+    # The supplied nodes will replace the gauss quadrature nodes and weights r.g and r.wg
+    # NOTE: Elemental node and weight arrays will not be changed, so quadrature must be set to GAUSS.
+    # NOTE: Only quadrature matrices are changed. Nothing else.
+    refel = copy(oldrefel);
+    refel.g = copy(nodes);
+    refel.wg = copy(weights);
+    
+    # Vandermonde matrix and grad,inv for r will not change
+    
+    # Gauss versions will change
+    Nn = size(nodes,2);
+    refel.Vg = zeros(Nn, refel.N+1);
+    refel.gradVg = zeros(Nn, refel.N+1);
+    if refel.dim == 1
+        for i=1:refel.N+1
+            refel.Vg[:,i] = jacobi_polynomial(nodes[:,1], 0, 0, i-1);
+        end
+        for i=1:refel.N
+            refel.gradVg[:,i+1] = sqrt(i*(i+1)) .* jacobi_polynomial(nodes[:,1], 1, 1, i-1);
+        end
+        
+        # Differentiation matrices
+        refel.Dg = refel.gradVg*refel.invV;
+        refel.Q1d = refel.Vg*refel.invV;
+        
+        # Quadrature matrices
+        refel.Q = refel.Q1d;
+        refel.Qr = refel.Dg;
+        refel.Ddr = refel.Dr;
+        
+    elseif refel.dim == 2
+        # Now it's a little trickier, so forget the efficiency and do it carefully.
+        Nn = size(nodes,2);
+        tmp1 = zeros(Nn, refel.N+1);
+        tmp2 = zeros(Nn, refel.N+1);
+        Dtmp1 = zeros(Nn, refel.N+1);
+        Dtmp2 = zeros(Nn, refel.N+1);
+        
+        for i=1:refel.N+1
+            tmp1[:,i] = jacobi_polynomial(nodes[:,1], 0, 0, i-1);
+            tmp2[:,i] = jacobi_polynomial(nodes[:,2], 0, 0, i-1);
+        end
+        for i=1:refel.N
+            Dtmp1[:,i+1] = sqrt(i*(i+1)) .* jacobi_polynomial(nodes[:,1], 1, 1, i-1);
+            Dtmp2[:,i+1] = sqrt(i*(i+1)) .* jacobi_polynomial(nodes[:,2], 1, 1, i-1);
+        end
+        
+        # Use kron(Vg*invV, Vg,invV) = kron(Vg,Vg)*kron(invV,invV)
+        VgXVg = kron(tmp1,tmp2);
+        VgXDg = kron(tmp1,Dtmp2);
+        DgXVg = kron(Dtmp1,tmp2);
+        viXvi = kron(refel.invV, refel.invV);
+        
+        refel.Q = VgXVg * viXvi;
+        refel.Qr = VgXDg * viXvi;
+        refel.Qs = DgXVg * viXvi;
+        
+    elseif refel.dim == 3
+        Nn = size(nodes,2);
+        tmp1 = zeros(Nn, refel.N+1);
+        tmp2 = zeros(Nn, refel.N+1);
+        tmp3 = zeros(Nn, refel.N+1);
+        Dtmp1 = zeros(Nn, refel.N+1);
+        Dtmp2 = zeros(Nn, refel.N+1);
+        Dtmp3 = zeros(Nn, refel.N+1);
+        
+        for i=1:refel.N+1
+            tmp1[:,i] = jacobi_polynomial(nodes[:,1], 0, 0, i-1);
+            tmp2[:,i] = jacobi_polynomial(nodes[:,2], 0, 0, i-1);
+            tmp3[:,i] = jacobi_polynomial(nodes[:,3], 0, 0, i-1);
+        end
+        for i=1:refel.N
+            Dtmp1[:,i+1] = sqrt(i*(i+1)) .* jacobi_polynomial(nodes[:,1], 1, 1, i-1);
+            Dtmp2[:,i+1] = sqrt(i*(i+1)) .* jacobi_polynomial(nodes[:,2], 1, 1, i-1);
+            Dtmp3[:,i+1] = sqrt(i*(i+1)) .* jacobi_polynomial(nodes[:,3], 1, 1, i-1);
+        end
+        
+        # Use kron(Vg*invV, Vg,invV) = kron(Vg,Vg)*kron(invV,invV)
+        VgXVgXVg = kron(kron(tmp1,tmp2), tmp3);
+        VgXVgXDg = kron(kron(tmp1,tmp2),Dtmp3);
+        VgXDgXVg = kron(kron(tmp1,Dtmp2),tmp3);
+        DgXVgXVg = kron(kron(Dtmp1,tmp2),tmp3);
+        viXviXvi = kron(kron(refel.invV, refel.invV), refel.invV);
+        
+        refel.Q = VgXVgXVg * viXviXvi;
+        refel.Qr = VgXVgXDg * viXviXvi;
+        refel.Qs = VgXDgXVg * viXviXvi;
+        refel.Qt = DgXVgXVg * viXviXvi;
+    end
+    
+    return refel;
+    
+end

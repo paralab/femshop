@@ -37,7 +37,13 @@ function grid_from_mesh_1d(mesh)
     nel = mesh.nel;
     
     refel = build_refel(1, ord, nfaces, config.elemental_nodes);
-    refelfc = build_refel(0, ord, 0, config.elemental_nodes);
+    #refelfc = build_refel(0, ord, 0, config.elemental_nodes);
+    refelfcs = [copy(refel), copy(refel)];
+    nds = Array{Float64,2}(undef,1,1);
+    nds[1,1] = 1.0;
+    refelfcs[1] = custom_quadrature_refel(refelfcs[1], -nds, [1]);
+    refelfcs[2] = custom_quadrature_refel(refelfcs[2], nds, [1]);
+    
     N = (nx-1)*ord + 1;         # number of total nodes
     Np = refel.Np;              # number of nodes per element
     x = zeros(1,N);             # coordinates of all nodes
@@ -96,7 +102,7 @@ function grid_from_mesh_1d(mesh)
     end
     
     
-    return (refel, refelfc, Grid(x, bdry, bdryfc, bdrynorm, bids, loc2glb, glbvertex, f2glb, fvtx2glb));
+    return (refel, refelfcs, Grid(x, bdry, bdryfc, bdrynorm, bids, loc2glb, glbvertex, f2glb, fvtx2glb));
 end
 
 function grid_from_mesh_2d(mesh)
