@@ -349,7 +349,7 @@ macro weakForm(var, ex)
         end
         
         # make a string for the expression
-        if length(lhs_expr) > 1
+        if typeof(lhs_expr[1]) <: Array
             global lhsstring = "";
             global rhsstring = "";
             for i=1:length(lhs_expr)
@@ -373,20 +373,20 @@ macro weakForm(var, ex)
                 rhsstring = rhsstring*"\n";
             end
         else
-            global lhsstring = "lhs = "*string(lhs_expr[1][1]);
-            global rhsstring = "rhs = "*string(rhs_expr[1][1]);
-            for j=2:length(lhs_expr[1])
-                global lhsstring = lhsstring*" + "*string(lhs_expr[1][j]);
+            global lhsstring = "lhs = "*string(lhs_expr[1]);
+            global rhsstring = "rhs = "*string(rhs_expr[1]);
+            for j=2:length(lhs_expr)
+                global lhsstring = lhsstring*" + "*string(lhs_expr[j]);
             end
-            for j=2:length(rhs_expr[1])
-                global rhsstring = rhsstring*" + "*string(rhs_expr[1][j]);
+            for j=2:length(rhs_expr)
+                global rhsstring = rhsstring*" + "*string(rhs_expr[j]);
             end
             if length(result_exprs) == 4
-                for j=1:length(lhs_surf_expr[1])
-                    global lhsstring = lhsstring*" + surface("*string(lhs_surf_expr[1][j])*")";
+                for j=1:length(lhs_surf_expr)
+                    global lhsstring = lhsstring*" + surface("*string(lhs_surf_expr[j])*")";
                 end
-                for j=1:length(rhs_surf_expr[1])
-                    global rhsstring = rhsstring*" + surface("*string(rhs_surf_expr[1][j])*")";
+                for j=1:length(rhs_surf_expr)
+                    global rhsstring = rhsstring*" + surface("*string(rhs_surf_expr[j])*")";
                 end
             end
         end

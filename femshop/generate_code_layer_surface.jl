@@ -60,14 +60,8 @@ function generate_code_layer_julia_surface(symex, var, lorr)
     push!(code.args, :(time = args[20]));       # time for time dependent coefficients
     push!(code.args, :(dt = args[21]));         # dt for time dependent problems
     
-    # Build geometric factors for both volume and surface
+    # Build geometric factors
     push!(code.args, :((detJ, J) = geometric_factors(refel, xe1)));
-    #push!(code.args, :((face_detJ, face_J) = geometric_factors(refel_s1, xe1)));
-    # push!(code.args, :(wgdetj = refel.wg .* detJ));
-    # push!(code.args, :(face_wgdetj_s1 = zeros(length(refel.wg))));
-    # push!(code.args, :(face_wgdetj_s2 = zeros(length(refel.wg))));
-    # push!(code.args, :(face_wgdetj_s1[fmap_s1] = face_refel.wg .* face_detJ));
-    # push!(code.args, :(face_wgdetj_s2[fmap_s2] = face_refel.wg .* face_detJ));
     push!(code.args, :(face_wgdetj_s1 = refel_s1.wg .* face_detJ));
     push!(code.args, :(face_wgdetj_s2 = refel_s2.wg .* face_detJ));
     
@@ -142,7 +136,6 @@ function generate_code_layer_julia_surface(symex, var, lorr)
             append!(needed_coef, coe);
             append!(needed_coef_ind, coeind);
             append!(needed_coef_deriv, coederiv);
-            # change indices into one number
             
             push!(test_ind, testi);
             push!(trial_ind, trialj);
@@ -454,6 +447,17 @@ function generate_code_layer_julia_surface(symex, var, lorr)
         end
     end
     
+    # remove any :EMPTY terms
+    newterms = [[], [], [], []];
+    for i=1:length(terms[1])
+        for tind=1:4
+            if !(terms[tind][i] === nothing || terms[tind][i] === :EMPTY)
+                push!(newterms[tind], terms[tind][i]);
+            end
+        end
+    end
+    terms = newterms;
+    
     # If it was empty, just return zeros without doing any work
     if length(terms[1])==0 && length(terms[2])==0 && length(terms[3])==0 && length(terms[4])==0
         if lorr == LHS
@@ -633,10 +637,10 @@ function generate_code_layer_julia_surface(symex, var, lorr)
         end
         
     end
-    if result[1] == 0 result[1] = :(zeros(refel_s1.Np,refel_s1.Np)); end
-    if result[2] == 0 result[2] = :(zeros(refel_s1.Np,refel_s1.Np)); end
-    if result[3] == 0 result[3] = :(zeros(refel_s1.Np,refel_s1.Np)); end
-    if result[4] == 0 result[4] = :(zeros(refel_s1.Np,refel_s1.Np)); end
+    if (result[1] === nothing || result[1] == 0) result[1] = :(zeros(refel_s1.Np,refel_s1.Np)); end
+    if (result[2] === nothing || result[2] == 0) result[2] = :(zeros(refel_s1.Np,refel_s1.Np)); end
+    if (result[3] === nothing || result[3] == 0) result[3] = :(zeros(refel_s1.Np,refel_s1.Np)); end
+    if (result[4] === nothing || result[4] == 0) result[4] = :(zeros(refel_s1.Np,refel_s1.Np)); end
     
     finalresult = :((a,b,c,d));
     finalresult.args[1] = result[1];
@@ -650,7 +654,12 @@ end
 # Changes the symbolic layer term into a code layer term
 # also records derivative and coefficient needs
 function process_surface_term_julia(sterm, var, lorr, offset_ind=0)
-    terms = [copy(sterm),copy(sterm),copy(sterm),copy(sterm)];
+    terms = Array{Any,1}(undef,4);
+    terms[1] = copy(sterm);
+    terms[2] = copy(sterm);
+    terms[3] = copy(sterm);
+    terms[4] = copy(sterm);
+    #terms = [copy(sterm),copy(sterm),copy(sterm),copy(sterm)];
     need_derivative = false;
     need_derivative_for_coefficient = false;
     needed_coef = [];
@@ -750,7 +759,57 @@ function process_surface_term_julia(sterm, var, lorr, offset_ind=0)
                 test_component = index; # the vector index
                 if length(mods) > 0
                     # Could be Dn for derivative, DGJUMP for jump, DGAVE for ave or versions with NORMDOTGRAD
-                    if occursin("DGAVENORMDOTGRAD", mods[1])
+                    if occursin("DGINSIDE", mods[1])
+                        test_parts[1] = :((refel_s1.Q)');
+                        test_parts[2] = :EMPTY;
+                        test_parts[3] = :EMPTY;
+                        test_parts[4] = :((refel_s2.Q)');
+                        
+                    elseif occursin("DGOUTSIDE", mods[1])
+                        test_parts[1] = :EMPTY;
+                        test_parts[2] = :((refel_s2.Q)');
+                        test_parts[3] = :((refel_s1.Q)');
+                        test_parts[4] = :EMPTY;
+                        
+                    elseif occursin("DGNGRADINSIDE", mods[1])
+                        need_derivative = true;
+                        if config.dimension == 1
+                            test_parts[1] = :((TRQ1_s1 .* normal_s1[1]));
+                            test_parts[2] = :EMPTY;
+                            test_parts[3] = :EMPTY;
+                            test_parts[4] = :((TRQ1_s2 .* normal_s2[1]));
+                        elseif config.dimension == 2
+                            test_parts[1] = :((TRQ1_s1 .* normal_s1[1] + TRQ2_s1 .* normal_s1[2]));
+                            test_parts[2] = :EMPTY;
+                            test_parts[3] = :EMPTY;
+                            test_parts[4] = :((TRQ1_s2 .* normal_s2[1] + TRQ2_s2 .* normal_s2[2]));
+                        elseif config.dimension == 3
+                            test_parts[1] = :((TRQ1_s1 .* normal_s1[1] + TRQ2_s1 .* normal_s1[2] + TRQ3_s1 .* normal_s1[3]));
+                            test_parts[2] = :EMPTY;
+                            test_parts[3] = :EMPTY;
+                            test_parts[4] = :((TRQ1_s2 .* normal_s2[1] + TRQ2_s2 .* normal_s2[2] + TRQ3_s2 .* normal_s2[3]));
+                        end
+                        
+                    elseif occursin("DGNGRADOUTSIDE", mods[1])
+                        need_derivative = true;
+                        if config.dimension == 1
+                            test_parts[1] = :EMPTY;
+                            test_parts[2] = :((TRQ1_s2 .* normal_s1[1]));
+                            test_parts[3] = :((TRQ1_s1 .* normal_s2[1]));
+                            test_parts[4] = :EMPTY;
+                        elseif config.dimension == 2
+                            test_parts[1] = :EMPTY;
+                            test_parts[2] = :((TRQ1_s2 .* normal_s1[1] + TRQ2_s2 .* normal_s1[2]));
+                            test_parts[3] = :((TRQ1_s1 .* normal_s2[1] + TRQ2_s1 .* normal_s2[2]));
+                            test_parts[4] = :EMPTY;
+                        elseif config.dimension == 3
+                            test_parts[1] = :EMPTY;
+                            test_parts[2] = :((TRQ1_s2 .* normal_s1[1] + TRQ2_s2 .* normal_s1[2] + TRQ3_s2 .* normal_s1[3]));
+                            test_parts[3] = :((TRQ1_s1 .* normal_s2[1] + TRQ2_s1 .* normal_s2[2] + TRQ3_s1 .* normal_s2[3]));
+                            test_parts[4] = :EMPTY;
+                        end
+                        
+                    elseif occursin("DGAVENORMDOTGRAD", mods[1])
                         # {{n.grad(u)}}
                         need_derivative = true;
                         if config.dimension == 1
@@ -762,7 +821,7 @@ function process_surface_term_julia(sterm, var, lorr, offset_ind=0)
                             test_parts[1] = :((TRQ1_s1 .* normal_s1[1]) .* 0.5);
                             test_parts[2] = :((TRQ1_s2 .* normal_s1[1]) .* 0.5);
                             test_parts[3] = :((TRQ1_s1 .* normal_s2[1]) .* 0.5);
-                            test_parts[4] = :((TRQ1_s1=2 .* normal_s2[1]) .* 0.5);
+                            test_parts[4] = :((TRQ1_s2 .* normal_s2[1]) .* 0.5);
                         elseif config.dimension == 2
                             # test_part = :((TRQ1[:,fmap_s1] .* normal_s1[1] + TRQ2[:,fmap_s1] .* normal_s1[2] + 
                             #                 TRQ1[:,fmap_s2] .* normal_s1[1] + TRQ2[:,fmap_s2] .* normal_s1[2]) .* 0.5);
@@ -848,16 +907,16 @@ function process_surface_term_julia(sterm, var, lorr, offset_ind=0)
                         # TODO more than one derivative mod
                         need_derivative = true;
                         test_parts[1] = Symbol("TRQ"*mods[1][2]*"_s1");
-                        test_parts[2] = 0;
-                        test_parts[3] = Symbol("TRQ"*mods[1][2]*"_s2");
-                        test_parts[4] = 0;
+                        test_parts[2] = :EMPTY;
+                        test_parts[3] = :EMPTY;
+                        test_parts[4] = Symbol("TRQ"*mods[1][2]*"_s2");
                     end
                 else
                     # no mods
                     test_parts[1] = :(refel_s1.Q');
-                    test_parts[2] = :(refel_s1.Q');
-                    test_parts[3] = :(refel_s2.Q');
-                    test_parts[4] = :(refel_s1.Q');
+                    test_parts[2] = :EMPTY;
+                    test_parts[3] = :EMPTY;
+                    test_parts[4] = :(refel_s2.Q');
                 end
             elseif is_unknown_var(v, var) && lorr == LHS # If rhs, treat as a coefficient
                 # if !(trial_parts[1] === nothing)
@@ -878,7 +937,57 @@ function process_surface_term_julia(sterm, var, lorr, offset_ind=0)
                 end
                 if length(mods) > 0
                     # Could be Dn for derivative, DGJUMP for jump, DGAVE for ave or versions with NORMDOTGRAD
-                    if occursin("DGAVENORMDOTGRAD", mods[1])
+                    if occursin("DGINSIDE", mods[1])
+                        trial_parts[1] = :(refel_s1.Q);
+                        trial_parts[2] = :EMPTY;
+                        trial_parts[3] = :EMPTY;
+                        trial_parts[4] = :(refel_s2.Q);
+                        
+                    elseif occursin("DGOUTSIDE", mods[1])
+                        trial_parts[1] = :EMPTY;
+                        trial_parts[2] = :(refel_s2.Q);
+                        trial_parts[3] = :(refel_s1.Q);
+                        trial_parts[4] = :EMPTY;
+                        
+                    elseif occursin("DGNGRADINSIDE", mods[1])
+                        need_derivative = true;
+                        if config.dimension == 1
+                            trial_parts[1] = :((RQ1_s1 .* normal_s1[1]));
+                            trial_parts[2] = :EMPTY;
+                            trial_parts[3] = :EMPTY;
+                            trial_parts[4] = :((RQ1_s2 .* normal_s2[1]));
+                        elseif config.dimension == 2
+                            trial_parts[1] = :((RQ1_s1 .* normal_s1[1] + RQ2_s1 .* normal_s1[2]));
+                            trial_parts[2] = :EMPTY;
+                            trial_parts[3] = :EMPTY;
+                            trial_parts[4] = :((RQ1_s2 .* normal_s2[1] + RQ2_s2 .* normal_s2[2]));
+                        elseif config.dimension == 3
+                            trial_parts[1] = :((RQ1_s1 .* normal_s1[1] + RQ2_s1 .* normal_s1[2] + RQ3_s1 .* normal_s1[3]));
+                            trial_parts[2] = :EMPTY;
+                            trial_parts[3] = :EMPTY;
+                            trial_parts[4] = :((RQ1_s2 .* normal_s2[1] + RQ2_s2 .* normal_s2[2] + RQ3_s2 .* normal_s2[3]));
+                        end
+                        
+                    elseif occursin("DGNGRADOUTSIDE", mods[1])
+                        need_derivative = true;
+                        if config.dimension == 1
+                            trial_parts[1] = :EMPTY;
+                            trial_parts[2] = :((RQ1_s2 .* normal_s1[1]));
+                            trial_parts[3] = :((RQ1_s1 .* normal_s2[1]));
+                            trial_parts[4] = :EMPTY;
+                        elseif config.dimension == 2
+                            trial_parts[1] = :EMPTY;
+                            trial_parts[2] = :((RQ1_s2 .* normal_s1[1] + RQ2_s2 .* normal_s1[2]));
+                            trial_parts[3] = :((RQ1_s1 .* normal_s2[1] + RQ2_s1 .* normal_s2[2]));
+                            trial_parts[4] = :EMPTY;
+                        elseif config.dimension == 3
+                            trial_parts[1] = :EMPTY;
+                            trial_parts[2] = :((RQ1_s2 .* normal_s1[1] + RQ2_s2 .* normal_s1[2] + RQ3_s2 .* normal_s1[3]));
+                            trial_parts[3] = :((RQ1_s1 .* normal_s2[1] + RQ2_s1 .* normal_s2[2] + RQ3_s1 .* normal_s2[3]));
+                            trial_parts[4] = :EMPTY;
+                        end
+                        
+                    elseif occursin("DGAVENORMDOTGRAD", mods[1])
                         # {{n.grad(u)}}
                         need_derivative = true;
                         if config.dimension == 1
@@ -930,16 +1039,16 @@ function process_surface_term_julia(sterm, var, lorr, offset_ind=0)
                         # TODO more than one derivative mod
                         need_derivative = true;
                         trial_parts[1] = Symbol("RQ"*mods[1][2]("_s1"));
-                        trial_parts[2] = 0;
-                        trial_parts[3] = Symbol("RQ"*mods[1][2]("_s2"));
-                        trial_parts[4] = 0;
+                        trial_parts[2] = :EMPTY;
+                        trial_parts[3] = :EMPTY;
+                        trial_parts[4] = Symbol("RQ"*mods[1][2]("_s2"));
                     end
                 else
                     # no mods
                     trial_parts[1] = :(refel_s1.Q);
-                    trial_parts[2] = 0;
-                    trial_parts[3] = :(refel_s2.Q);
-                    trial_parts[4] = 0;
+                    trial_parts[2] = :EMPTY;
+                    trial_parts[3] = :EMPTY;
+                    trial_parts[4] = :(refel_s2.Q);
                 end
                 
             else # coefficients
@@ -950,7 +1059,19 @@ function process_surface_term_julia(sterm, var, lorr, offset_ind=0)
                 if typeof(v) == Symbol && !(v ===:dt)
                     if length(mods) > 0
                         # Could be Dn for derivative, DGJUMP for jump, DGAVE for ave or versions with NORMDOTGRAD
-                        if occursin("DGAVENORMDOTGRAD", mods[1])
+                        if occursin("DGINSIDE", mods[1])
+                            # {{n.grad(u)}}
+                            push!(needed_coef_deriv, [v, mods[1], ""]);
+                        elseif occursin("DGOUTSIDE", mods[1])
+                            # {{n.grad(u)}}
+                            push!(needed_coef_deriv, [v, mods[1], ""]);
+                        elseif occursin("DGNGRADINSIDE", mods[1])
+                            # {{n.grad(u)}}
+                            push!(needed_coef_deriv, [v, mods[1], ""]);
+                        elseif occursin("DGNGRADOUTSIDE", mods[1])
+                            # {{n.grad(u)}}
+                            push!(needed_coef_deriv, [v, mods[1], ""]);
+                        elseif occursin("DGAVENORMDOTGRAD", mods[1])
                             # {{n.grad(u)}}
                             push!(needed_coef_deriv, [v, mods[1], ""]);
                         elseif occursin("DGAVE", mods[1])
@@ -1057,6 +1178,9 @@ function process_surface_term_julia(sterm, var, lorr, offset_ind=0)
         if test_parts[tind] === nothing
             #
             #
+        elseif test_parts[tind] === :EMPTY || trial_parts[tind] === :EMPTY
+            # This term will be zero, so just make it EMPTY
+            terms[tind] = :EMPTY;
         else
             terms[tind] = test_parts[tind];
             tp = test_parts[tind];

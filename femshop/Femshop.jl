@@ -542,7 +542,11 @@ function solve(var, nlvar=nothing; nonlinear=false)
                     Femshop.time_stepper.dt = specified_dt;
 				    Femshop.time_stepper.Nsteps = specified_Nsteps;
                 end
-				if (nonlinear)
+                if (nonlinear)
+                    if time_stepper.type == EULER_EXPLICIT || time_stepper.type == LSRK4
+                        println("Warning: Use implicit stepper for nonlinear problem. Aborting.");
+                        return;
+                    end
                 	t = @elapsed(result = CGSolver.nonlinear_solve(var, nlvar, lhs, rhs, time_stepper));
 				else
                 	t = @elapsed(result = CGSolver.linear_solve(var, lhs, rhs, time_stepper));

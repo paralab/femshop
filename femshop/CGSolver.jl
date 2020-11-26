@@ -80,29 +80,22 @@ function linear_solve(var, bilinear, linear, stepper=nothing)
         sol = [];
         start_t = Base.Libc.time();
         for i=1:stepper.Nsteps
-            b = assemble_rhs_only(var, linear, t, stepper.dt);
-            sol = A\b;
-            # place the values in the variable value arrays
-            if typeof(var) <: Array
-                tmp = 0;
-                totalcomponents = 0;
-                for vi=1:length(var)
-                    totalcomponents = totalcomponents + length(var[vi].symvar.vals);
-                end
-                for vi=1:length(var)
-                    components = length(var[vi].symvar.vals);
-                    for compi=1:components
-                        var[vi].values[compi,:] = sol[(compi+tmp):totalcomponents:end];
-                        tmp = tmp + 1;
-                    end
+            if stepper.stages > 1
+                resu = zeros(size(b));
+                for rki=1:stepper.stages
+                    rktime = t + stepper.c[rki]*stepper.dt;
+                    b = assemble_rhs_only(var, linear, rktime, stepper.dt);
+                    sol = A\b;
+                    resu = stepper.a[rki].*resu + sol;
+                    place_sol_in_vars(var, stepper.b[rki].*resu, stepper);
                 end
             else
-                components = length(var.symvar.vals);
-                for compi=1:components
-                    var.values[compi,:] = sol[compi:components:end];
-                end
+                b = assemble_rhs_only(var, linear, t, stepper.dt);
+                sol = A\b;
+                
+                place_sol_in_vars(var, sol, stepper);
             end
-
+            
             t += stepper.dt;
         end
         end_t = Base.Libc.time();
@@ -607,6 +600,37 @@ function insert_bilinear!(AI, AJ, AV, Astart, ael, glb, dof, Ndofs)
         end
     end
     
+end
+
+function place_sol_in_vars(var, sol, stepper)
+    # place the values in the variable value arrays
+    if typeof(var) <: Array
+        tmp = 0;
+        totalcomponents = 0;
+        for vi=1:length(var)
+            totalcomponents = totalcomponents + length(var[vi].symvar.vals);
+        end
+        for vi=1:length(var)
+            components = length(var[vi].symvar.vals);
+            for compi=1:components
+                if stepper.type == EULER_EXPLICIT || stepper.type == LSRK4 # explicit steppers
+                    var[vi].values[compi,:] += sol[(compi+tmp):totalcomponents:end];
+                else # implicit steppers
+                    var[vi].values[compi,:] = sol[(compi+tmp):totalcomponents:end];
+                end
+                tmp = tmp + 1;
+            end
+        end
+    else
+        components = length(var.symvar.vals);
+        for compi=1:components
+            if stepper.type == EULER_EXPLICIT || stepper.type == LSRK4 # explicit steppers
+                var.values[compi,:] += sol[compi:components:end];
+            else # implicit steppers
+                var.values[compi,:] = sol[compi:components:end];
+            end
+        end
+    end
 end
 
 end #module
