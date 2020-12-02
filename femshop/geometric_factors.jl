@@ -10,6 +10,10 @@ include("tensor_ops.jl");
 struct Jacobian
     rx; ry; rz; sx; sy; sz; tx; ty; tz;
 end
+import Base.copy
+function copy(j::Jacobian)
+    return Jacobian(copy(j.rx),copy(j.ry),copy(j.rz),copy(j.sx),copy(j.sy),copy(j.sz),copy(j.tx),copy(j.ty),copy(j.tz));
+end
 
 function geometric_factors(refel, pts)
     # pts = element node global coords

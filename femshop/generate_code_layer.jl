@@ -693,7 +693,7 @@ function process_term_julia(sterm, var, lorr, offset_ind=0)
                 if typeof(v) == Symbol && !(v ===:dt)
                     if length(mods) > 0
                         need_derivative = true;
-                        need_derivative_for_coefficient = false;
+                        need_derivative_for_coefficient = true;
                         
                         push!(needed_coef_deriv, [v, mods[1], mods[1][2]]);
                         

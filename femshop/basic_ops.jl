@@ -70,16 +70,13 @@ end
 
 function sym_ave_op(var)
     prefix = "DGAVERAGE_";
-    outside = "DGOUTSIDE_";
-    inside = "DGINSIDE_";
     if typeof(var) <: Array
         result = copy(var);
         for i=1:length(result)
             result[i] = sym_ave_op(var[i]);
         end
     elseif typeof(var) == Basic
-        #result = symbols(prefix*string(var));
-        result = symbols(inside*string(var))*Basic(0.5) + symbols(outside*string(var))*Basic(0.5);
+        result = symbols(prefix*string(var));
     elseif typeof(var) <: Number
         result = Basic(var);
     end
@@ -88,16 +85,13 @@ end
 
 function sym_jump_op(var)
     prefix = "DGJUMP_";
-    outside = "DGOUTSIDE_";
-    inside = "DGINSIDE_";
     if typeof(var) <: Array
         result = copy(var);
         for i=1:length(result)
             result[i] = sym_jump_op(var[i]);
         end
     elseif typeof(var) == Basic
-        #result = symbols(prefix*string(var));
-        result = symbols(inside*string(var)) - symbols(outside*string(var));
+        result = symbols(prefix*string(var));
     elseif typeof(var) <: Number
         result = Basic(0);
     end
@@ -106,16 +100,13 @@ end
 
 function sym_ave_normdotgrad_op(var)
     prefix = "DGAVENORMDOTGRAD_";
-    outside = "DGNGRADOUTSIDE_";
-    inside = "DGNGRADINSIDE_";
     if typeof(var) <: Array
         result = copy(var);
         for i=1:length(result)
             result[i] = sym_ave_normdotgrad_op(var[i]);
         end
     elseif typeof(var) == Basic
-        #result = symbols(prefix*string(var));
-        result = symbols(inside*string(var))*Basic(0.5) + symbols(outside*string(var))*Basic(0.5);
+        result = symbols(prefix*string(var));
     elseif typeof(var) <: Number
         result = Basic(0);
     end
@@ -124,16 +115,13 @@ end
 
 function sym_jump_normdotgrad_op(var)
     prefix = "DGJUMPNORMDOTGRAD_";
-    outside = "DGNGRADOUTSIDE_";
-    inside = "DGNGRADINSIDE_";
     if typeof(var) <: Array
         result = copy(var);
         for i=1:length(result)
             result[i] = sym_jump_normdotgrad_op(var[i]);
         end
     elseif typeof(var) == Basic
-        #result = symbols(prefix*string(var));
-        result = symbols(inside*string(var)) - symbols(outside*string(var));
+        result = symbols(prefix*string(var));
     elseif typeof(var) <: Number
         result = Basic(0);
     end

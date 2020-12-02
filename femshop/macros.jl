@@ -328,7 +328,7 @@ macro weakForm(var, ex)
                 (newlhs, newrhs, newsurflhs, newsurfrhs) = reformat_for_stepper(lhs_expr, rhs_expr, lhs_surf_expr, rhs_surf_expr, Femshop.config.stepper);
                 #TODO reformat surface terms
                 
-                log_entry("Weak form, modified for time stepping: "*string(newlhs)*" + surface("*string(lhs_surf_expr)*") = "*string(newrhs)*" + surface("*string(rhs_surf_expr)*")");
+                log_entry("Weak form, modified for time stepping: "*string(newlhs)*" + surface("*string(newsurflhs)*") = "*string(newrhs)*" + surface("*string(newsurfrhs)*")");
                 
                 lhs_expr = newlhs;
                 rhs_expr = newrhs;

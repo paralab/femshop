@@ -55,7 +55,7 @@ function init_stepper(x, stepper)
     elseif stepper.type == LSRK4
         dxmin = abs(x[1,2]-x[1,1]); # TODO this only works for similar, square elements
         if stepper.cfl == 0
-            stepper.cfl = 0.1;
+            stepper.cfl = 0.01;
         end
         stepper.dt = stepper.cfl*dxmin;
         stepper.Nsteps = ceil(prob.end_time/stepper.dt);
@@ -169,7 +169,7 @@ function reformat_for_stepper(lhs, rhs, face_lhs, face_rhs,stepper, wrap=true)
         newfacerhs = copy(facerhs);
         for vi=1:length(rhs)
             if length(lhs[1][vi]) > 0 # this dof has a time derivative term
-                (newlhs[vi], newrhs[vi]) = reformat_for_stepper((lhs[1][vi], lhs[2][vi]), rhs[vi], face_lhs[vi], face_rhs[vi], stepper, false);
+                (newlhs[vi], newrhs[vi], newfacelhs[vi], newfacerhs[vi]) = reformat_for_stepper((lhs[1][vi], lhs[2][vi]), rhs[vi], face_lhs[vi], face_rhs[vi], stepper, false);
             else # no time derivative for this dof
                 newlhs[vi] = lhs[2][vi];
                 newrhs[vi] = rhs[vi];
@@ -208,10 +208,10 @@ function reformat_for_stepper(lhs, rhs, face_lhs, face_rhs,stepper, wrap=true)
                 rhs[1][i] = rhs[1][i]*dt; # dt*rhs
             end
             for i=1:length(face_rhs[1])
-                face_rhs[1][i] = -face_rhs[1][i]*dt; # -dt*facelhs
+                face_rhs[1][i] = face_rhs[1][i]*dt; # dt*facerhs
             end
             for i=1:length(face_lhs[1])
-                face_lhs[1][i] = -face_lhs[1][i]*dt; # -dt*facerhs
+                face_lhs[1][i] = -face_lhs[1][i]*dt; # -dt*facelhs
             end
             
             newlhs = copy(lhs[1][1]);# lhs1
@@ -219,8 +219,8 @@ function reformat_for_stepper(lhs, rhs, face_lhs, face_rhs,stepper, wrap=true)
             append!(newrhs, lhs[2][1]);# dt*rhs - dt*lhs2 + lhs1
             #append!(newrhs, lhs[1][1]);
             newfacerhs = copy(face_rhs[1]);
-            append!(newfacerhs, face_lhs[1][1]);# dt*facerhs + dt*facelhs
-            newfacelhs = [Basic(0)];
+            append!(newfacerhs, face_lhs[1]);# dt*facerhs + dt*facelhs
+            newfacelhs = [];
             
         elseif stepper == CRANK_NICHOLSON # lhs1 + 0.5*dt*lhs2 = dt*rhs - 0.5*dt*lhs2 + lhs1
             lhs2l = copy(lhs[2][1]);
