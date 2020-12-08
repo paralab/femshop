@@ -165,16 +165,16 @@ function reformat_for_stepper(lhs, rhs, face_lhs, face_rhs,stepper, wrap=true)
     if length(rhs)>1 #multi dof
         newlhs = copy(rhs);
         newrhs = copy(rhs);
-        newfacelhs = copy(facerhs);
-        newfacerhs = copy(facerhs);
+        newfacelhs = copy(face_rhs);
+        newfacerhs = copy(face_rhs);
         for vi=1:length(rhs)
             if length(lhs[1][vi]) > 0 # this dof has a time derivative term
                 (newlhs[vi], newrhs[vi], newfacelhs[vi], newfacerhs[vi]) = reformat_for_stepper((lhs[1][vi], lhs[2][vi]), rhs[vi], face_lhs[vi], face_rhs[vi], stepper, false);
             else # no time derivative for this dof
                 newlhs[vi] = lhs[2][vi];
                 newrhs[vi] = rhs[vi];
-                newfacelhs[vi] = facelhs[vi];
-                newfacerhs[vi] = facerhs[vi];
+                newfacelhs[vi] = face_lhs[vi];
+                newfacerhs[vi] = face_rhs[vi];
             end
         end
     else

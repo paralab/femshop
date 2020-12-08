@@ -85,16 +85,26 @@ end
 
 function sym_jump_op(var)
     prefix = "DGJUMP_";
+    norm = sym_normal_op();
     if typeof(var) <: Array
         result = copy(var);
         for i=1:length(result)
             result[i] = sym_jump_op(var[i]);
         end
+        # make into a vector according to normal
+        if length(var) == 1
+            norm = norm .* result[1];
+            result = norm;
+        else
+            # not ready
+        end
+        
     elseif typeof(var) == Basic
         result = symbols(prefix*string(var));
     elseif typeof(var) <: Number
         result = Basic(0);
     end
+    
     return result;
 end
 

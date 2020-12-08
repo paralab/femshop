@@ -19,7 +19,7 @@ init_femshop("advection1d");
 @variable(u)
 @testSymbol(v)
 
-T = 1;
+T = 1.0;
 @timeInterval(T)
 @initial(u, "sin(x)")
 
