@@ -35,7 +35,7 @@ Convert the PDE
 <div align="center"><img src="https://render.githubusercontent.com/render/math?math=\Delta%20u=f(x)"> </div>
 <div align="center"><img src="https://render.githubusercontent.com/render/math?math=u(0)=u(1)=0"> </div>
 into the weak form
-<div align="center"><img src="https://render.githubusercontent.com/render/math?math=-(\Nabla%20u,\Nabla%20v)=(f,v)"> </div>
+<div align="center"><img src="https://render.githubusercontent.com/render/math?math=-(\nabla%20u,\nabla%20v)=(f,v)"> </div>
 
 The boundary condition is specified.
 ```
