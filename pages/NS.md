@@ -4,7 +4,7 @@ title: Navier Stokes
 
 ## Navier Stokes - 2D Driven lid
 
-<img src="images/NS.png" alt="NS" width="400">
+<img src="images/nsplot.png" alt="NS" width="400">
 
 The Julia script: <a href="https://github.com/paralab/femshop/blob/master/femshop/examples/example-NS.jl">example-NS.jl</a>
 

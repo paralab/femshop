@@ -40,7 +40,7 @@ Define the variable, test function, and coefficient symbols.
 ```
 Convert the PDE
 into the weak form
-<div align="center"><img src="https://render.githubusercontent.com/render/math?math=((\lambda%20\nabla%20\cdot%20uI+\mu%20(\nabla%20u+\nabla%20u^{T})):\nabla%20v))=(f\cdot%20v)"> </div>
+<div align="center"><img src="https://render.githubusercontent.com/render/math?math=((\lambda%20\nabla%20\cdot%20uI%2B\mu%20(\nabla%20u%2B\nabla%20u^{T})):\nabla%20v))=(f\cdot%20v)"> </div>
 
 The boundary conditions are specified.
 ```

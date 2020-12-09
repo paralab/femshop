@@ -32,7 +32,7 @@ The heat equation demonstrates support for time dependent problems.
 
 <h3>Navier Stokes</h3>
 <p> <img src="images/NS.png" alt="NS" width="200">
-<br>Page: <a href="https://paralab.github.io/femshop/pages/NS.html">NS page</a>
 This 2D lid-driven NS problem demonstrates some of the nonlinear capabilities and the use of parameter entities.
+<br>Page: <a href="https://paralab.github.io/femshop/pages/NS.html">NS page</a>
 <br><a href="https://github.com/paralab/femshop/blob/master/femshop/examples/example-NS.jl">example-NS.jl</a>
 </p>

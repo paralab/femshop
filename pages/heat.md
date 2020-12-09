@@ -39,9 +39,9 @@ Set up the time stepper and initial conditions. This example uses a low-storage 
 @initial(u, "abs(x-0.5)+abs(y-0.5) < 0.2 ? 1 : 0") # initial condition
 ```
 Convert the PDE
-<div align="center"><img src="https://render.githubusercontent.com/render/math?math=\frac{d}{dt}u+D\Delta%20u=f"> </div>
+<div align="center"><img src="https://render.githubusercontent.com/render/math?math=\frac{d}{dt}u%2BD\Delta%20u=f"> </div>
 into the weak form
-<div align="center"><img src="https://render.githubusercontent.com/render/math?math=\frac{d}{dt}(u,v)+D(\nabla%20u,\nabla%20v)=(f,v)"> </div>
+<div align="center"><img src="https://render.githubusercontent.com/render/math?math=\frac{d}{dt}(u,v)%2BD(\nabla%20u,\nabla%20v)=(f,v)"> </div>
 
 The boundary conditions are specified.
 ```
