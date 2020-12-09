@@ -1,41 +1,47 @@
 #=
 # A struct containing mesh information
+# This does not include any information about the nodal placement inside elements.
+# It is only the basic elemental mesh with vertices and faces.
 =#
 export MeshData, build_faces, find_boundaries, find_normals
 
 struct MeshData
     #### Minimal required information ####
     # Nodes
-    nx::Int;                    # Number of nodes
-    nodes::Array{Float64,2};    # node locations
-    indices::Array{Int,1};      # node indices may not be in order
+    nx::Int;                    # Number of vertices
+    nodes::Array{Float64,2};    # vertex locations (array has size (dim,nx))
+    indices::Array{Int,1};      # vertex indices may not be in order
     # Elements
     nel::Int;                   # Number of elements
-    elements::Array{Int,2};     # Element vertex to node mapping
+    elements::Array{Int,2};     # Element vertex mapping (array has size (Np, nel))*assumes only one element type
     etypes::Array{Int,1};       # Element types as defined by GMSH
-    nv::Array{Int,1};           # Elements can have different numbers of vertices
+    nv::Array{Int,1};           # Number of vertices for each element. Only different if they are different types,
     
     #### Optional information that will be built if not provided ####
-    invind::Array{Int,1}        # Inverse of indices, maps node index to position in nodes array
-    face2vertex::Array{Int,2}   # Nodes defining each face
-    face2element::Array{Int,2}  # Indices of elements on each side of the face. If 0, it is a boundary face.
-    element2face::Array{Int,2}  # Indices of faces on each side of the element.
-    normals::Array{Float64,2}   # Normal vectors for each face pointing from first to second in face2element order
+    invind::Array{Int,1}        # Inverse of indices, maps vertex index to position in nodes array (invind[indices[i]] = i)
+    face2vertex::Array{Int,2}   # Vertices defining each face (array has size (Nfp, Nfaces))
+    face2element::Array{Int,2}  # Indices of elements on each side of the face. If 0, it is a boundary face. (size is (2,Nfaces))
+    element2face::Array{Int,2}  # Indices of faces on each side of the element. (size is (NfacesPerElement, nel))
+    normals::Array{Float64,2}   # Normal vectors for each face pointing from first to second in face2element order (size is (dim, Nfaces))
     bdryID::Array{Int,1};       # Boundary ID for each face (0=interior face)
     
+    # The minimal constructor needs to build the optional information.
+    # Note: Must uncomment to build.
     MeshData(n, x, ind, ne, el, et, v) = (
-        inv = invert_index(ind);
-        # uncomment these when/if needed
-        # (face2n, face2v) = build_faces(ne, el, et);
-        # norms = find_normals(ne, el, et, face2n, x);
-        # bdry = find_boundaries(ne, face2n);
-        face2v = Array{Int,2}(undef,0,0);
-        face2e = Array{Int,2}(undef,0,0);
-        e2face = Array{Int,2}(undef,0,0);
-        norms = Array{Float64,2}(undef,0,0);
-        bdry = Array{Int,1}(undef,0);
+        # inv = invert_index(ind);
+        # face2v = Array{Int,2}(undef,0,0);
+        # face2e = Array{Int,2}(undef,0,0);
+        # e2face = Array{Int,2}(undef,0,0);
+        # norms = Array{Float64,2}(undef,0,0);
+        # bdry = Array{Int,1}(undef,0);
+        
+        # uncomment these to compute. WARNING: can be slow
+        (face2v, face2e, e2face) = build_faces(ne, el, et);
+        norms = find_normals(face2v, x);
+        bdry = find_boundaries(face2e);
         new(n, x, ind, ne, el, et, v, inv, face2v, face2e, e2face, norms, bdry);
     )
+    # The complete constructor
     MeshData(n, x, ind, ne, el, et, v, inv, face2v, face2e, e2face, norms, bdry) = (
         new(n, x, ind, ne, el, et, v, inv, face2v, face2e, e2face, norms, bdry);
     )
@@ -45,8 +51,9 @@ end
 # line, triangle, quad, tet, hex, prism, 5-pyramid
 etypetonv = [2, 3, 4, 4, 8, 6, 5, 2, 3, 4, 4, 8, 6, 5, 1, 4, 8, 6, 5]; # number of vertices
 etypetonf = [2, 3, 4, 4, 6, 5, 5, 2, 3, 4, 4, 6, 5, 5, 1, 4, 6, 5, 5]; # number of faces
-etypetonfn= [1, 3, 4, 3, 4, 4, 4, 1, 3, 4, 3, 4, 4, 4, 1, 3, 4, 4, 4]; # number of nodes for each face (except prism and 5-pyramids!)
+etypetonfn= [1, 3, 4, 3, 4, 4, 4, 1, 3, 4, 3, 4, 4, 4, 1, 3, 4, 4, 4]; # number of vertices for each face (except prism and 5-pyramids!)
 
+# Builds invind.
 function invert_index(ind)
     invind = zeros(Int, size(ind));
     for i=1:length(ind)
@@ -55,92 +62,188 @@ function invert_index(ind)
     return invind;
 end
 
+# Builds faces
+# For now assumes only one type of element.
 function build_faces(nel, elements, etypes)
-    f2n = zeros(Int, nel, 6, 4); #(elementind, faceind, nodeind)
+    NfacesPerElement = etypetonf[etypes[1]]; # For now assumes only one type of element.
+    Nfp = etypetonfn[etypes[1]]; # For now assumes only one type of element.
+    
+    Nfaces = 1; # will be incremented as discovered
+    e2face = zeros(Int, NfacesPerElement, nel);
+    
+    face2v = zeros(Int, Nfp, NfacesPerElement * nel);
+    face2e = zeros(Int, 2, NfacesPerElement * nel);
+    
     for ei=1:nel
         if etypes[ei] == 1 # line
-            f2n[ei,1,1] = elements[ei,1];
-            f2n[ei,2,1] = elements[ei,2];
+            face2v[1,Nfaces] = elements[1, ei];
+            face2v[1,Nfaces+1] = elements[2, ei];
+            face2e[1,Nfaces] = ei; #
+            face2e[1,Nfaces+1] = ei; #
+            e2face[1,ei] = Nfaces;
+            e2face[2,ei] = Nfaces+1;
+            Nfaces += 2;
         elseif etypes[ei] == 2 # triangle
-            f2n[ei,1,1:2] = elements[ei,1:2];
-            f2n[ei,2,1:2] = elements[ei,2:3];
-            f2n[ei,3,1:2] = elements[ei,[3 1]];
+            face2v[:,Nfaces] = elements[1:2, ei];
+            face2v[:,Nfaces+1] = elements[2:3, ei];
+            face2v[:,Nfaces+2] = elements[[3,1], ei];
+            face2e[1,Nfaces] = ei; #
+            face2e[1,Nfaces+1] = ei; #
+            face2e[1,Nfaces+2] = ei; #
+            e2face[1,ei] = Nfaces;
+            e2face[2,ei] = Nfaces+1;
+            e2face[3,ei] = Nfaces+1;
+            Nfaces += 3;
         elseif etypes[ei] == 3 # quad
-            f2n[ei,1,1:2] = elements[ei,1:2];
-            f2n[ei,2,1:2] = elements[ei,2:3];
-            f2n[ei,3,1:2] = elements[ei,3:4];
-            f2n[ei,4,1:2] = elements[ei,[4 1]];
+            face2v[:,Nfaces] = elements[1:2, ei];
+            face2v[:,Nfaces+1] = elements[2:3, ei];
+            face2v[:,Nfaces+2] = elements[3:4, ei];
+            face2v[:,Nfaces+3] = elements[[4,1], ei];
+            face2e[1,Nfaces] = ei; #
+            face2e[1,Nfaces+1] = ei; #
+            face2e[1,Nfaces+2] = ei; #
+            face2e[1,Nfaces+3] = ei; #
+            e2face[1,ei] = Nfaces;
+            e2face[2,ei] = Nfaces+1;
+            e2face[3,ei] = Nfaces+2;
+            e2face[4,ei] = Nfaces+3;
+            Nfaces += 4;
         elseif etypes[ei] == 4 # tet
-            f2n[ei,1,1:3] = elements[ei,[0 2 1]];
-            f2n[ei,2,1:3] = elements[ei,[1 2 3]];
-            f2n[ei,3,1:3] = elements[ei,[0 1 3]];
-            f2n[ei,4,1:3] = elements[ei,[0 3 2]];
+            face2v[:,Nfaces] = elements[[1,3,2], ei];
+            face2v[:,Nfaces+1] = elements[[2,3,4], ei];
+            face2v[:,Nfaces+2] = elements[[1,2,4], ei];
+            face2v[:,Nfaces+3] = elements[[1,4,3], ei];
+            face2e[1,Nfaces] = ei; #
+            face2e[1,Nfaces+1] = ei; #
+            face2e[1,Nfaces+2] = ei; #
+            face2e[1,Nfaces+3] = ei; #
+            e2face[1,ei] = Nfaces;
+            e2face[2,ei] = Nfaces+1;
+            e2face[3,ei] = Nfaces+2;
+            e2face[4,ei] = Nfaces+3;
+            Nfaces += 4;
         elseif etypes[ei] == 5 # hex
-            f2n[ei,1,1:4] = elements[ei,[1 5 8 4]];
-            f2n[ei,2,1:4] = elements[ei,[2 3 7 6]];
-            f2n[ei,3,1:4] = elements[ei,[1 2 6 5]];
-            f2n[ei,4,1:4] = elements[ei,[3 4 8 7]];
-            f2n[ei,5,1:4] = elements[ei,[1 4 3 2]];
-            f2n[ei,6,1:4] = elements[ei,[5 6 7 8]];
+            face2v[:,Nfaces] = elements[[1,5,8,4], ei];
+            face2v[:,Nfaces+1] = elements[[2,3,7,6], ei];
+            face2v[:,Nfaces+2] = elements[[1,2,6,5], ei];
+            face2v[:,Nfaces+3] = elements[[3,4,8,7], ei];
+            face2v[:,Nfaces+4] = elements[[1,4,3,2], ei];
+            face2v[:,Nfaces+5] = elements[[5,6,7,8], ei];
+            face2e[1,Nfaces] = ei; #
+            face2e[1,Nfaces+1] = ei; #
+            face2e[1,Nfaces+2] = ei; #
+            face2e[1,Nfaces+3] = ei; #
+            face2e[1,Nfaces+4] = ei; #
+            face2e[1,Nfaces+5] = ei; #
+            e2face[1,ei] = Nfaces;
+            e2face[2,ei] = Nfaces+1;
+            e2face[3,ei] = Nfaces+2;
+            e2face[4,ei] = Nfaces+3;
+            e2face[5,ei] = Nfaces+4;
+            e2face[6,ei] = Nfaces+5;
+            Nfaces += 6;
         elseif etypes[ei] == 6 # prism
-            f2n[ei,1,1:3] = elements[ei,[0 2 1]];
-            f2n[ei,2,1:3] = elements[ei,[3 4 5]];
-            f2n[ei,3,1:4] = elements[ei,[0 1 4 3]];
-            f2n[ei,4,1:4] = elements[ei,[0 3 5 2]];
-            f2n[ei,5,1:4] = elements[ei,[1 2 5 4]];
+            face2v[1:3,Nfaces] = elements[[1,3,2], ei];
+            face2v[1:3,Nfaces+1] = elements[[4,5,6], ei];
+            face2v[:,Nfaces+2] = elements[[1,2,5,4], ei];
+            face2v[:,Nfaces+3] = elements[[1,4,6,3], ei];
+            face2v[:,Nfaces+4] = elements[[2,3,6,5], ei];
+            face2e[1,Nfaces] = ei; #
+            face2e[1,Nfaces+1] = ei; #
+            face2e[1,Nfaces+2] = ei; #
+            face2e[1,Nfaces+3] = ei; #
+            face2e[1,Nfaces+4] = ei; #
+            e2face[1,ei] = Nfaces;
+            e2face[2,ei] = Nfaces+1;
+            e2face[3,ei] = Nfaces+2;
+            e2face[4,ei] = Nfaces+3;
+            e2face[5,ei] = Nfaces+4;
+            Nfaces += 5;
         elseif etypes[ei] == 7 # 5-pyramid
-            f2n[ei,1,1:4] = elements[ei,[0 3 2 1]];
-            f2n[ei,2,1:3] = elements[ei,[0 1 4]];
-            f2n[ei,3,1:3] = elements[ei,[2 3 4]];
-            f2n[ei,4,1:3] = elements[ei,[1 2 4]];
-            f2n[ei,5,1:3] = elements[ei,[3 0 4]];
+            face2v[:,Nfaces] = elements[[1,4,3,2], ei];
+            face2v[1:3,Nfaces+1] = elements[[1,2,5], ei];
+            face2v[1:3,Nfaces+2] = elements[[3,4,5], ei];
+            face2v[1:3,Nfaces+3] = elements[[2,3,5], ei];
+            face2v[1:3,Nfaces+4] = elements[[4,1,5], ei];
+            face2e[1,Nfaces] = ei; #
+            face2e[1,Nfaces+1] = ei; #
+            face2e[1,Nfaces+2] = ei; #
+            face2e[1,Nfaces+3] = ei; #
+            face2e[1,Nfaces+4] = ei; #
+            e2face[1,ei] = Nfaces;
+            e2face[2,ei] = Nfaces+1;
+            e2face[3,ei] = Nfaces+2;
+            e2face[4,ei] = Nfaces+3;
+            e2face[5,ei] = Nfaces+4;
+            Nfaces += 5;
         end
     end
-    return f2n;
+    
+    # Remove duplicates
+    # This is slow. Checks each face against other faces
+    matched = zeros(Bool,Nfaces);
+    Ncuts = 0;
+    for fi=1:Nfaces
+        if !matched[fi]
+            myinds = face2v[:,fi];
+            for fj=(fi+1):Nfaces
+                if !matched[fj]
+                    inds = face2v[:,fj];
+                    if shared_face(myinds, inds)
+                        matched[fj] = true; # This one will be eliminated
+                        Ncuts = Ncuts + 1;
+                        
+                        face2e[2,fi] = face2e[1,fj]; # set the element on side 2
+                        for fk=1:length(e2face[:,face2e[2,fi]])
+                            if e2face[fk,face2e[2,fi]] == fj
+                                e2face[fk,face2e[2,fi]] = fi; # set this face in e2face
+                            end
+                        end
+                        
+                        break; # skip to the next fi
+                    end #if shared
+                end #if fj matched
+            end #for fj
+        end #if fi matched
+    end #for fi
+    
+    newface2v = zeros(Int, Nfp, Nfaces-Ncuts);
+    newface2e = zeros(Int, 2, Nfaces-Ncuts);
+    tmpind = 1;
+    for fi=1:Nfaces
+        if !matched[fi]
+            newface2v[:,tmpind] = face2v[:,fi];
+            newface2e[:,tmpind] = face2e[:,fi];
+            tmpind = tmpind+1;
+        end
+    end
+    face2v = newface2v;
+    face2e = newface2e;
+    
+    return (face2v, face2e, e2face);
 end
 
-function find_normals(nel, elements, etypes, faces, nodes)
-    normal = zeros(nel, 6, 3); #(elementind, faceind, vector component)
-    for ei=1:nel
-        if etypes[ei] == 1 # line
-            normal[ei,1,1] = -1;
-            normal[ei,2,1] = 1;
-        elseif etypes[ei] == 2 # triangle
-            normal[ei,1,1:2] = normal2(nodes[faces[ei,1,1],:], nodes[faces[ei,1,2],:]);
-            normal[ei,2,1:2] = normal2(nodes[faces[ei,2,1],:], nodes[faces[ei,2,2],:]);
-            normal[ei,3,1:2] = normal2(nodes[faces[ei,3,1],:], nodes[faces[ei,3,2],:]);
-        elseif etypes[ei] == 3 # quad
-            normal[ei,1,1:2] = normal2(nodes[faces[ei,1,1],:], nodes[faces[ei,1,2],:]);
-            normal[ei,2,1:2] = normal2(nodes[faces[ei,2,1],:], nodes[faces[ei,2,2],:]);
-            normal[ei,3,1:2] = normal2(nodes[faces[ei,3,1],:], nodes[faces[ei,3,2],:]);
-            normal[ei,4,1:2] = normal2(nodes[faces[ei,4,1],:], nodes[faces[ei,4,2],:]);
-        elseif etypes[ei] == 4 # tet
-            normal[ei,1,1:3] = normal3(nodes[faces[ei,1,1],:], nodes[faces[ei,1,2],:], nodes[faces[ei,1,3],:]);
-            normal[ei,2,1:3] = normal3(nodes[faces[ei,2,1],:], nodes[faces[ei,2,2],:], nodes[faces[ei,2,3],:]);
-            normal[ei,3,1:3] = normal3(nodes[faces[ei,3,1],:], nodes[faces[ei,3,2],:], nodes[faces[ei,3,3],:]);
-            normal[ei,4,1:3] = normal3(nodes[faces[ei,4,1],:], nodes[faces[ei,4,2],:], nodes[faces[ei,4,3],:]);
-        elseif etypes[ei] == 5 # hex
-            normal[ei,1,1:3] = normal3(nodes[faces[ei,1,1],:], nodes[faces[ei,1,2],:], nodes[faces[ei,1,3],:]);
-            normal[ei,2,1:3] = normal3(nodes[faces[ei,2,1],:], nodes[faces[ei,2,2],:], nodes[faces[ei,2,3],:]);
-            normal[ei,3,1:3] = normal3(nodes[faces[ei,3,1],:], nodes[faces[ei,3,2],:], nodes[faces[ei,3,3],:]);
-            normal[ei,4,1:3] = normal3(nodes[faces[ei,4,1],:], nodes[faces[ei,4,2],:], nodes[faces[ei,4,3],:]);
-            normal[ei,5,1:3] = normal3(nodes[faces[ei,5,1],:], nodes[faces[ei,5,2],:], nodes[faces[ei,5,3],:]);
-            normal[ei,6,1:3] = normal3(nodes[faces[ei,6,1],:], nodes[faces[ei,6,2],:], nodes[faces[ei,6,3],:]);
-        elseif etypes[ei] == 6 # prism
-            normal[ei,1,1:3] = normal3(nodes[faces[ei,1,1],:], nodes[faces[ei,1,2],:], nodes[faces[ei,1,3],:]);
-            normal[ei,2,1:3] = normal3(nodes[faces[ei,2,1],:], nodes[faces[ei,2,2],:], nodes[faces[ei,2,3],:]);
-            normal[ei,3,1:3] = normal3(nodes[faces[ei,3,1],:], nodes[faces[ei,3,2],:], nodes[faces[ei,3,3],:]);
-            normal[ei,4,1:3] = normal3(nodes[faces[ei,4,1],:], nodes[faces[ei,4,2],:], nodes[faces[ei,4,3],:]);
-            normal[ei,5,1:3] = normal3(nodes[faces[ei,5,1],:], nodes[faces[ei,5,2],:], nodes[faces[ei,5,3],:]);
-        elseif etypes[ei] == 7 # 5-pyramid
-            normal[ei,1,1:3] = normal3(nodes[faces[ei,1,1],:], nodes[faces[ei,1,2],:], nodes[faces[ei,1,3],:]);
-            normal[ei,2,1:3] = normal3(nodes[faces[ei,2,1],:], nodes[faces[ei,2,2],:], nodes[faces[ei,2,3],:]);
-            normal[ei,3,1:3] = normal3(nodes[faces[ei,3,1],:], nodes[faces[ei,3,2],:], nodes[faces[ei,3,3],:]);
-            normal[ei,4,1:3] = normal3(nodes[faces[ei,4,1],:], nodes[faces[ei,4,2],:], nodes[faces[ei,4,3],:]);
-            normal[ei,5,1:3] = normal3(nodes[faces[ei,5,1],:], nodes[faces[ei,5,2],:], nodes[faces[ei,5,3],:]);
+# Compute normal vectors for each face
+# Note: this does not account for sign! 
+function find_normals(face2v, x)
+    dim = size(x,1);
+    nfaces = size(face2v,2);
+    
+    # Special case for dim==1
+    if dim == 1
+        return ones(1,nfaces);
+    end
+    
+    normals = zeros(dim, nfaces);
+    for fi=1:nfaces
+        if dim == 2 # faces are lines
+            normals[:,fi] = normal2(x[:,face2v[1,fi]], x[:,face2v[2,fi]]);
+        elseif dim == 3
+            normals[:,fi] = normal3(x[:,face2v[1,fi]], x[:,face2v[2,fi]], x[:,face2v[3,fi]]);
         end
     end
-    return normal;
+    
+    return normals;
 end
 
 function normal2(a, b)
@@ -160,54 +263,27 @@ function normal3(a, b, c)
     return [nx/d; ny/d; nz/d];
 end
 
-function find_boundaries(nel, faces)
-    bdry = zeros(Int, nel, 6);
-    neighbors = zeros(Int, nel, 6);
-    foundmatch = false;
-    for ei=1:nel
-        for fi=1:6
-            if faces[ei,fi,1] > 0
-                foundmatch = false;
-                for ej=1:nel
-                    if ei != ej
-                        for fj=1:6
-                            if faces[ej,fj,1] > 0
-                                # This huge set of loops compares each face of each element with every other.
-                                # If there are no two faces with the same set of nodes, it is a boundary.
-                                # Otherwise set them as neighbors.
-                                if shared_face(faces[ei,fi,:], faces[ej,fj,:])
-                                    foundmatch = true;
-                                    neighbors[ei, fi] = ej;
-                                    neighbors[ej, fj] = ei;
-                                end
-                            else
-                                break;
-                            end
-                        end
-                    end
-                    if foundmatch
-                        break;
-                    end
-                end
-                if !foundmatch
-                    bdry[ei, fi] = 612;
-                    neighbors[ei, fi] = ei;
-                end
-            else
-                break;
-            end
+# Finds faces that have face2e[2,fi] == 0
+# Just sets those BIDs to 1
+function find_boundaries(face2e)
+    nfaces = size(face2e,2);
+    bdry = zeros(Int, nfaces);
+    for fi=1:nfaces
+        if face2e[2,fi] == 0
+            bdry[fi] = 1;
         end
     end
-    return (bdry, neighbors);
+    
+    return (bdry);
 end
 
 function shared_face(f1, f2)
     h = 0;
     s = 0;
-    for i=1:4
+    for i=1:length(f1)
         if f1[i] > 0
             h += 1;
-            for j=1:4
+            for j=1:length(f2)
                 if f1[i] == f2[j]
                     s += 1;
                 end

@@ -1,31 +1,33 @@
 #=
 # Contains info about all nodes on the domain
+# Unlike MeshData struct, this accounts for interior nodes and corresponds to nodal DOFs.
+# This is a CG grid. There is a separate DGGrid struct.
 =#
 struct Grid
-    allnodes::Array{Float64}        # All node coordinates
+    allnodes::Array{Float64}        # All node coordinates size = (dim, nnodes)
     # boundaries
-    bdry::Array{Array{Int,1},1}     # Indices of boundary nodes for each BID (bdry[bid][nodes])
-    bdryface::Array{Array{Int,1},1} # Indices of faces touching each BID 
-    bdrynorm::Array{Array{Float64,2},1} # Normal vector for boundary nodes for each BID
+    bdry::Array{Array{Int,1},1}     # Indices of boundary nodes for each BID (bdry[bid][nodes])*note:array of arrays
+    bdryface::Array{Array{Int,1},1} # Indices of faces touching each BID (bdryface[bid][faces])*note:array of arrays
+    bdrynorm::Array{Array{Float64,2},1} # Normal vector for boundary nodes for each BID (bdrynorm[bid][dim, faces])*note:array of arrays
     bids::Array{Int,1}              # BID corresponding to rows of bdrynodes
     # elements
-    loc2glb::Array{Int,2}           # local to global map for each element's nodes
-    glbvertex::Array{Int,2}         # global indices of each elements' vertices
+    loc2glb::Array{Int,2}           # local to global map for each element's nodes (size is (Np, nel))
+    glbvertex::Array{Int,2}         # global indices of each elements' vertices (size if (Nvertex, nel))
     # faces
-    face2glb::Array{Int,2}          # local to global map for faces
-    faceVertex2glb::Array{Int,2}    # global indices of face vertices
+    face2glb::Array{Int,2}          # local to global map for faces (size is (Nfp, Nfaces))
+    faceVertex2glb::Array{Int,2}    # global indices of face vertices (size is (Nfvertex, Nfaces))
 end
 
-etypetonf = [2, 3, 4, 4, 6, 5, 5, 2, 3, 4, 4, 6, 5, 5, 1, 4, 6, 5, 5]; # number of faces
+etypetonf = [2, 3, 4, 4, 6, 5, 5, 2, 3, 4, 4, 6, 5, 5, 1, 4, 6, 5, 5]; # number of faces for element types
 
 # Build a grid from a mesh
 function grid_from_mesh(mesh)
     if config.dimension == 1
         return grid_from_mesh_1d(mesh);
     elseif config.dimension == 2
-        return grid_from_mesh_2d(mesh);
+        return grid_from_mesh_2d(mesh); ### NOT ready###
     elseif config.dimension == 3
-        return grid_from_mesh_3d(mesh);
+        return grid_from_mesh_3d(mesh); ### NOT ready###
     end
 end
 
