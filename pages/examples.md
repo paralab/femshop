@@ -19,6 +19,7 @@ The simplest example possible. 1D Poisson with homogeneous Dirichlet boundary. I
 <h3>Linear Elasticity</h3>
 <p> <img src="images/elasticity.png" alt="elasticity" width="200">
 The linear elasticity example demonstrates vector entities and mixed boundary conditions.
+<br>Page: <a href="https://paralab.github.io/femshop/pages/elasticity.html">elasticity page</a>
 <br><a href="https://github.com/paralab/femshop/blob/master/femshop/examples/example-elasticity.jl">example-elasticity.jl</a>
 </p>
 

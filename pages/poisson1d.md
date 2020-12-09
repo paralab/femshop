@@ -32,9 +32,10 @@ Define the variable, test function, and forcing function symbols.
 @coefficient(f, "-100*pi*pi*sin(10*pi*x)*sin(pi*x) - pi*pi*sin(10*pi*x)*sin(pi*x) + 20*pi*pi*cos(10*pi*x)*cos(pi*x)")
 ```
 Convert the PDE
-<div align="center"><img src="https://render.githubusercontent.com/render/math?math=\begin{align*}%0A\Delta%20u&=f(x)\\%0Au(0)&=u(1)=0\end{align*}%0A"> </div>
+<div align="center"><img src="https://render.githubusercontent.com/render/math?math=\Delta%20u=f(x)"> </div>
+<div align="center"><img src="https://render.githubusercontent.com/render/math?math=u(0)=u(1)=0"> </div>
 into the weak form
-<div align="center"><img src="https://render.githubusercontent.com/render/math?math=-(grad(u),grad(v))=(f,v)"> </div>
+<div align="center"><img src="https://render.githubusercontent.com/render/math?math=-(\Nabla%20u,\Nabla%20v)=(f,v)"> </div>
 
 The boundary condition is specified.
 ```
