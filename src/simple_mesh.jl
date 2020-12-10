@@ -2,8 +2,10 @@
 export simple_line_mesh, simple_quad_mesh, simple_hex_mesh
 
 #=
-# Conveniently builds a uniform unit interval mesh.
-# Simple just to get things working.
+# Builds a 1D interval mesh.
+# nx = number of vertices
+# bn = number of boundary reqions
+# interval = limits of the square domain
 =#
 function simple_line_mesh(nx, bn, interval)
     # mesh only
@@ -56,6 +58,10 @@ function simple_line_mesh(nx, bn, interval)
     end
     
     mesh = MeshData(Nv, xv, ind, nel, el, etypes, numvert, invind, f2n, f2e, e2f, normals, bdryID); # MeshData struct
+    
+    ###########################
+    # The following is commented because the 1D grid is built automatically in grid.jl
+    ###########################
     
     # # grid
     # ord = config.basis_order_min;
@@ -119,8 +125,10 @@ function simple_line_mesh(nx, bn, interval)
 end
 
 #=
-# Conveniently builds a square, uniform, unit quad mesh.
-# Simple just to get things working.
+# Builds a 2D quad mesh
+# nx = number of vertices
+# bn = number of boundary reqions
+# interval = limits of the square domain
 =#
 function simple_quad_mesh(nxy, bn, interval)
     if length(nxy) == 2
@@ -495,8 +503,10 @@ function simple_quad_mesh(nxy, bn, interval)
 end
 
 #=
-# Conveniently builds a uniform, unit cube, hex mesh.
-# Simple just to get things working.
+# Builds a 3D hex mesh
+# nx = number of vertices
+# bn = number of boundary reqions
+# interval = limits of the square domain
 =#
 function simple_hex_mesh(nxyz, bn, interval)
     if length(nxyz) == 3

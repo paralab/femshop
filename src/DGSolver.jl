@@ -24,7 +24,7 @@ include("cg_boundary.jl"); # Can we use the CG versions here?
 include("nonlinear.jl");
 include("cg_matrixfree.jl");
 include("face_data.jl");
-#include("desired.jl");
+#include("desiredfc.jl");
 
 function init_dgsolver()
     dim = config.dimension;
@@ -282,58 +282,66 @@ function assemble(var, bilinear, linear, face_bilinear, face_linear, t=0.0, dt=0
             bilinchunk = bilinear.func(lhsargs);
             insert_bilinear!(AI, AJ, AV, Astart, bilinchunk, glb, 1:dofs_per_node, dofs_per_node);
         end
+    end
+    
+    # surface assembly for dg
+    if !(face_linear===nothing || face_bilinear===nothing)
+        dim2face = [0,2,4,6];
+        frefel = build_refel(refel.dim-1, refel.N, dim2face[refel.dim], config.elemental_nodes);
         
-        # Do surface integral here
-        fids = mesh_data.element2face[:,ei]; # indices of faces on each side of the element
-        nfp = size(grid_data.face2glb,1); # number of face points
-        findsin = zeros(Int, nfp, refel.Nfaces); # The global indices of the inside face points.
-        findsout = zeros(Int, nfp, refel.Nfaces); # The global indices of the outside face points.
-        fnodes = zeros(refel.dim, nfp, refel.Nfaces); # coordinates of face points
-        for fi=1:length(fids)
-            if mesh_data.face2element[1,fids[fi]] == ei
-                findsin[:,fi] = grid_data.face2glb[:,1,fids[fi]];
-                findsout[:,fi] = grid_data.face2glb[:,2,fids[fi]];
-            else
-                findsin[:,fi] = grid_data.face2glb[:,2,fids[fi]];
-                findsout[:,fi] = grid_data.face2glb[:,1,fids[fi]];
-            end
-            fnodes[:,:,fi] = grid_data.allnodes[:,findsin[:,fi]];
+        for fid = 1:size(grid_data.face2glb,3)
+            
+            face2glb = grid_data.face2glb[:,:,fid];
+            
+            facenodes = grid_data.allnodes[:,face2glb[:,1]];      # coordinates of this face's nodes for evaluating coefficient functions
+            
+            normal = grid_data.facenorm[:,fid];
+            
+            faceBID = mesh_data.bdryID[fid];
+            
+            (fdetJ, fJ) = geometric_factors(frefel, facenodes); # compute geometric factors here for the face
+            
+            face_wgdetj = frefel.wg .* fdetJ;
+            
+            rhsargs = (var, fid, frefel, facenodes, face2glb, normal, faceBID, fdetJ, fJ, face_wgdetj, RHS, t, dt);
+            
+            if dofs_per_node == 1
+                linchunk = face_linear.func(rhsargs);  # get the elemental linear part
+                #linchunk = temporary_rhs_func(rhsargs);
+                if faceBID == 0
+                    b[face2glb[:,1]] .+= linchunk[1];
+                    b[face2glb[:,2]] .+= linchunk[2];
+                elseif mesh_data.face2element[1,fid] == 0
+                    b[face2glb[:,2]] .+= linchunk[2];
+                else
+                    b[face2glb[:,1]] .+= linchunk[1];
+                end
+                
+    
+                # bilinchunk = face_bilinear.func(lhsargs); # the elemental bilinear part
+                
+                # for jj=1:length(enode_e1)
+                #     append!(AI, enode_e1);
+                #     append!(AJ, enode_e1[jj]*ones(Int, length(enode_e1)));
+                #     append!(AV, bilinchunk[1][:,jj]);
+                    
+                #     append!(AI, enode_e2);
+                #     append!(AJ, enode_e2[jj]*ones(Int, length(enode_e1)));
+                #     append!(AV, bilinchunk[4][:,jj]);
+                # end
+                # for ii=1:length(fmap_s1)
+                #     row1 = enode_e1[fmap_s1[ii]];
+                #     append!(AI, row1*ones(Int, length(enode_e1)));
+                #     append!(AJ, enode_e2);
+                #     append!(AV, bilinchunk[2][fmap_s2[ii],:]);
+                    
+                #     row2 = enode_e2[fmap_s2[ii]];
+                #     append!(AI, row2*ones(Int, length(enode_e1)));
+                #     append!(AJ, enode_e1);
+                #     append!(AV, bilinchunk[3][fmap_s1[ii],:]);
+                # end
+            end	 	
         end
-        
-        flocal = get_face_maps(findsin, grid_data.loc2glb[:,ei]);
-        
-        normals = grid_data.facenorm[:,fids]; # Normal vectors for each face
-        # need a list of normals, one for each face
-        for fi=1:length(fids)
-            if ei == mesh_data.face2element[2,fids[fi]]
-                normals[:,fi] = -normals[:,fi];
-            end
-        end
-        #println("e "*string(ei)*" n="*string(normals[1,1])*" , "*string(normals[1,2]));
-        bids = mesh_data.bdryID[fids]; #bids for each face
-        
-        frefels = face_refels;
-        frefelmap = [1,2]; #TEMPORARY. ONLY FOR 1D
-        
-        # Geometric factors for each face
-        fdetJ = [];
-        fJ = [];
-        for fi=1:length(fids)
-            (tmpfdetJ, tmpfJ) = geometric_factors(facerefel, fnodes[:,:,fi]);
-            push!(fdetJ, copy(tmpfdetJ));
-            push!(fJ, copy(tmpfJ));
-        end
-        
-        # Set up args
-        rhsargs = (var, refel, xe, glb, fids, frefels, frefelmap, findsin, findsout, flocal, fnodes, normals, bids, fdetJ, fJ, RHS, t, dt);
-        
-        # compute RHS face integral
-        linchunk = face_linear.func(rhsargs);
-        #linchunk = temporary_rhs_func(rhsargs);
-        # add to RHS vector
-        b[glb] .+= linchunk;
-        
-        # skip LHS for now
     end
     
     loop_time = Base.Libc.time() - loop_time;
@@ -472,7 +480,6 @@ function assemble(var, bilinear, linear, face_bilinear, face_linear, t=0.0, dt=0
     
     log_entry("Elemental loop time:     "*string(loop_time));
     # log_entry("Boundary condition time: "*string(bc_time));
-    
     return (A, b);
 end
 
@@ -552,58 +559,42 @@ function assemble_rhs_only(var, linear, face_linear, t=0.0, dt=0.0)
             insert_linear!(b, linchunk, glb, 1:dofs_per_node, dofs_per_node);
 
         end
+    end
+    
+    # surface assembly for dg
+    if !(face_linear===nothing)
+        dim2face = [0,2,4,6];
+        frefel = build_refel(refel.dim-1, refel.N, dim2face[refel.dim], config.elemental_nodes);
         
-        # Do surface integral here
-        ei = e;
-        fids = mesh_data.element2face[:,ei]; # indices of faces on each side of the element
-        nfp = size(grid_data.face2glb,1); # number of face points
-        findsin = zeros(Int, nfp, refel.Nfaces); # The global indices of the inside face points.
-        findsout = zeros(Int, nfp, refel.Nfaces); # The global indices of the outside face points.
-        fnodes = zeros(refel.dim, nfp, refel.Nfaces); # coordinates of face points
-        for fi=1:length(fids)
-            if mesh_data.face2element[1,fids[fi]] == ei
-                findsin[:,fi] = grid_data.face2glb[:,1,fids[fi]];
-                findsout[:,fi] = grid_data.face2glb[:,2,fids[fi]];
-            else
-                findsin[:,fi] = grid_data.face2glb[:,2,fids[fi]];
-                findsout[:,fi] = grid_data.face2glb[:,1,fids[fi]];
-            end
-            fnodes[:,:,fi] = grid_data.allnodes[:,findsin[:,fi]];
+        for fid = 1:size(grid_data.face2glb,3)
+            
+            face2glb = grid_data.face2glb[:,:,fid];
+            
+            facenodes = grid_data.allnodes[:,face2glb[:,1]];      # coordinates of this face's nodes for evaluating coefficient functions
+            
+            normal = grid_data.facenorm[:,fid];
+            
+            faceBID = mesh_data.bdryID[fid];
+            
+            (fdetJ, fJ) = geometric_factors(frefel, facenodes); # compute geometric factors here for the face
+            
+            face_wgdetj = frefel.wg .* fdetJ;
+            
+            rhsargs = (var, fid, frefel, facenodes, face2glb, normal, faceBID, fdetJ, fJ, face_wgdetj, RHS, t, dt);
+            
+            if dofs_per_node == 1
+                linchunk = face_linear.func(rhsargs);  # get the elemental linear part
+                #linchunk = temporary_rhs_func(rhsargs);
+                if faceBID == 0
+                    b[face2glb[:,1]] .+= linchunk[1];
+                    b[face2glb[:,2]] .+= linchunk[2];
+                elseif mesh_data.face2element[1,fid] == 0
+                    b[face2glb[:,2]] .+= linchunk[2];
+                else
+                    b[face2glb[:,1]] .+= linchunk[1];
+                end
+            end	 	
         end
-        
-        flocal = get_face_maps(findsin, grid_data.loc2glb[:,ei]);
-        
-        normals = grid_data.facenorm[:,fids]; # Normal vectors for each face
-        # need a list of normals, one for each face
-        for fi=1:length(fids)
-            if ei == mesh_data.face2element[2,fids[fi]]
-                normals[:,fi] = -normals[:,fi];
-            end
-        end
-        
-        bids = mesh_data.bdryID[fids]; #bids for each face
-        
-        frefels = face_refels;
-        frefelmap = [1,2]; #TEMPORARY. ONLY FOR 1D
-        
-        # Geometric factors for each face
-        fdetJ = [];
-        fJ = [];
-        for fi=1:length(fids)
-            (tmpfdetJ, tmpfJ) = geometric_factors(facerefel, fnodes[:,:,fi]);
-            push!(fdetJ, copy(tmpfdetJ));
-            push!(fJ, copy(tmpfJ));
-        end
-        
-        # Set up args
-        rhsargs = (var, refel, xe, glb, fids, frefels, frefelmap, findsin, findsout, flocal, fnodes, normals, bids, fdetJ, fJ, RHS, t, dt);
-        
-        # compute RHS face integral
-        linchunk = face_linear.func(rhsargs);
-        #linchunk = temporary_rhs_func(rhsargs);
-        # add to RHS vector
-        b[glb] .+= linchunk;
-        
     end
     
     # # Boundary conditions
