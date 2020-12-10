@@ -123,25 +123,8 @@ function build_refel(dimension, order, nfaces, nodetype)
     # Get nodes on the reference element
     refel_nodes!(refel, nodetype);
     
-    #  0D refels
+    # don't bother for 0D refels
     if dimension == 0
-        refel.V = ones(1,1);
-        refel.gradV = zeros(1,1);
-        refel.invV = ones(1,1);
-        refel.Vg = ones(1,1);
-        refel.gradVg = zeros(1,1);
-        refel.invVg = ones(1,1);
-        refel.Dr = zeros(1,1);
-        refel.Dg = zeros(1,1);
-        refel.Q1d = zeros(1,1);
-        refel.Q = ones(1,1);
-        refel.Qr = zeros(1,1);
-        refel.Qs = zeros(1,1);
-        refel.Qt = zeros(1,1);
-        refel.Ddr = zeros(1,1);
-        refel.Dds = zeros(1,1);
-        refel.Ddt = zeros(1,1);
-        
         return refel;
     end
     
