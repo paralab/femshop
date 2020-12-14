@@ -4,7 +4,7 @@ export simple_line_mesh, simple_quad_mesh, simple_hex_mesh
 #=
 # Builds a 1D interval mesh.
 # nx = number of vertices
-# bn = number of boundary reqions
+# bn = number of boundary regions
 # interval = limits of the square domain
 =#
 function simple_line_mesh(nx, bn, interval)
@@ -127,7 +127,7 @@ end
 #=
 # Builds a 2D quad mesh
 # nx = number of vertices
-# bn = number of boundary reqions
+# bn = number of boundary regions
 # interval = limits of the square domain
 =#
 function simple_quad_mesh(nxy, bn, interval)
@@ -263,7 +263,17 @@ function simple_quad_mesh(nxy, bn, interval)
     # grid
     ord = config.basis_order_min;
     refel = build_refel(2, ord, 4, config.elemental_nodes);  # refel for elements
-    refelfc = build_refel(1, ord, 2, config.elemental_nodes);# refel for faces
+    tmprefel = build_refel(1, ord, 2, config.elemental_nodes); # 1D refel for getting face nodes
+    leftnodes =    map_face_nodes2d(tmprefel.g, [-1,-1], [-1,1]); # maps 1D gauss nodes to 2D face
+    rightnodes =   map_face_nodes2d(tmprefel.g, [1,-1], [1,1]); # maps 1D gauss nodes to 2D face
+    bottomnodes =  map_face_nodes2d(tmprefel.g, [-1,-1], [1,-1]); # maps 1D gauss nodes to 2D face
+    topnodes =     map_face_nodes2d(tmprefel.g, [-1,1], [1,1]); # maps 1D gauss nodes to 2D face
+    frefelLeft =   custom_quadrature_refel(refel, leftnodes, tmprefel.wg); # refel for left face
+    frefelRight =  custom_quadrature_refel(refel, rightnodes, tmprefel.wg); # refel for right face
+    frefelBottom = custom_quadrature_refel(refel, bottomnodes, tmprefel.wg); # refel for bottom face
+    frefelTop =    custom_quadrature_refel(refel, topnodes, tmprefel.wg); # refel for top face
+    refelfc = [frefelLeft, frefelRight, frefelBottom, frefelTop];
+    
     N = ((nx-1)*ord + 1)*((ny-1)*ord + 1); # number of total nodes
     Np = refel.Np;              # number of nodes per element
     x = zeros(2,N);             # coordinates of all nodes
@@ -505,7 +515,7 @@ end
 #=
 # Builds a 3D hex mesh
 # nx = number of vertices
-# bn = number of boundary reqions
+# bn = number of boundary regions
 # interval = limits of the square domain
 =#
 function simple_hex_mesh(nxyz, bn, interval)

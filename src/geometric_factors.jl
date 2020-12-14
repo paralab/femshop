@@ -1,5 +1,5 @@
 # Geometric factors
-export geometric_factors, Jacobian, build_deriv_matrix
+export geometric_factors, Jacobian, build_deriv_matrix, build_face_deriv_matrix
 
 include("tensor_ops.jl");
 
@@ -111,39 +111,22 @@ function build_deriv_matrix(refel, J)
     end
 end
 
-function build_face_deriv_matrix(refel, J)
+# Build the regular deriv matrices, then extract the relevant face parts
+function build_face_deriv_matrix(refel, J, flocal)
     if refel.dim == 1
-        RQ1 = zeros(size(refel.Q));
-        for i=1:length(J.rx)
-            for j=1:length(J.rx)
-                RQ1[i,j] = J.rx[i]*refel.Qr[i,j];
-            end
-        end
-        return (RQ1,);
+        (RQ1,RD1) = build_deriv_matrix(refel, J);
+        
+        return (RQ1[flocal,:],RD1[flocal,:]);
         
     elseif refel.dim == 2
-        RQ1 = zeros(size(refel.Q));
-        RQ2 = zeros(size(refel.Q));
-        for i=1:length(J.rx)
-            for j=1:length(J.rx)
-                RQ1[i,j] = J.rx[i]*refel.Qr[i,j] + J.sx[i]*refel.Qs[i,j];
-                RQ2[i,j] = J.ry[i]*refel.Qr[i,j] + J.sy[i]*refel.Qs[i,j];
-            end
-        end
-        return (RQ1, RQ2);
+        (RQ1,RQ2,RD1,RD2) = build_deriv_matrix(refel, J);
+        
+        return (RQ1[flocal,:], RQ2[flocal,:], RD1[flocal,:], RD2[flocal,:]);
         
     elseif refel.dim == 3
-        RQ1 = zeros(size(refel.Q));
-        RQ2 = zeros(size(refel.Q));
-        RQ3 = zeros(size(refel.Q));
-        for i=1:length(J.rx)
-            for j=1:length(J.rx)
-                RQ1[i,j] = J.rx[i]*refel.Qr[i,j] + J.sx[i]*refel.Qs[i,j] + J.tx[i]*refel.Qt[i,j];
-                RQ2[i,j] = J.ry[i]*refel.Qr[i,j] + J.sy[i]*refel.Qs[i,j] + J.ty[i]*refel.Qt[i,j];
-                RQ3[i,j] = J.rz[i]*refel.Qr[i,j] + J.sz[i]*refel.Qs[i,j] + J.tz[i]*refel.Qt[i,j];
-            end
-        end
-        return (RQ1, RQ2, RQ3);
+        (RQ1,RQ2,RQ3,RD1,RD2,RD3) = build_deriv_matrix(refel, J);
+        
+        return (RQ1[flocal,:], RQ2[flocal,:], RQ3[flocal,:], RD1[flocal,:], RD2[flocal,:], RD3[flocal,:]);
     end
 end
 

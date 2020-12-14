@@ -224,10 +224,10 @@ function custom_quadrature_refel(oldrefel, nodes, weights)
     refel.gradVg = zeros(Nn, refel.N+1);
     if refel.dim == 1
         for i=1:refel.N+1
-            refel.Vg[:,i] = jacobi_polynomial(nodes[:,1], 0, 0, i-1);
+            refel.Vg[:,i] = jacobi_polynomial(nodes[1,:], 0, 0, i-1);
         end
         for i=1:refel.N
-            refel.gradVg[:,i+1] = sqrt(i*(i+1)) .* jacobi_polynomial(nodes[:,1], 1, 1, i-1);
+            refel.gradVg[:,i+1] = sqrt(i*(i+1)) .* jacobi_polynomial(nodes[1,:], 1, 1, i-1);
         end
         
         # Differentiation matrices
@@ -248,12 +248,12 @@ function custom_quadrature_refel(oldrefel, nodes, weights)
         Dtmp2 = zeros(Nn, refel.N+1);
         
         for i=1:refel.N+1
-            tmp1[:,i] = jacobi_polynomial(nodes[:,1], 0, 0, i-1);
-            tmp2[:,i] = jacobi_polynomial(nodes[:,2], 0, 0, i-1);
+            tmp1[:,i] = jacobi_polynomial(nodes[1,:], 0, 0, i-1);
+            tmp2[:,i] = jacobi_polynomial(nodes[2,:], 0, 0, i-1);
         end
         for i=1:refel.N
-            Dtmp1[:,i+1] = sqrt(i*(i+1)) .* jacobi_polynomial(nodes[:,1], 1, 1, i-1);
-            Dtmp2[:,i+1] = sqrt(i*(i+1)) .* jacobi_polynomial(nodes[:,2], 1, 1, i-1);
+            Dtmp1[:,i+1] = sqrt(i*(i+1)) .* jacobi_polynomial(nodes[1,:], 1, 1, i-1);
+            Dtmp2[:,i+1] = sqrt(i*(i+1)) .* jacobi_polynomial(nodes[2,:], 1, 1, i-1);
         end
         
         # Use kron(Vg*invV, Vg,invV) = kron(Vg,Vg)*kron(invV,invV)
@@ -276,14 +276,14 @@ function custom_quadrature_refel(oldrefel, nodes, weights)
         Dtmp3 = zeros(Nn, refel.N+1);
         
         for i=1:refel.N+1
-            tmp1[:,i] = jacobi_polynomial(nodes[:,1], 0, 0, i-1);
-            tmp2[:,i] = jacobi_polynomial(nodes[:,2], 0, 0, i-1);
-            tmp3[:,i] = jacobi_polynomial(nodes[:,3], 0, 0, i-1);
+            tmp1[:,i] = jacobi_polynomial(nodes[1,:], 0, 0, i-1);
+            tmp2[:,i] = jacobi_polynomial(nodes[2,:], 0, 0, i-1);
+            tmp3[:,i] = jacobi_polynomial(nodes[3,:], 0, 0, i-1);
         end
         for i=1:refel.N
-            Dtmp1[:,i+1] = sqrt(i*(i+1)) .* jacobi_polynomial(nodes[:,1], 1, 1, i-1);
-            Dtmp2[:,i+1] = sqrt(i*(i+1)) .* jacobi_polynomial(nodes[:,2], 1, 1, i-1);
-            Dtmp3[:,i+1] = sqrt(i*(i+1)) .* jacobi_polynomial(nodes[:,3], 1, 1, i-1);
+            Dtmp1[:,i+1] = sqrt(i*(i+1)) .* jacobi_polynomial(nodes[1,:], 1, 1, i-1);
+            Dtmp2[:,i+1] = sqrt(i*(i+1)) .* jacobi_polynomial(nodes[2,:], 1, 1, i-1);
+            Dtmp3[:,i+1] = sqrt(i*(i+1)) .* jacobi_polynomial(nodes[3,:], 1, 1, i-1);
         end
         
         # Use kron(Vg*invV, Vg,invV) = kron(Vg,Vg)*kron(invV,invV)
@@ -301,4 +301,20 @@ function custom_quadrature_refel(oldrefel, nodes, weights)
     
     return refel;
     
+end
+
+# Map 1D nodes to 2D face
+# Assumes g1d[1] aligns with v1 and interval is scaled the same 
+function map_face_nodes_2d(g1d, v1, v2)
+    fnodes = zeros(2,length(g1d));
+    dx = v2[1] - v1[1];
+    dy = v2[2] - v1[2];
+    dist = sqrt(dx*dx+dy*dy);
+    xmult = dx/dist;
+    ymult = dy/dist;
+    
+    fnodes[1,:] = v1[1] .+ (g1d .- g1d[1]) .*xmult;
+    fnodes[2,:] = v1[2] .+ (g1d .- g1d[1]) .*ymult;
+    
+    return fnodes;
 end

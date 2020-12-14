@@ -70,13 +70,15 @@ end
 
 function sym_ave_op(var)
     prefix = "DGAVERAGE_";
+    side1 = "DGSIDE1_";
+    side2 = "DGSIDE2_";
     if typeof(var) <: Array
         result = copy(var);
         for i=1:length(result)
             result[i] = sym_ave_op(var[i]);
         end
     elseif typeof(var) == Basic
-        result = symbols(prefix*string(var));
+        result = (symbols(side1*string(var)) + symbols(side2*string(var))) * Basic(0.5);
     elseif typeof(var) <: Number
         result = Basic(var);
     end
@@ -85,22 +87,22 @@ end
 
 function sym_jump_op(var)
     prefix = "DGJUMP_";
-    norm = sym_normal_op();
+    side1 = "DGSIDE1_";
+    side2 = "DGSIDE2_";
+    norm1 = sym_normal_op(1);
+    norm2 = sym_normal_op(2);
     if typeof(var) <: Array
-        result = copy(var);
-        for i=1:length(result)
-            result[i] = sym_jump_op(var[i]);
-        end
         # make into a vector according to normal
         if length(var) == 1
-            norm = norm .* result[1];
-            result = norm;
+            result = sym_jump_op(var[1]);
         else
             # not ready
+            println("error in jump operator");
+            return var;
         end
         
     elseif typeof(var) == Basic
-        result = symbols(prefix*string(var));
+        result = symbols(side2*string(var)) .* norm2 .+ symbols(side1*string(var)) .*norm1;
     elseif typeof(var) <: Number
         result = Basic(0);
     end
@@ -142,6 +144,20 @@ function sym_normal_op()
     _DGNORMAL_1 = symbols("_DGNORMAL_1");
     _DGNORMAL_2 = symbols("_DGNORMAL_2");
     _DGNORMAL_3 = symbols("_DGNORMAL_3");
+    d = config.dimension;
+    if d==1
+        return [_DGNORMAL_1];
+    elseif d==2
+        return [_DGNORMAL_1, _DGNORMAL_2];
+    elseif d==3
+        return [_DGNORMAL_1, _DGNORMAL_2, _DGNORMAL_3];
+    end
+end
+
+function sym_normal_op(side)
+    _DGNORMAL_1 = symbols("_DGNORMAL"*string(side)*"_1");
+    _DGNORMAL_2 = symbols("_DGNORMAL"*string(side)*"_2");
+    _DGNORMAL_3 = symbols("_DGNORMAL"*string(side)*"_3");
     d = config.dimension;
     if d==1
         return [_DGNORMAL_1];

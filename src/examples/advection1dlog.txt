@@ -1,0 +1,109 @@
+######################################
+# Femshop Log for: advection1d
+######################################
+
+1.	Set time stepper to LSRK4
+2.	Building simple line mesh with nx elements, nx=10
+3.	Added mesh with 11 vertices and 10 elements.
+4.	Full grid has 40 nodes.
+5.	Grid building took 4.298867901 seconds
+6.	Added variable: u of type: scalar
+7.	Set test function symbol: v of type: scalar
+8.	Generated function: genfunction_0
+9.	Initial condition for u : GenFunction("genfunction_0", "x=0,y=0,z=0,t=0", "sin(x)", :(sin(x)), genfunction_0)
+10.	Generated function: genfunction_1
+11.	Boundary condition: var=u bid=1 type=Dirichlet val=-sin(2*pi*t)
+12.	Boundary condition: var=u bid=2 type=No BC val=0
+13.	Added coefficient a : 6.283185307179586
+14.	Added coefficient alpha : 1
+15.	Making weak form for variable(s): u
+16.	Weak form, input: Dt(u*v) + a*grad(u)*v - surface(a*normal()*u*v - a*normal()*ave(u)*v)
+17.	Weak form, before modifying for time: Dt(Array[SymEngine.Basic[_v_1*_u_1]]) + Array[SymEngine.Basic[_v_1*_a_1*D1__u_1]] + surface(Array[SymEngine.Basic[0.5*_v_1*_a_1*_DGNORMAL_1*DGSIDE1__u_1, 0.5*_v_1*_a_1*_DGNORMAL_1*DGSIDE2__u_1, -_v_1*_u_1*_a_1*_DGNORMAL_1]]) = Array[SymEngine.Basic[0]] + surface(Array[SymEngine.Basic[]])
+18.	Weak form, modified for time stepping: SymEngine.Basic[_v_1*_u_1] + surface(Any[]) = SymEngine.Basic[0, -dt*_v_1*_a_1*D1__u_1] + surface(SymEngine.Basic[-0.5*dt*_v_1*_a_1*_DGNORMAL_1*DGSIDE1__u_1, -0.5*dt*_v_1*_a_1*_DGNORMAL_1*DGSIDE2__u_1, dt*_v_1*_u_1*_a_1*_DGNORMAL_1])
+19.	Weak form, symbolic layer:
+lhs = _v_1*_u_1
+rhs = 0 + -dt*_v_1*_a_1*D1__u_1 + surface(-0.5*dt*_v_1*_a_1*_DGNORMAL_1*DGSIDE1__u_1) + surface(-0.5*dt*_v_1*_a_1*_DGNORMAL_1*DGSIDE2__u_1) + surface(dt*_v_1*_u_1*_a_1*_DGNORMAL_1)
+20.	Weak form, code layer: LHS = begin
+    var = args[1]
+    x = args[2]
+    gbl = args[3]
+    refel = args[4]
+    borl = args[5]
+    time = args[6]
+    dt = args[7]
+    stiffness = args[8]
+    mass = args[9]
+    (detJ, J) = geometric_factors(refel, x)
+    wgdetj = refel.wg .* detJ
+    return mass
+end
+surfaceLHS = begin
+    A = zeros(size(args[5], 2) * 1, size(args[5], 2) * 1)
+    return (A, A, A, A)
+end 
+RHS = begin
+    var = args[1]
+    x = args[2]
+    gbl = args[3]
+    refel = args[4]
+    borl = args[5]
+    time = args[6]
+    dt = args[7]
+    stiffness = args[8]
+    mass = args[9]
+    (detJ, J) = geometric_factors(refel, x)
+    wgdetj = refel.wg .* detJ
+    (RQ1, RD1) = build_deriv_matrix(refel, J)
+    TRQ1 = RQ1'
+    coef_0_1 = 6.283185307179586
+    coef_D1u_1 = copy((Femshop.variables[1]).values[gbl])
+    coef_D1u_1 = if length(coef_D1u_1) == 1
+            0
+        else
+            RD1 * coef_D1u_1
+        end
+    return 0 .+ -(mass * ((dt .* coef_0_1) .* coef_D1u_1))
+end
+surfaceRHS = begin
+    var = args[1]
+    refel = args[2]
+    fid = args[3]
+    frefel = args[4]
+    fnodes = args[5]
+    flocal = args[6]
+    face2glb = args[7]
+    normal = args[8]
+    faceBID = args[9]
+    face_detJ = args[10]
+    face_J = args[11]
+    vol_J1 = args[12]
+    vol_J2 = args[13]
+    face_wgdetj = args[14]
+    borl = args[15]
+    time = args[16]
+    dt = args[17]
+    Q1 = zeros(size(fnodes, 2))
+    Q2 = zeros(size(fnodes, 2))
+    for i = 1:size((frefel[1]).Q, 2)
+        Q1 = Q1 + (frefel[1]).Q[:, i]
+        Q2 = Q2 + (frefel[2]).Q[:, i]
+    end
+    coef_DGSIDE10_1 = 6.283185307179586
+    coef_DGSIDE20_1 = 6.283185307179586
+    coef_DGSIDE1u_1 = copy((Femshop.variables[1]).values[face2glb[:, 1]])
+    coef_DGSIDE2u_1 = copy((Femshop.variables[1]).values[face2glb[:, 2]])
+    element_vectorL = .+(Q1' * (face_wgdetj .* (Q1 .* ((((-0.5 .* dt) .* coef_DGSIDE10_1) .* normal[1]) .* coef_DGSIDE1u_1))), Q1' * (face_wgdetj .* (Q1 .* ((((-0.5 .* dt) .* coef_DGSIDE10_1) .* normal[1]) .* coef_DGSIDE2u_1))), Q1' * (face_wgdetj .* (Q1 .* (((dt .* coef_DGSIDE1u_1) .* coef_DGSIDE10_1) .* normal[1]))))
+    element_vectorR = .+(Q2' * (face_wgdetj .* (Q2 .* ((((-0.5 .* dt) .* coef_DGSIDE20_1) .* -(normal[1])) .* coef_DGSIDE1u_1))), Q2' * (face_wgdetj .* (Q2 .* ((((-0.5 .* dt) .* coef_DGSIDE20_1) .* -(normal[1])) .* coef_DGSIDE2u_1))), Q2' * (face_wgdetj .* (Q2 .* (((dt .* coef_DGSIDE2u_1) .* coef_DGSIDE20_1) .* -(normal[1])))))
+    return (element_vectorL, element_vectorR)
+end
+21.	Generated function: genfunction_2
+22.	Generated function: genfunction_3
+23.	Generated function: genfunction_4
+24.	Generated function: genfunction_5
+25.	Built initial conditions for: u
+26.	Elemental loop time:     0.6850001811981201
+27.	Assembly took 2.179548 seconds
+28.	Beginning 1810.0 time steps.
+29.	Solve took 5.256999969482422 seconds
+30.	Solved for u.(took 7.763168699 seconds)
+31.	Completed. Closing Log.

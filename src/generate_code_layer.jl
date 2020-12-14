@@ -856,30 +856,37 @@ function process_known_expr_julia(ex)
         end
         
         if !(v ===:dt)
-            # Check for derivative mods
-            if length(mods) > 0 && typeof(v) == Symbol
-                need_derivative = true;
-                
-                push!(needed_coef_deriv, [v, mods[1], mods[1][2]]);
-                
+            if v === :DGNORMAL
+                tmp = :(normal[$ind]);
+            elseif v === :DGNORMAL1
+                tmp = :(normal[$ind]);
+            elseif v === :DGNORMAL2
+                tmp = :(-normal[$ind]);
             else
-                push!(needed_coef_deriv, [v, "", ""]);
+                # Check for derivative mods
+                if length(mods) > 0 && typeof(v) == Symbol
+                    need_derivative = true;
+                    
+                    push!(needed_coef_deriv, [v, mods[1], mods[1][2]]);
+                    
+                else
+                    push!(needed_coef_deriv, [v, "", ""]);
+                end
+                
+                push!(needed_coef, v);
+                push!(needed_coef_ind, ind);
+                
+                cind = get_coef_index(v);
+                if cind >= 0
+                    tag = string(cind);
+                else
+                    tag = string(v);
+                end
+                #derivatives of coefficients
+                tag = needed_coef_deriv[length(needed_coef)][2] * tag;
+                tmps = "coef_"*tag*"_"*string(ind);
+                tmp = Symbol(tmps); # The symbol to return
             end
-            
-            push!(needed_coef, v);
-            push!(needed_coef_ind, ind);
-            
-            cind = get_coef_index(v);
-            if cind >= 0
-                tag = string(cind);
-            else
-                tag = string(v);
-            end
-            #derivatives of coefficients
-            tag = needed_coef_deriv[length(needed_coef)][2] * tag;
-            tmps = "coef_"*tag*"_"*string(ind);
-            tmp = Symbol(tmps); # The symbol to return
-            
         else
             tmp = ex;
             
