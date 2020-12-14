@@ -3,7 +3,7 @@
 # this is mostly influenced by the dendro loop strucutres. But We can modify this as we go along. 
 
 # dimention of the simplex
-@enum SIMPLEX_DIM
+@enum SIMPLEX_DIM begin
     D0=0,
     D1=1,
     D2=2,
@@ -12,7 +12,7 @@
 end
 
 # element (support upto 4D elements) loop types
-@enum SIMPLEX4_LOOP_TYPE 
+@enum SIMPLEX4_LOOP_TYPE begin
     ALL         =0,
     LOCAL       =1,
     HALO        =2,
@@ -22,47 +22,47 @@ end
 end 
 
 # simplex of dim 3 
-@enum SIMPLEX3_LOOP_TYPE 
+@enum SIMPLEX3_LOOP_TYPE begin
     ALL         =0,
     LOCAL       =1,
     HALO        =2,
     INDEP       =3,
     DEP         =4,
     WRITABLE    =5,
-    BOUNDRY     =6,
+    BOUNDRY     =6
 end
 
 # simplex of dim 2 
-@enum SIMPLEX2_LOOP_TYPE 
+@enum SIMPLEX2_LOOP_TYPE begin
     ALL         =0,
     LOCAL       =1,
     HALO        =2,
     INDEP       =3,
     DEP         =4,
     WRITABLE    =5, 
-    BOUNDRY     =6,
+    BOUNDRY     =6
 end
 
 # simplex of dim 1 
-@enum SIMPLEX1_LOOP_TYPE 
+@enum SIMPLEX1_LOOP_TYPE begin
     ALL         =0,
     LOCAL       =1,
     HALO        =2,
     INDEP       =3,
     DEP         =4,
     WRITABLE    =5, 
-    BOUNDRY     =6,
+    BOUNDRY     =6
 end
 
 # simplex of dim 0 (vertices) 
-@enum SIMPLEX0_LOOP_TYPE
+@enum SIMPLEX0_LOOP_TYPE begin
     ALL         =0,
     LOCAL       =1,
     HALO        =2,
     INDEP       =3,
     DEP         =4,
     WRITABLE    =5, 
-    BOUNDRY     =6,
+    BOUNDRY     =6
 end
 
 
@@ -87,6 +87,8 @@ end
 # dim: get the indices of simplex dim for current simplex
 # example: if you are iterating over D3 simplex, 
 # you can get the indices of D2(surface), D1(edges), D0(vertices)
+
+#= 
 function get_indices{Iter}(Iter curr, SIMPLEX_DIM dim) where {Iter}
 #end
 
@@ -109,3 +111,4 @@ end
 function sync_vector_end{Vec}(Vec vec, with_halo=false, dof=1) where {Vec}
 end
 
+=#
