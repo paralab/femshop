@@ -1,4 +1,14 @@
 ![femShop](logo1.png)
+[![Build Status](https://github.com/paralab/femshop/workflows/CI/badge.svg)](https://github.com/paralab/femshop/actions)
+[![Coverage](http://codecov.io/github/paralab/femshop/coverage.svg?branch=master)](http://codecov.io/github/paralab/femshop?branch=master)
+
+
+## Installation
+To install femshop, launch Julia and run:
+```julia
+]add "https://github.com/paralab/femshop.git"
+```
+femshop requires Julia version 1.3 or greater.
 
 ## Welcome to FEMSHOP
 
@@ -21,13 +31,3 @@
 
 * See [the femshop wiki](https://github.com/paralab/femshop/wiki) to learn what it does and how to use it.
 * Explore [examples](https://paralab.github.io/femshop/pages/examples.html).
-
-## Get it
-
-1. Install a current version of Julia(1.3 or newer).
-2. Clone [the femshop repository](https://github.com/paralab/femshop).
-3. Include the main module as shown. (package manager support is not yet ready, but planned)
-```
-include("Femshop.jl");
-using .Femshop
-```
