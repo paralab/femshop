@@ -1,5 +1,5 @@
 # Geometric factors
-export geometric_factors, Jacobian, build_deriv_matrix, build_face_deriv_matrix
+export geometric_factors, geometric_factors_face, Jacobian, build_deriv_matrix, build_face_deriv_matrix
 
 include("tensor_ops.jl");
 
@@ -24,10 +24,16 @@ function geometric_factors(refel, pts)
         D = Jacobian([1],[],[],[],[],[],[],[],[]);
         
     elseif refel.dim == 1
-        xr  = refel.Dg*pts[:];
-        J = xr[:];
-        rx = 1 ./ J;
-        D = Jacobian(rx,[],[],[],[],[],[],[],[]);
+        if length(pts) == 1
+            # 0D face refels can only have 1 point
+            J = [1];
+            D = Jacobian([1],[],[],[],[],[],[],[],[]);
+        else
+            xr  = refel.Dg*pts[:];
+            J = xr[:];
+            rx = 1 ./ J;
+            D = Jacobian(rx,[],[],[],[],[],[],[],[]);
+        end
         
     elseif refel.dim == 2
         (xr, xs) = tensor_grad2(refel.Dg, pts[1,:][:]);
@@ -39,6 +45,54 @@ function geometric_factors(refel, pts)
         ry = -xs./J;
         sy =  xr./J;
         D = Jacobian(rx,ry,[],sx,sy,[],[],[],[]);
+        
+    else
+        (xr, xs, xt) = tensor_grad3(refel.Dg, pts[1,:][:]);
+        (yr, ys, yt) = tensor_grad3(refel.Dg, pts[2,:][:]);
+        (zr, zs, zt) = tensor_grad3(refel.Dg, pts[3,:][:]);
+        J = xr.*(ys.*zt-zs.*yt) - yr.*(xs.*zt-zs.*xt) + zr.*(xs.*yt-ys.*xt);
+        
+        rx =  (ys.*zt - zs.*yt)./J;
+        ry = -(xs.*zt - zs.*xt)./J;
+        rz =  (xs.*yt - ys.*xt)./J;
+        
+        sx = -(yr.*zt - zr.*yt)./J;
+        sy =  (xr.*zt - zr.*xt)./J;
+        sz = -(xr.*yt - yr.*xt)./J;
+        
+        tx =  (yr.*zs - zr.*ys)./J;
+        ty = -(xr.*zs - zr.*xs)./J;
+        tz =  (xr.*ys - yr.*xs)./J;
+        D = Jacobian(rx,ry,rz,sx,sy,sz,tx,ty,tz);
+    end
+    
+    return (J,D);
+end
+
+function geometric_factors_face(refel, pts)
+    # pts = face node global coords
+    # J = detJ
+    # D = Jacobian
+    if refel.dim == 0
+        J = [1];
+        D = Jacobian([1],[],[],[],[],[],[],[],[]);
+        
+    elseif refel.dim == 1
+        # 1D face refels can only have 1 point
+        J = [1];
+        D = Jacobian([1],[],[],[],[],[],[],[],[]);
+        
+    elseif refel.dim == 2
+        dx = pts[1,end] - pts[1,1];
+        dy = pts[2,end] - pts[2,1];
+        J = 2/sqrt(dx*dx+dy*dy);
+        
+        # rx =  ys./J;
+        # sx = -yr./J;
+        # ry = -xs./J;
+        # sy =  xr./J;
+        # D = Jacobian(rx,ry,[],sx,sy,[],[],[],[]);
+        D = nothing;
         
     else
         (xr, xs, xt) = tensor_grad3(refel.Dg, pts[1,:][:]);
@@ -119,9 +173,11 @@ function build_face_deriv_matrix(refel, J, flocal)
         return (RQ1[flocal,:],RD1[flocal,:]);
         
     elseif refel.dim == 2
-        (RQ1,RQ2,RD1,RD2) = build_deriv_matrix(refel, J);
-        
-        return (RQ1[flocal,:], RQ2[flocal,:], RD1[flocal,:], RD2[flocal,:]);
+        RQ1 = J.rx[1]*refel.Qr + J.sx[1]*refel.Qs;
+        RQ2 = J.ry[1]*refel.Qr + J.sy[1]*refel.Qs;
+        RD1 = 0;
+        RD2 = 0; #TODO derivative matrices for faces
+        return (RQ1, RQ2, RD1, RD2);
         
     elseif refel.dim == 3
         (RQ1,RQ2,RQ3,RD1,RD2,RD3) = build_deriv_matrix(refel, J);

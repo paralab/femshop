@@ -12,8 +12,9 @@ struct DG_Grid
     loc2glb::Array{Int,2}           # local to global map for each element's nodes
     glbvertex::Array{Int,2}         # global indices of each elements' vertices
     # faces
-    face2glb::Array{Int,3}          # local to global map for faces
+    face2glb::Array{Int,3}          # global map for faces
     faceVertex2glb::Array{Int,3}    # global indices of face vertices
+    face2local::Array{Int,3}        # local map for faces
     facenorm::Array{Float64,2}      # Normal vector for each face
     faceRefelInd::Array{Int,2}      # Refel index in face_refels for each side
 end
@@ -43,6 +44,7 @@ function cg_grid_to_dg_grid(cggrid, mesh)
     
     dgface2glb = zeros(Int, nfp, 2, nface);
     dgfaceVertex2glb = zeros(Int, size(cggrid.faceVertex2glb,1), 2, nface);
+    dgface2local = zeros(Int, nfp, 2, nface);
     dgfacenorm = copy(mesh.normals);
     dgfaceRefelInd = zeros(Int, 2, nface);
     
@@ -88,10 +90,12 @@ function cg_grid_to_dg_grid(cggrid, mesh)
                 #e1
                 if cggrid.loc2glb[nj,e1] == cggrid.face2glb[ni,fi]
                     dgface2glb[ni,1,fi] = dgloc2glb[nj,e1];
+                    dgface2local[ni,1,fi] = nj;
                 end
                 #e2
                 if cggrid.loc2glb[nj,e2] == cggrid.face2glb[ni,fi]
                     dgface2glb[ni,2,fi] = dgloc2glb[nj,e2];
+                    dgface2local[ni,2,fi] = nj;
                 end
             end
         end
@@ -123,7 +127,7 @@ function cg_grid_to_dg_grid(cggrid, mesh)
         end
     end
     
-    return DG_Grid(dgnodes, dgbdry, dgbdryface, dgbdrynorm, dgbids, dgloc2glb, dgglbvertex, dgface2glb, dgfaceVertex2glb, dgfacenorm, dgfaceRefelInd);
+    return DG_Grid(dgnodes, dgbdry, dgbdryface, dgbdrynorm, dgbids, dgloc2glb, dgglbvertex, dgface2glb, dgfaceVertex2glb, dgface2local, dgfacenorm, dgfaceRefelInd);
     
 end
 

@@ -16,7 +16,7 @@ import ..Femshop: JULIA, CPP, MATLAB, SQUARE, IRREGULAR, UNIFORM_GRID, TREE, UNS
 import ..Femshop: log_entry, printerr
 import ..Femshop: config, prob, variables, mesh_data, grid_data, refel, face_refels, time_stepper, elemental_order
 import ..Femshop: Variable, Coefficient, GenFunction, Jacobian
-import ..Femshop: geometric_factors, build_deriv_matrix, build_face_deriv_matrix, build_refel
+import ..Femshop: geometric_factors, geometric_factors_face, build_deriv_matrix, build_face_deriv_matrix, build_refel
 
 using LinearAlgebra, SparseArrays
 
@@ -303,15 +303,15 @@ function assemble(var, bilinear, linear, face_bilinear, face_linear, t=0.0, dt=0
             
             facenodes = grid_data.allnodes[:,face2glb[:,1]];      # coordinates of this face's nodes for evaluating coefficient functions
             
-            flocal = [refel.Np, 1]; # TODO need to find this
+            flocal = [grid_data.face2local[:,1,fid], grid_data.face2local[:,2,fid]];
             
             normal = grid_data.facenorm[:,fid];
             
             faceBID = mesh_data.bdryID[fid];
             
-            #(fdetJ, fJ) = geometric_factors(frefel[1], facenodes); # compute geometric factors here for the face
-            fdetJ = [1];
-            fJ = [1];
+            (fdetJ, fJ) = geometric_factors_face(frefel[1], facenodes); # compute geometric factors here for the face
+            #fdetJ = [1];
+            #fJ = [1];
             
             e1 = mesh_data.face2element[1,fid];
             e2 = mesh_data.face2element[2,fid];
@@ -324,14 +324,18 @@ function assemble(var, bilinear, linear, face_bilinear, face_linear, t=0.0, dt=0
             vol_J1 = vol_J[e1];
             vol_J2 = vol_J[e2];
             
+            loc2glb = [grid_data.loc2glb[:,e1], grid_data.loc2glb[:,e2]];
+            
             face_wgdetj = frefel[1].wg .* fdetJ;
             
-            rhsargs = (var, refel, fid, frefel, facenodes, flocal, face2glb, normal, faceBID, fdetJ, fJ, vol_J1, vol_J2, face_wgdetj, RHS, t, dt);
-            lhsargs = (var, refel, fid, frefel, facenodes, flocal, face2glb, normal, faceBID, fdetJ, fJ, vol_J1, vol_J2, face_wgdetj, LHS, t, dt);
+            rhsargs = (var, refel, loc2glb, fid, frefel, facenodes, flocal, face2glb, normal, faceBID, fdetJ, fJ, vol_J1, vol_J2, face_wgdetj, RHS, t, dt);
+            lhsargs = (var, refel, loc2glb, fid, frefel, facenodes, flocal, face2glb, normal, faceBID, fdetJ, fJ, vol_J1, vol_J2, face_wgdetj, LHS, t, dt);
             
             if dofs_per_node == 1
                 linchunk = face_linear.func(rhsargs);  # get the elemental linear part
                 #linchunk = temporary_rhs_func(rhsargs);
+                linchunk[1] = linchunk[1][flocal[1]];
+                linchunk[2] = linchunk[2][flocal[2]];
                 if faceBID == 0
                     b[face2glb[:,1]] .+= linchunk[1];
                     b[face2glb[:,2]] .+= linchunk[2];
@@ -343,8 +347,14 @@ function assemble(var, bilinear, linear, face_bilinear, face_linear, t=0.0, dt=0
                 
     
                 bilinchunk = face_bilinear.func(lhsargs); # the elemental bilinear part
+                
                 if typeof(bilinchunk[1]) <: Number
-                    bilinchunk = ([bilinchunk[1]], [bilinchunk[2]], [bilinchunk[3]], [bilinchunk[4]]);
+                    bilinchunk = [[bilinchunk[1]], [bilinchunk[2]], [bilinchunk[3]], [bilinchunk[4]]];
+                else
+                    bilinchunk[1] = bilinchunk[1][flocal[1],flocal[1]];
+                    bilinchunk[2] = bilinchunk[2][flocal[1],flocal[2]];
+                    bilinchunk[3] = bilinchunk[3][flocal[2],flocal[1]];
+                    bilinchunk[4] = bilinchunk[4][flocal[2],flocal[2]];
                 end
                 #bilinchunk = temporary_lhs_func(lhsargs);
                 #println(bilinchunk)
@@ -604,15 +614,13 @@ function assemble_rhs_only(var, linear, face_linear, t=0.0, dt=0.0)
             
             facenodes = grid_data.allnodes[:,face2glb[:,1]];      # coordinates of this face's nodes for evaluating coefficient functions
             
-            flocal = [refel.Np, 1]; # TODO need to find this
+            flocal = [grid_data.face2local[:,1,fid], grid_data.face2local[:,2,fid]];
             
             normal = grid_data.facenorm[:,fid];
             
             faceBID = mesh_data.bdryID[fid];
             
-            #(fdetJ, fJ) = geometric_factors(frefel[1], facenodes); # compute geometric factors here for the face
-            fdetJ = [1];
-            fJ = [1];
+            (fdetJ, fJ) = geometric_factors_face(frefel[1], facenodes); # compute geometric factors here for the face
             
             e1 = mesh_data.face2element[1,fid];
             e2 = mesh_data.face2element[2,fid];
@@ -625,13 +633,17 @@ function assemble_rhs_only(var, linear, face_linear, t=0.0, dt=0.0)
             vol_J1 = vol_J[e1];
             vol_J2 = vol_J[e2];
             
+            loc2glb = [grid_data.loc2glb[:,e1], grid_data.loc2glb[:,e2]];
+            
             face_wgdetj = frefel[1].wg .* fdetJ;
             
-            rhsargs = (var, refel, fid, frefel, facenodes, flocal, face2glb, normal, faceBID, fdetJ, fJ, vol_J1, vol_J2, face_wgdetj, RHS, t, dt);
+            rhsargs = (var, refel, loc2glb, fid, frefel, facenodes, flocal, face2glb, normal, faceBID, fdetJ, fJ, vol_J1, vol_J2, face_wgdetj, RHS, t, dt);
             
             if dofs_per_node == 1
                 linchunk = face_linear.func(rhsargs);  # get the elemental linear part
                 #linchunk = temporary_rhs_func(rhsargs);
+                linchunk[1] = linchunk[1][flocal[1]];
+                linchunk[2] = linchunk[2][flocal[2]];
                 if faceBID == 0
                     b[face2glb[:,1]] .+= linchunk[1];
                     b[face2glb[:,2]] .+= linchunk[2];

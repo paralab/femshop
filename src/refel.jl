@@ -257,9 +257,19 @@ function custom_quadrature_refel(oldrefel, nodes, weights)
         end
         
         # Use kron(Vg*invV, Vg,invV) = kron(Vg,Vg)*kron(invV,invV)
-        VgXVg = kron(tmp1,tmp2);
-        VgXDg = kron(tmp1,Dtmp2);
-        DgXVg = kron(Dtmp1,tmp2);
+        VgXVg = zeros(Nn, (refel.N+1)*(refel.N+1));
+        VgXDg = zeros(Nn, (refel.N+1)*(refel.N+1));
+        DgXVg = zeros(Nn, (refel.N+1)*(refel.N+1));
+        for i=1:Nn
+            for j=1:(refel.N+1)
+                for k=1:(refel.N+1)
+                    ind = (k-1)*(refel.N+1) + j;
+                    VgXVg[i,ind] = tmp1[i,j]*tmp2[i,k];
+                    VgXDg[i,ind] = Dtmp1[i,j]*tmp2[i,k];
+                    DgXVg[i,ind] = tmp1[i,j]*Dtmp2[i,k];
+                end
+            end
+        end
         viXvi = kron(refel.invV, refel.invV);
         
         refel.Q = VgXVg * viXvi;
@@ -304,7 +314,7 @@ function custom_quadrature_refel(oldrefel, nodes, weights)
 end
 
 # Map 1D nodes to 2D face
-# Assumes g1d[1] aligns with v1 and interval is scaled the same 
+# Assumes interval is scaled the same 
 function map_face_nodes_2d(g1d, v1, v2)
     fnodes = zeros(2,length(g1d));
     dx = v2[1] - v1[1];
@@ -313,8 +323,32 @@ function map_face_nodes_2d(g1d, v1, v2)
     xmult = dx/dist;
     ymult = dy/dist;
     
-    fnodes[1,:] = v1[1] .+ (g1d .- g1d[1]) .*xmult;
-    fnodes[2,:] = v1[2] .+ (g1d .- g1d[1]) .*ymult;
+    fnodes[1,:] = v1[1] .+ (g1d .- v1[1]) .*xmult;
+    fnodes[2,:] = v1[2] .+ (g1d .- v1[2]) .*ymult;
+    
+    return fnodes;
+end
+
+# Map 2D nodes to 3D face
+# Assumes g2d[1] aligns with v1 and interval is scaled the same 
+function map_face_nodes_3d(g2d, v1, v2, v3, v4=[])
+    fnodes = zeros(3,length(g2d));
+    if length(v4) > 0 # quads
+        dx = 0
+        dy = 0
+        dz = 0
+        dist = sqrt(dx*dx+dy*dy+dz*dz);
+        xmult = dx/dist;
+        ymult = dy/dist;
+        zmult = dz/dist;
+        
+        fnodes[1,:] = v1[1] .+ (g2d .- v1[1]) .*xmult;
+        fnodes[2,:] = v1[2] .+ (g2d .- v1[2]) .*ymult;
+        fnodes[3,:] = v1[3] .+ (g2d .- v1[3]) .*zmult;
+    else #triangles
+        
+    end
+    
     
     return fnodes;
 end

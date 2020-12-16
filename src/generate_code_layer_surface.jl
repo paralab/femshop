@@ -48,30 +48,31 @@ function generate_code_layer_julia_surface(symex, var, lorr)
     
     push!(code.args, :(var =        args[1]));  # list of unknown variables for this expression
     push!(code.args, :(refel =      args[2]));  # reference element for volume
-    push!(code.args, :(fid =        args[3]));  # face index
-    push!(code.args, :(frefel =     args[4]));  # reference element for faces
-    push!(code.args, :(fnodes =     args[5]));  # global coords of face nodes 
-    push!(code.args, :(flocal =     args[6]));  # local coords of face nodes within element refel
-    push!(code.args, :(face2glb =   args[7]));  # Global indices of inside face nodes
-    push!(code.args, :(normal =     args[8]));  # Global indices of outside face nodes
-    push!(code.args, :(faceBID =    args[9]));  # Coordinates of face nodes
-    push!(code.args, :(face_detJ =  args[10]));  # geometric factor for face
-    push!(code.args, :(face_J =     args[11])); # geometric factor for face
-    push!(code.args, :(vol_J1 =     args[12])); # geometric factor for el1
-    push!(code.args, :(vol_J2 =     args[13])); # geometric factor for el2
-    push!(code.args, :(face_wgdetj =args[14])); # quadrature weights*detJ
-    push!(code.args, :(borl =       args[15])); # bilinear or linear? lhs or rhs?
-    push!(code.args, :(time =       args[16])); # time for time dependent coefficients
-    push!(code.args, :(dt =         args[17])); # dt for time dependent problems
+    push!(code.args, :(loc2glb =    args[3]));  # loc2glb for full elements
+    push!(code.args, :(fid =        args[4]));  # face index
+    push!(code.args, :(frefel =     args[5]));  # reference element for faces
+    push!(code.args, :(fnodes =     args[6]));  # global coords of face nodes 
+    push!(code.args, :(flocal =     args[7]));  # local coords of face nodes within element refel
+    push!(code.args, :(face2glb =   args[8]));  # Global indices of inside face nodes
+    push!(code.args, :(normal =     args[9]));  # Global indices of outside face nodes
+    push!(code.args, :(faceBID =    args[10])); # Coordinates of face nodes
+    push!(code.args, :(face_detJ =  args[11])); # geometric factor for face
+    push!(code.args, :(face_J =     args[12])); # geometric factor for face
+    push!(code.args, :(vol_J1 =     args[13])); # geometric factor for el1
+    push!(code.args, :(vol_J2 =     args[14])); # geometric factor for el2
+    push!(code.args, :(face_wgdetj =args[15])); # quadrature weights*detJ
+    push!(code.args, :(borl =       args[16])); # bilinear or linear? lhs or rhs?
+    push!(code.args, :(time =       args[17])); # time for time dependent coefficients
+    push!(code.args, :(dt =         args[18])); # dt for time dependent problems
     
-    push!(code.args, :(Q1 = zeros(size(fnodes,2))));
-    push!(code.args, :(Q2 = zeros(size(fnodes,2))));
-    Qloop = :(for i=1:size(frefel[1].Q, 2) end);
-    Qloopin = Expr(:block);
-    push!(Qloopin.args, :(Q1 = Q1 + frefel[1].Q[:,i]));
-    push!(Qloopin.args, :(Q2 = Q2 + frefel[2].Q[:,i]));
-    Qloop.args[2] = Qloopin;
-    push!(code.args, Qloop);
+    # push!(code.args, :(Q1 = zeros(size(fnodes,2))));
+    # push!(code.args, :(Q2 = zeros(size(fnodes,2))));
+    # Qloop = :(for i=1:size(frefel[1].Q, 2) end);
+    # Qloopin = Expr(:block);
+    # push!(Qloopin.args, :(Q1 = Q1 + frefel[1].Q[:,i]));
+    # push!(Qloopin.args, :(Q2 = Q2 + frefel[2].Q[:,i]));
+    # Qloop.args[2] = Qloopin;
+    # push!(code.args, Qloop);
     
     need_derivative = false;
     needed_coef = [];
@@ -166,10 +167,10 @@ function generate_code_layer_julia_surface(symex, var, lorr)
             push!(code.args, :(TRQ1_1 = RQ1_1'));
             push!(code.args, :(TRQ2_1 = RQ2_1'));
         elseif config.dimension == 2
-            push!(code.args, :((RQ1_s1,RQ2_s1,RD1_s1,RD2_s1) = build_face_deriv_matrix(refel, vol_J1, flocal[1,:])));
-            push!(code.args, :((RQ1_s2,RQ2_s2,RD1_s2,RD2_s2) = build_face_deriv_matrix(refel, vol_J2, flocal[2,:])));
-            push!(code.args, :((TRQ1_s1,TRQ2_s1) = (RQ1_s1',RQ2_s1')));
-            push!(code.args, :((TRQ1_s2,TRQ2_s2) = (RQ1_s2',RQ2_s2')));
+            push!(code.args, :((RQ1_1,RQ1_2,RD1_1,RD1_2) = build_face_deriv_matrix(frefel[1], vol_J1, flocal[1,:])));
+            push!(code.args, :((RQ2_1,RQ2_2,RD2_1,RD2_2) = build_face_deriv_matrix(frefel[2], vol_J2, flocal[2,:])));
+            push!(code.args, :((TRQ1_1,TRQ1_2) = (RQ1_1',RQ1_2')));
+            push!(code.args, :((TRQ2_1,TRQ2_2) = (RQ2_1',RQ2_2')));
         elseif config.dimension == 3
             push!(code.args, :((RQ1_s1,RQ2_s1,RQ3_s1,RD1_s1,RD2_s1,RD3_s1) = build_face_deriv_matrix(refel, vol_J1, flocal[1,:])));
             push!(code.args, :((RQ1_s2,RQ2_s2,RQ3_s2,RD1_s2,RD2_s2,RD3_s2) = build_face_deriv_matrix(refel, vol_J2, flocal[2,:])));
@@ -273,12 +274,12 @@ function generate_code_layer_julia_surface(symex, var, lorr)
                     tmpc2 = Symbol(tmps2);
                     # variable values -> coef_n = variable.values
                     if variables[cval].type == SCALAR
-                        tmpb1 = :(copy(Femshop.variables[$cval].values[face2glb[:,1]])); 
-                        tmpb2 = :(copy(Femshop.variables[$cval].values[face2glb[:,2]])); 
+                        tmpb1 = :(copy(Femshop.variables[$cval].values[loc2glb[1]]));
+                        tmpb2 = :(copy(Femshop.variables[$cval].values[loc2glb[2]]));
                     else
                         compo = needed_coef_ind[i];
-                        tmpb1 = :(copy(Femshop.variables[$cval].values[$compo, face2glb[:,1]]));
-                        tmpb2 = :(copy(Femshop.variables[$cval].values[$compo, face2glb[:,2]]));
+                        tmpb1 = :(copy(Femshop.variables[$cval].values[$compo, loc2glb[1]]));
+                        tmpb2 = :(copy(Femshop.variables[$cval].values[$compo, loc2glb[2]]));
                     end
                     tmpindex = needed_coef_ind[i];
                     
@@ -429,13 +430,13 @@ function generate_code_layer_julia_surface(symex, var, lorr)
     if length(terms[1])==0 && length(terms[2])==0 && length(terms[3])==0 && length(terms[4])==0
         if lorr == LHS
             code = Expr(:block);
-            push!(code.args, :(A=zeros(size(args[5],2)*$dofsper, size(args[5],2)*$dofsper)));
-            push!(code.args, :(return (A, A, A, A)));
+            push!(code.args, :(A=zeros(args[2].Np*$dofsper, args[2].Np*$dofsper)));
+            push!(code.args, :(return [A, A, A, A]));
             return code;
         else
             code = Expr(:block);
-            push!(code.args, :(b=zeros(size(args[5],2)*$dofsper)));
-            push!(code.args, :(return (b, b)));
+            push!(code.args, :(b=zeros(args[2].Np*$dofsper)));
+            push!(code.args, :(return [b, b]));
             return code;
         end
     end
@@ -548,6 +549,10 @@ function generate_code_layer_julia_surface(symex, var, lorr)
                         if termind == 1
                             push!(code.args, Expr(:(=), :(element_vectorL), tmp1));
                             result[1] = :element_vectorL;
+                        elseif termind == 2
+                            push!(code.args, Expr(:(.+=), :(element_vectorR), tmp1));
+                        elseif termind == 3
+                            push!(code.args, Expr(:(.+=), :(element_vectorL), tmp1));
                         elseif termind == 4
                             push!(code.args, Expr(:(=), :(element_vectorR), tmp1));
                             result[4] = :element_vectorR;
@@ -689,18 +694,18 @@ function generate_code_layer_julia_surface(symex, var, lorr)
         if (result[3] === nothing || result[3] == 0) result[3] = :(zeros(frefel.Np*$dofsper,frefel.Np*$dofsper)); end
         if (result[4] === nothing || result[4] == 0) result[4] = :(zeros(frefel.Np*$dofsper,frefel.Np*$dofsper)); end
         
-        finalresult = :((a,b,c,d));
-        finalresult.args[1] = result[1];
-        finalresult.args[2] = result[2];
-        finalresult.args[3] = result[3];
-        finalresult.args[4] = result[4];
+        r1 = result[1];
+        r2 = result[2];
+        r3 = result[3];
+        r4 = result[4];
+        finalresult = :([$r1, $r2, $r3, $r4]);
     else
         if (result[1] === nothing || result[1] == 0) result[1] = :(zeros(frefel.Np*$dofsper)); end
         if (result[4] === nothing || result[4] == 0) result[4] = :(zeros(frefel.Np*$dofsper)); end
         
-        finalresult = :((a,b));
-        finalresult.args[1] = result[1];
-        finalresult.args[2] = result[4];
+        r1 = result[1];
+        r4 = result[4];
+        finalresult = :([$r1, $r4]);
     end
     
     push!(code.args, Expr(:return, finalresult));
@@ -826,8 +831,8 @@ function process_surface_term_julia(sterm, var, lorr, offset_ind=0)
                             test_parts[3] = :EMPTY;
                             test_parts[4] = :EMPTY;
                         else
-                            test_parts[1] = :(Q1');
-                            test_parts[2] = :(Q1');
+                            test_parts[1] = :(frefel[1].Q');
+                            test_parts[2] = :(frefel[1].Q');
                             test_parts[3] = :EMPTY;
                             test_parts[4] = :EMPTY;
                         end
@@ -844,24 +849,24 @@ function process_surface_term_julia(sterm, var, lorr, offset_ind=0)
                         else
                             test_parts[1] = :EMPTY;
                             test_parts[2] = :EMPTY;
-                            test_parts[3] = :(Q2');
-                            test_parts[4] = :(Q2');
+                            test_parts[3] = :(frefel[2].Q');
+                            test_parts[4] = :(frefel[2].Q');
                         end
                         
                     elseif occursin("D", mods[1])
                         # TODO more than one derivative mod
                         need_derivative = true;
-                        test_parts[1] = Symbol("TRQ"*mods[1][2]*"_s1");
+                        test_parts[1] = Symbol("TRQ1_"*mods[1][2]);
                         test_parts[2] = :EMPTY;
                         test_parts[3] = :EMPTY;
-                        test_parts[4] = Symbol("TRQ"*mods[1][2]*"_s2");
+                        test_parts[4] = Symbol("TRQ2_"*mods[1][2]);
                     end
                 else
                     # no mods
-                    test_parts[1] = :(Q1');
+                    test_parts[1] = :(frefel[1].Q');
                     test_parts[2] = :EMPTY;
                     test_parts[3] = :EMPTY;
-                    test_parts[4] = :(Q2');
+                    test_parts[4] = :(frefel[2].Q');
                 end
             elseif is_unknown_var(v, var) && lorr == LHS # If rhs, treat as a coefficient
                 # if !(trial_parts[1] === nothing)
@@ -893,9 +898,9 @@ function process_surface_term_julia(sterm, var, lorr, offset_ind=0)
                             trial_parts[4] = :EMPTY;
                             
                         else
-                            trial_parts[1] = :Q1;
+                            trial_parts[1] = :(frefel[1].Q);
                             trial_parts[2] = :EMPTY;
-                            trial_parts[3] = :Q1;
+                            trial_parts[3] = :(frefel[1].Q);
                             trial_parts[4] = :EMPTY;
                         end
                         
@@ -911,25 +916,25 @@ function process_surface_term_julia(sterm, var, lorr, offset_ind=0)
                             
                         else
                             trial_parts[1] = :EMPTY;
-                            trial_parts[2] = :Q2;
+                            trial_parts[2] = :(frefel[2].Q);
                             trial_parts[3] = :EMPTY;
-                            trial_parts[4] = :Q2;
+                            trial_parts[4] = :(frefel[2].Q);
                         end
                         
                     elseif occursin("D", mods[1])
                         # TODO more than one derivative mod
                         need_derivative = true;
-                        trial_parts[1] = Symbol("RQ"*mods[1][2]*"_s1");
+                        trial_parts[1] = Symbol("RQ1_"*mods[1][2]);
                         trial_parts[2] = :EMPTY;
                         trial_parts[3] = :EMPTY;
-                        trial_parts[4] = Symbol("RQ"*mods[1][2]*"_s2");
+                        trial_parts[4] = Symbol("RQ2_"*mods[1][2]);
                     end
                 else
                     # no mods
-                    trial_parts[1] = :Q1;
+                    trial_parts[1] = :(frefel[1].Q);
                     trial_parts[2] = :EMPTY;
                     trial_parts[3] = :EMPTY;
-                    trial_parts[4] = :Q2;
+                    trial_parts[4] = :(frefel[2].Q);
                 end
                 
             else # coefficients
@@ -1005,8 +1010,11 @@ function process_surface_term_julia(sterm, var, lorr, offset_ind=0)
                 else
                     #derivatives of coefficients
                     tag = coef_derivs[j][2] * tag;
-                    if occursin("DG", tag)
+                    if occursin("DGSIDE1", tag)
                         tmps1 = "coef_"*tag*"_"*string(coef_inds[j]);
+                        tmps2 = "EMPTY";
+                    elseif occursin("DGSIDE2", tag)
+                        tmps1 = "EMPTY";
                         tmps2 = "coef_"*tag*"_"*string(coef_inds[j]);
                     else
                         tmps1 = "coef_DGSIDE1"*tag*"_"*string(coef_inds[j]);
@@ -1021,10 +1029,29 @@ function process_surface_term_julia(sterm, var, lorr, offset_ind=0)
                 c2=coef_parts[2];
                 c3=coef_parts[3];
                 c4=coef_parts[4];
-                coef_parts[1] = :($c1 .* $tmp1);
-                coef_parts[2] = :($c2 .* $tmp2);
-                coef_parts[3] = :($c3 .* $tmp1);
-                coef_parts[4] = :($c4 .* $tmp2);
+                if (tmp1 === :EMPTY)||(c1 === :EMPTY) 
+                    coef_parts[1] = :EMPTY;
+                else
+                    coef_parts[1] = :($c1 .* $tmp1);
+                end
+                if (tmp2 === :EMPTY)||(c2 === :EMPTY) 
+                    coef_parts[2] = :EMPTY;
+                else
+                    coef_parts[2] = :($c2 .* $tmp2);
+                end
+                if (tmp1 === :EMPTY)||(c3 === :EMPTY) 
+                    coef_parts[3] = :EMPTY;
+                else
+                    coef_parts[3] = :($c3 .* $tmp1);
+                end
+                if (tmp2 === :EMPTY)||(c4 === :EMPTY) 
+                    coef_parts[4] = :EMPTY;
+                else
+                    coef_parts[4] = :($c4 .* $tmp2);
+                end
+                # coef_parts[2] = :($c2 .* $tmp2);
+                # coef_parts[3] = :($c3 .* $tmp1);
+                # coef_parts[4] = :($c4 .* $tmp2);
             else
                 coef_parts[1] = tmp1;
                 coef_parts[2] = tmp2;
@@ -1052,9 +1079,9 @@ function process_surface_term_julia(sterm, var, lorr, offset_ind=0)
         # If there's no trial part, need to do this
         if trial_parts[tind] === nothing
             if tind == 1 || tind == 3
-                trial_parts[tind] = :(Q1);
+                trial_parts[tind] = :(frefel[1].Q);
             else
-                trial_parts[tind] = :(Q2);
+                trial_parts[tind] = :(frefel[2].Q);
             end
         end
         
@@ -1075,7 +1102,11 @@ function process_surface_term_julia(sterm, var, lorr, offset_ind=0)
                 if lorr == LHS
                     terms[tind] = :($tp * (diagm($wp .* $cp) * $trp));
                 else # RHS
-                    terms[tind] = :($tp * ($wp .* ($trp .* $cp)));
+                    if cp === :EMPTY
+                        terms[tind] = :EMPTY;
+                    else
+                        terms[tind] = :($tp * ($wp .* ($trp * $cp)));
+                    end
                 end
                 
             else

@@ -722,7 +722,36 @@ function simple_hex_mesh(nxyz, bn, interval)
     
     ord = config.basis_order_min;
     refel = build_refel(3, ord, 6, config.elemental_nodes);
-    refelfc = build_refel(2, ord, 4, config.elemental_nodes);
+    tmprefel = build_refel(2, ord, 4, config.elemental_nodes); # 2D refel for getting face nodes
+    # leftnodes =    map_face_nodes_3d(tmprefel.g, [-1,-1,-1], [-1,1,-1], [-1,-1,1], [-1,1,1]); # maps 2D gauss nodes to 3D face
+    # rightnodes =   map_face_nodes_3d(tmprefel.g, [1,-1,-1], [1,1,-1], [1,-1,1], [1,1,1]); 
+    # bottomnodes =  map_face_nodes_3d(tmprefel.g, [-1,-1,-1], [1,-1,-1], [-1,-1,1], [1,-1,1]); 
+    # topnodes =     map_face_nodes_3d(tmprefel.g, [-1,1,-1], [1,1,-1], [-1,1,1], [1,1,1]); 
+    # frontnodes =   map_face_nodes_3d(tmprefel.g, [-1,-1,-1], [1,-1,-1], [-1,1,-1], [1,1,-1]); 
+    # backnodes =    map_face_nodes_3d(tmprefel.g, [-1,-1,1], [1,-1,1], [-1,1,1], [1,1,1]); 
+    g2d= tmprefel.g;
+    leftnodes =    -ones(3, length(temprefel.wg));
+    rightnodes =   ones(3, length(temprefel.wg));
+    bottomnodes =  -ones(3, length(temprefel.wg));
+    topnodes =     ones(3, length(temprefel.wg));
+    frontnodes =   -ones(3, length(temprefel.wg));
+    backnodes =    ones(3, length(temprefel.wg));
+    
+    leftnodes[[2,3],:] = g2d;
+    rightnodes[[2,3],:] = g2d;
+    bottomnodes[[1,3],:] = g2d;
+    topnodes[[1,3],:] = g2d;
+    frontnodes[[1,2],:] = g2d;
+    backnodes[[1,2],:] = g2d;
+    
+    frefelLeft =   custom_quadrature_refel(refel, leftnodes, tmprefel.wg); # refel for left face
+    frefelRight =  custom_quadrature_refel(refel, rightnodes, tmprefel.wg); # refel for right face
+    frefelBottom = custom_quadrature_refel(refel, bottomnodes, tmprefel.wg); # refel for bottom face
+    frefelTop =    custom_quadrature_refel(refel, topnodes, tmprefel.wg); # refel for top face
+    frefelFront =  custom_quadrature_refel(refel, frontnodes, tmprefel.wg); # refel for front face
+    frefelBack =   custom_quadrature_refel(refel, backnodes, tmprefel.wg); # refel for back face
+    refelfc = [frefelLeft, frefelRight, frefelBottom, frefelTop, frefelFront, frefelBack];
+    
     N = ((nx-1)*ord + 1)*((ny-1)*ord + 1)*((nz-1)*ord + 1);# number of total nodes
     Np = refel.Np;              # number of nodes per element
     x = zeros(3,N);             # coordinates of all nodes
