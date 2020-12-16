@@ -403,17 +403,17 @@ function generate_code_layer_julia_surface(symex, var, lorr)
         dofsper = length(var.symvar.vals);
     end
     
-    if dofsper > 1
+    #if dofsper > 1
         if lorr == RHS
-            push!(code.args, Expr(:(=), :element_vectorL, :(zeros(frefel.Np*$dofsper)))); # allocate vector
-            push!(code.args, Expr(:(=), :element_vectorR, :(zeros(frefel.Np*$dofsper))));
-        else
-            push!(code.args, Expr(:(=), :element_matrixLL, :(zeros(frefel.Np*$dofsper, frefel.Np*$dofsper)))); # allocate matrix
-            push!(code.args, Expr(:(=), :element_matrixLR, :(zeros(frefel.Np*$dofsper, frefel.Np*$dofsper))));
-            push!(code.args, Expr(:(=), :element_matrixRL, :(zeros(frefel.Np*$dofsper, frefel.Np*$dofsper))));
-            push!(code.args, Expr(:(=), :element_matrixRR, :(zeros(frefel.Np*$dofsper, frefel.Np*$dofsper))));
+            push!(code.args, Expr(:(=), :element_vectorL, :(zeros(frefel[1].Np*$dofsper)))); # allocate vector
+            push!(code.args, Expr(:(=), :element_vectorR, :(zeros(frefel[1].Np*$dofsper))));
+        elseif dofsper > 1
+            push!(code.args, Expr(:(=), :element_matrixLL, :(zeros(frefel[1].Np*$dofsper, frefel[1].Np*$dofsper)))); # allocate matrix
+            push!(code.args, Expr(:(=), :element_matrixLR, :(zeros(frefel[1].Np*$dofsper, frefel[1].Np*$dofsper))));
+            push!(code.args, Expr(:(=), :element_matrixRL, :(zeros(frefel[1].Np*$dofsper, frefel[1].Np*$dofsper))));
+            push!(code.args, Expr(:(=), :element_matrixRR, :(zeros(frefel[1].Np*$dofsper, frefel[1].Np*$dofsper))));
         end
-    end
+    #end
     
     # remove any :EMPTY terms
     newterms = [[], [], [], []];
@@ -547,14 +547,14 @@ function generate_code_layer_julia_surface(symex, var, lorr)
                         end
                     else
                         if termind == 1
-                            push!(code.args, Expr(:(=), :(element_vectorL), tmp1));
+                            push!(code.args, Expr(:(.+=), :(element_vectorL), tmp1));
                             result[1] = :element_vectorL;
                         elseif termind == 2
-                            push!(code.args, Expr(:(.+=), :(element_vectorR), tmp1));
-                        elseif termind == 3
                             push!(code.args, Expr(:(.+=), :(element_vectorL), tmp1));
+                        elseif termind == 3
+                            push!(code.args, Expr(:(.+=), :(element_vectorR), tmp1));
                         elseif termind == 4
-                            push!(code.args, Expr(:(=), :(element_vectorR), tmp1));
+                            push!(code.args, Expr(:(.+=), :(element_vectorR), tmp1));
                             result[4] = :element_vectorR;
                         end
                     end
@@ -857,15 +857,15 @@ function process_surface_term_julia(sterm, var, lorr, offset_ind=0)
                         # TODO more than one derivative mod
                         need_derivative = true;
                         test_parts[1] = Symbol("TRQ1_"*mods[1][2]);
-                        test_parts[2] = :EMPTY;
-                        test_parts[3] = :EMPTY;
+                        test_parts[2] = Symbol("TRQ1_"*mods[1][2]);
+                        test_parts[3] = Symbol("TRQ2_"*mods[1][2]);
                         test_parts[4] = Symbol("TRQ2_"*mods[1][2]);
                     end
                 else
                     # no mods
                     test_parts[1] = :(frefel[1].Q');
-                    test_parts[2] = :EMPTY;
-                    test_parts[3] = :EMPTY;
+                    test_parts[2] = :(frefel[1].Q');
+                    test_parts[3] = :(frefel[2].Q');
                     test_parts[4] = :(frefel[2].Q');
                 end
             elseif is_unknown_var(v, var) && lorr == LHS # If rhs, treat as a coefficient
@@ -987,6 +987,8 @@ function process_surface_term_julia(sterm, var, lorr, offset_ind=0)
         for j=1:length(coef_facs)
             tmp1 = coef_facs[j];
             tmp2 = coef_facs[j];
+            tmp3 = coef_facs[j];
+            tmp4 = coef_facs[j];
             #println("coef_facs: "*string(tmp)*" : "*string(typeof(tmp)));
             if typeof(tmp1) == Symbol && !(tmp1 ===:dt)
                 ind = get_coef_index(coef_facs[j]);
@@ -999,29 +1001,43 @@ function process_surface_term_julia(sterm, var, lorr, offset_ind=0)
                     ind = coef_inds[j];
                     tmp1 = :(normal[$ind]);
                     tmp2 = :(-normal[$ind]);
+                    tmp3 = :(normal[$ind]);
+                    tmp4 = :(-normal[$ind]);
                 elseif tmp1 === :DGNORMAL1
                     ind = coef_inds[j];
                     tmp1 = :(normal[$ind]);
                     tmp2 = :(normal[$ind]);
+                    tmp3 = :(normal[$ind]);
+                    tmp4 = :(normal[$ind]);
                 elseif tmp1 === :DGNORMAL2
                     ind = coef_inds[j];
                     tmp1 = :(-normal[$ind]);
                     tmp2 = :(-normal[$ind]);
+                    tmp3 = :(-normal[$ind]);
+                    tmp4 = :(-normal[$ind]);
                 else
                     #derivatives of coefficients
                     tag = coef_derivs[j][2] * tag;
                     if occursin("DGSIDE1", tag)
                         tmps1 = "coef_"*tag*"_"*string(coef_inds[j]);
                         tmps2 = "EMPTY";
+                        tmps3 = "coef_"*tag*"_"*string(coef_inds[j]);
+                        tmps4 = "EMPTY";
                     elseif occursin("DGSIDE2", tag)
                         tmps1 = "EMPTY";
                         tmps2 = "coef_"*tag*"_"*string(coef_inds[j]);
+                        tmps3 = "EMPTY";
+                        tmps4 = "coef_"*tag*"_"*string(coef_inds[j]);
                     else
                         tmps1 = "coef_DGSIDE1"*tag*"_"*string(coef_inds[j]);
                         tmps2 = "coef_DGSIDE2"*tag*"_"*string(coef_inds[j]);
+                        tmps3 = "coef_DGSIDE1"*tag*"_"*string(coef_inds[j]);
+                        tmps4 = "coef_DGSIDE2"*tag*"_"*string(coef_inds[j]);
                     end
                     tmp1 = Symbol(tmps1);
                     tmp2 = Symbol(tmps2);
+                    tmp3 = Symbol(tmps3);
+                    tmp4 = Symbol(tmps4);
                 end
             end
             if j>1
@@ -1039,15 +1055,15 @@ function process_surface_term_julia(sterm, var, lorr, offset_ind=0)
                 else
                     coef_parts[2] = :($c2 .* $tmp2);
                 end
-                if (tmp1 === :EMPTY)||(c3 === :EMPTY) 
+                if (tmp3 === :EMPTY)||(c3 === :EMPTY) 
                     coef_parts[3] = :EMPTY;
                 else
-                    coef_parts[3] = :($c3 .* $tmp1);
+                    coef_parts[3] = :($c3 .* $tmp3);
                 end
-                if (tmp2 === :EMPTY)||(c4 === :EMPTY) 
+                if (tmp4 === :EMPTY)||(c4 === :EMPTY) 
                     coef_parts[4] = :EMPTY;
                 else
-                    coef_parts[4] = :($c4 .* $tmp2);
+                    coef_parts[4] = :($c4 .* $tmp4);
                 end
                 # coef_parts[2] = :($c2 .* $tmp2);
                 # coef_parts[3] = :($c3 .* $tmp1);
@@ -1055,8 +1071,8 @@ function process_surface_term_julia(sterm, var, lorr, offset_ind=0)
             else
                 coef_parts[1] = tmp1;
                 coef_parts[2] = tmp2;
-                coef_parts[3] = tmp1;
-                coef_parts[4] = tmp2;
+                coef_parts[3] = tmp3;
+                coef_parts[4] = tmp4;
             end
         end
     end
