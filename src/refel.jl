@@ -296,12 +296,25 @@ function custom_quadrature_refel(oldrefel, nodes, weights)
             Dtmp3[:,i+1] = sqrt(i*(i+1)) .* jacobi_polynomial(nodes[3,:], 1, 1, i-1);
         end
         
-        # Use kron(Vg*invV, Vg,invV) = kron(Vg,Vg)*kron(invV,invV)
-        VgXVgXVg = kron(kron(tmp1,tmp2), tmp3);
-        VgXVgXDg = kron(kron(tmp1,tmp2),Dtmp3);
-        VgXDgXVg = kron(kron(tmp1,Dtmp2),tmp3);
-        DgXVgXVg = kron(kron(Dtmp1,tmp2),tmp3);
         viXviXvi = kron(kron(refel.invV, refel.invV), refel.invV);
+        
+        VgXVgXVg = zeros(Nn, (refel.N+1)*(refel.N+1)*(refel.N+1));
+        VgXVgXDg = zeros(Nn, (refel.N+1)*(refel.N+1)*(refel.N+1));
+        VgXDgXVg = zeros(Nn, (refel.N+1)*(refel.N+1)*(refel.N+1));
+        DgXVgXVg = zeros(Nn, (refel.N+1)*(refel.N+1)*(refel.N+1));
+        for ni=1:Nn
+            for i=1:(refel.N+1)
+                for j=1:(refel.N+1)
+                    for k=1:(refel.N+1)
+                        ind = ((k-1)*(refel.N+1) + (j-1))*(refel.N+1) + i;
+                        VgXVgXVg[ni,ind] = tmp1[ni,i]*tmp2[ni,j]*tmp2[ni,k];
+                        VgXVgXDg[ni,ind] = Dtmp1[ni,i]*tmp2[ni,j]*tmp2[ni,k];
+                        VgXDgXVg[ni,ind] = tmp1[ni,i]*Dtmp2[ni,j]*tmp2[ni,k];
+                        DgXVgXVg[ni,ind] = tmp1[ni,i]*tmp2[ni,j]*Dtmp2[ni,k];
+                    end
+                end
+            end
+        end
         
         refel.Q = VgXVgXVg * viXviXvi;
         refel.Qr = VgXVgXDg * viXviXvi;

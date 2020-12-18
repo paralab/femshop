@@ -730,19 +730,19 @@ function simple_hex_mesh(nxyz, bn, interval)
     # frontnodes =   map_face_nodes_3d(tmprefel.g, [-1,-1,-1], [1,-1,-1], [-1,1,-1], [1,1,-1]); 
     # backnodes =    map_face_nodes_3d(tmprefel.g, [-1,-1,1], [1,-1,1], [-1,1,1], [1,1,1]); 
     g2d= tmprefel.g;
-    leftnodes =    -ones(3, length(temprefel.wg));
-    rightnodes =   ones(3, length(temprefel.wg));
-    bottomnodes =  -ones(3, length(temprefel.wg));
-    topnodes =     ones(3, length(temprefel.wg));
-    frontnodes =   -ones(3, length(temprefel.wg));
-    backnodes =    ones(3, length(temprefel.wg));
+    leftnodes =    -ones(3, length(tmprefel.wg));
+    rightnodes =   ones(3, length(tmprefel.wg));
+    bottomnodes =  -ones(3, length(tmprefel.wg));
+    topnodes =     ones(3, length(tmprefel.wg));
+    frontnodes =   -ones(3, length(tmprefel.wg));
+    backnodes =    ones(3, length(tmprefel.wg));
     
-    leftnodes[[2,3],:] = g2d;
-    rightnodes[[2,3],:] = g2d;
-    bottomnodes[[1,3],:] = g2d;
-    topnodes[[1,3],:] = g2d;
-    frontnodes[[1,2],:] = g2d;
-    backnodes[[1,2],:] = g2d;
+    leftnodes[[2,3],:] = g2d';
+    rightnodes[[2,3],:] = g2d';
+    bottomnodes[[1,3],:] = g2d';
+    topnodes[[1,3],:] = g2d';
+    frontnodes[[1,2],:] = g2d';
+    backnodes[[1,2],:] = g2d';
     
     frefelLeft =   custom_quadrature_refel(refel, leftnodes, tmprefel.wg); # refel for left face
     frefelRight =  custom_quadrature_refel(refel, rightnodes, tmprefel.wg); # refel for right face
@@ -760,7 +760,7 @@ function simple_hex_mesh(nxyz, bn, interval)
     bdrynorm = [];              # normal at boundary nodes
     loc2glb = zeros(Int, Np, nel)# local to global index map for each element's nodes
     glbvertex = zeros(Int, 8, nel);# local to global for vertices
-    f2glb = zeros(Int, refelfc.Np, Nf);  # face node local to global
+    f2glb = zeros(Int, (ord+1)*(ord+1), Nf);  # face node local to global
     fvtx2glb = zeros(Int, 4, Nf);# face vertex local to global
     
     # Start with a 2d quad mesh

@@ -95,23 +95,15 @@ function geometric_factors_face(refel, pts)
         D = nothing;
         
     else
-        (xr, xs, xt) = tensor_grad3(refel.Dg, pts[1,:][:]);
-        (yr, ys, yt) = tensor_grad3(refel.Dg, pts[2,:][:]);
-        (zr, zs, zt) = tensor_grad3(refel.Dg, pts[3,:][:]);
-        J = xr.*(ys.*zt-zs.*yt) - yr.*(xs.*zt-zs.*xt) + zr.*(xs.*yt-ys.*xt);
-        
-        rx =  (ys.*zt - zs.*yt)./J;
-        ry = -(xs.*zt - zs.*xt)./J;
-        rz =  (xs.*yt - ys.*xt)./J;
-        
-        sx = -(yr.*zt - zr.*yt)./J;
-        sy =  (xr.*zt - zr.*xt)./J;
-        sz = -(xr.*yt - yr.*xt)./J;
-        
-        tx =  (yr.*zs - zr.*ys)./J;
-        ty = -(xr.*zs - zr.*xs)./J;
-        tz =  (xr.*ys - yr.*xs)./J;
-        D = Jacobian(rx,ry,rz,sx,sy,sz,tx,ty,tz);
+        dx = abs(pts[1,end] - pts[1,1]);
+        dy = abs(pts[2,end] - pts[2,1]);
+        dz = abs(pts[3,end] - pts[3,1]);
+        # TODO this assumes hex aligned with axes
+        if dx<0.00001 dx=1 end
+        if dy<0.00001 dy=1 end
+        if dz<0.00001 dz=1 end
+        J = 4/(dx*dy*dz);
+        D = nothing;
     end
     
     return (J,D);
@@ -180,9 +172,13 @@ function build_face_deriv_matrix(refel, J, flocal)
         return (RQ1, RQ2, RD1, RD2);
         
     elseif refel.dim == 3
-        (RQ1,RQ2,RQ3,RD1,RD2,RD3) = build_deriv_matrix(refel, J);
-        
-        return (RQ1[flocal,:], RQ2[flocal,:], RQ3[flocal,:], RD1[flocal,:], RD2[flocal,:], RD3[flocal,:]);
+        RQ1 = J.rx[1]*refel.Qr + J.sx[1]*refel.Qs + J.tx[1]*refel.Qt;
+        RQ2 = J.ry[1]*refel.Qr + J.sy[1]*refel.Qs + J.ty[1]*refel.Qt;
+        RQ3 = J.ry[1]*refel.Qr + J.sy[1]*refel.Qs + J.tz[1]*refel.Qt;
+        RD1 = 0;
+        RD2 = 0; #TODO derivative matrices for faces
+        RD3 = 0;
+        return (RQ1, RQ2, RQ3, RD1, RD2, RD3);
     end
 end
 

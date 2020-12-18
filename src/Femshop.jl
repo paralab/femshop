@@ -13,7 +13,7 @@ export init_femshop, set_language, dendro, set_solver, set_stepper, set_specifie
         add_mesh, output_mesh, add_test_function, 
         add_initial_condition, add_boundary_condition, add_reference_point, set_rhs, set_lhs, set_lhs_surface, set_rhs_surface, solve, 
         finalize, cachesim, cachesim_solve, 
-        morton_nodes, hilbert_nodes, tiled_nodes, morton_elements, hilbert_elements, tiled_elements, ef_nodes
+        morton_nodes, hilbert_nodes, tiled_nodes, morton_elements, hilbert_elements, tiled_elements, ef_nodes, random_nodes, random_elements
 export build_cache_level, build_cache, build_cache_auto
 export sp_parse
 export generate_code_layer, generate_code_layer_surface
@@ -691,6 +691,16 @@ end
 function ef_nodes()
     t = @elapsed(global grid_data = reorder_grid_element_first(grid_data, config.basis_order_min, elemental_order));
     log_entry("Reordered nodes to EF. Took "*string(t)*" sec.");
+end
+
+function random_nodes(seed = 17)
+    t = @elapsed(global grid_data = reorder_grid_random(grid_data, seed));
+    log_entry("Reordered nodes to random. Took "*string(t)*" sec.");
+end
+
+function random_elements(seed = 17)
+    global elemental_order = random_order(mesh_data.nel, seed);
+    log_entry("Reordered elements to random.");
 end
 
 end # module

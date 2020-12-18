@@ -54,52 +54,56 @@ function refel_nodes!(refel, nodetype)
         
     elseif refel.dim == 2
         # 2D has triangles and quads
-        
-        # for now assume rectangular quads
-        if nodetype == UNIFORM
-            refel.r1d = Array(-1:(2/(refel.Np-1)):1);
-            refel.wr1d = ones(length(refel.r1d)) ./ length(refel.r1d);
-        elseif nodetype == GAUSS
-            (r,w) = jacobi_gauss_quad(0,0,refel.N);
-            refel.r1d = r;
-            refel.wr1d = w;
-        elseif nodetype == LOBATTO
-            if refel.N == 1
-                refel.r1d = [-1; 1];
-                refel.wr1d = [1; 1];
-            else
-                (r,w) = jacobi_gauss_quad(1,1,refel.N-2);
-                refel.r1d = [-1; r ; 1];
-                
-                # compute the weights
-                w = jacobi_polynomial(refel.r1d, 0, 0, refel.N);
-                adgammaN = (2*refel.N + 1) / (refel.N * (refel.N + 1));
-                w = w.*w;
-                w = adgammaN./w;
-                
+        if refel.Nfaces == 3 # triangles
+            triangle_refel_nodes!(refel);
+        else # quads
+            # for now assume rectangular quads
+            if nodetype == UNIFORM
+                refel.r1d = Array(-1:(2/(refel.Np-1)):1);
+                refel.wr1d = ones(length(refel.r1d)) ./ length(refel.r1d);
+            elseif nodetype == GAUSS
+                (r,w) = jacobi_gauss_quad(0,0,refel.N);
+                refel.r1d = r;
                 refel.wr1d = w;
+            elseif nodetype == LOBATTO
+                if refel.N == 1
+                    refel.r1d = [-1; 1];
+                    refel.wr1d = [1; 1];
+                else
+                    (r,w) = jacobi_gauss_quad(1,1,refel.N-2);
+                    refel.r1d = [-1; r ; 1];
+                    
+                    # compute the weights
+                    w = jacobi_polynomial(refel.r1d, 0, 0, refel.N);
+                    adgammaN = (2*refel.N + 1) / (refel.N * (refel.N + 1));
+                    w = w.*w;
+                    w = adgammaN./w;
+                    
+                    refel.wr1d = w;
+                end
+            end
+            # Then find Gauss points
+            (g,w) = jacobi_gauss_quad(0,0,refel.N);
+            refel.g1d = g;
+            refel.wg1d = w;
+            
+            # r and w
+            refel.r = zeros(refel.Np,2);
+            refel.wr = zeros(refel.Np);
+            refel.g = zeros(refel.Np,2);
+            refel.wg = zeros(refel.Np);
+            n1d = length(refel.r1d);
+            for j=1:n1d
+                for i=1:n1d
+                    k = (j-1)*n1d + i;
+                    refel.r[k,:] = [refel.r1d[i]; refel.r1d[j]];
+                    refel.wr[k] = refel.wr1d[i] * refel.wr1d[j];
+                    refel.g[k,:] = [refel.g1d[i]; refel.g1d[j]];
+                    refel.wg[k] = refel.wg1d[i] * refel.wg1d[j];
+                end
             end
         end
-        # Then find Gauss points
-        (g,w) = jacobi_gauss_quad(0,0,refel.N);
-        refel.g1d = g;
-        refel.wg1d = w;
         
-        # r and w
-        refel.r = zeros(refel.Np,2);
-        refel.wr = zeros(refel.Np);
-        refel.g = zeros(refel.Np,2);
-        refel.wg = zeros(refel.Np);
-        n1d = length(refel.r1d);
-        for j=1:n1d
-            for i=1:n1d
-                k = (j-1)*n1d + i;
-                refel.r[k,:] = [refel.r1d[i]; refel.r1d[j]];
-                refel.wr[k] = refel.wr1d[i] * refel.wr1d[j];
-                refel.g[k,:] = [refel.g1d[i]; refel.g1d[j]];
-                refel.wg[k] = refel.wg1d[i] * refel.wg1d[j];
-            end
-        end
         
     elseif refel.dim == 3
         # 3D has tets, hexs and prisms
