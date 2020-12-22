@@ -103,8 +103,6 @@ function read_msh_v2(file)
 end
 
 function read_msh_v4(file)
-    println("msh version 4+ is not yet supported.")
-    
     # Find the beginning of the Nodes and Elements sections.
     # Then read in the numbers.
     nodes_done = false;
@@ -192,12 +190,14 @@ function read_msh_v4(file)
                     # The first line has entity info. 
                     vals = split(line, " ", keepempty=false);
                     entnel = parse(Int, vals[4]);
-                    etypes[i] = parse(Int, vals[3]);
-                    nv[i] = etypetonv[etypes[i]];
+                    enttype = parse(Int, vals[3]);
+                    entnv = etypetonv[etypes[i]];
                     # read element info
                     for ei=1:entnel
                         line = readline(file);
-                        for j=1:nv[i]
+                        etypes[i-1 + ei] = enttype;
+                        nv[i-1 + ei] = entnv;
+                        for j=1:entnv
                             elements[i-1 + ei,j] = parse(Int, vals[1 + j]);
                         end
                     end
