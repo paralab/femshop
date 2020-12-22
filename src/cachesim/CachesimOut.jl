@@ -101,7 +101,7 @@ function init_cachesimout(n, refel, nel, dof, vars)
     end
     
     if use_lib
-        global active_cache =  pcs_get_cachesim_from_file("cachesim/cachedef"); # Just to test things. Should be set later by user.
+        global active_cache =  pcs_get_cachesim_from_file("src/cachesim/cachedef"); # Just to test things. Should be set later by user.
     else
         println("Not using the cachesim library. Change use_lib in CachesimOut.jl to use.");
         println("Instead, writing access sequence to cachesim_output.out");
