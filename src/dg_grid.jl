@@ -125,6 +125,35 @@ function cg_grid_to_dg_grid(cggrid, mesh)
                 dgbdrynorm[bid][:, (bi-1)*nfp+fcind] = mesh.normals[:, dgbdryface[bid][bi]];
             end
         end
+        # set duplicates to zero
+        nbp = length(dgbdry[bid])
+        nzeros = 0;
+        for bi=1:nbp
+            ind = dgbdry[bid][bi];
+            if ind > 0
+                for bj=(bi+1):nbp
+                    if dgbdry[bid][bj] == ind
+                        dgbdry[bid][bj] = 0;
+                        nzeros = nzeros + 1;
+                    end
+                end
+            end
+        end
+        # remove zeros from the list
+        println(nbp);
+        println(nzeros);
+        newdgbdry = zeros(Int, nbp - nzeros);
+        newdgbdrynorm = zeros(dim, nbp - nzeros);
+        ind = 0;
+        for bi=1:nbp
+            if dgbdry[bid][bi] > 0
+                ind = ind + 1;
+                newdgbdry[ind] = dgbdry[bid][bi];
+                newdgbdrynorm[:,ind] = dgbdrynorm[bid][:,bi];
+            end
+        end
+        dgbdry[bid] = newdgbdry;
+        dgbdrynorm[bid] = newdgbdrynorm;
     end
     
     return DG_Grid(dgnodes, dgbdry, dgbdryface, dgbdrynorm, dgbids, dgloc2glb, dgglbvertex, dgface2glb, dgfaceVertex2glb, dgface2local, dgfacenorm, dgfaceRefelInd);
