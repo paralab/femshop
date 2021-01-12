@@ -8,7 +8,7 @@
 
 function build_triangle_refel(refel)
     # refel has already been created, but needs quadrature matrices
-    (refel.V, DVr,DVs) = triangle_vandermonds(refel, refel.r);
+    (refel.V, refel.Dr, refel.Ds) = triangle_vandermonds(refel, refel.r);
     refel.invV = inv(refel.V);
     
     (refel.Vg, DVgr, DVgs) = triangle_vandermonds(refel, refel.g);
@@ -17,8 +17,8 @@ function build_triangle_refel(refel)
     refel.Q = refel.Vg*refel.invV;
     refel.Qr = DVgr*refel.invV;
     refel.Qs = DVgs*refel.invV;
-    refel.Ddr = DVr*refel.invV;
-    refel.Dds = Dvs*refel.invV;
+    refel.Ddr = refel.Dr*refel.invV;
+    refel.Dds = refel.Ds*refel.invV;
     
     return refel;
 end

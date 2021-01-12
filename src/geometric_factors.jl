@@ -36,15 +36,30 @@ function geometric_factors(refel, pts)
         end
         
     elseif refel.dim == 2
-        (xr, xs) = tensor_grad2(refel.Dg, pts[1,:][:]);
-        (yr, ys) = tensor_grad2(refel.Dg, pts[2,:][:]);
-        J = -xs.*yr + xr.*ys;
-        
-        rx =  ys./J;
-        sx = -yr./J;
-        ry = -xs./J;
-        sy =  xr./J;
-        D = Jacobian(rx,ry,[],sx,sy,[],[],[],[]);
+        if refel.Nfaces == 3 # triangle
+            xr = refel.Dr*pts[1,:];
+            xs = refel.Ds*pts[1,:];
+            yr = refel.Dr*pts[2,:];
+            ys = refel.Ds*pts[2,:];
+            J = -xs.*yr + xr.*ys;
+            
+            rx =  ys./J;
+            sx = -yr./J;
+            ry = -xs./J;
+            sy =  xr./J;
+            D = Jacobian(rx,ry,[],sx,sy,[],[],[],[]);
+            
+        else # quad
+            (xr, xs) = tensor_grad2(refel.Dg, pts[1,:][:]);
+            (yr, ys) = tensor_grad2(refel.Dg, pts[2,:][:]);
+            J = -xs.*yr + xr.*ys;
+            
+            rx =  ys./J;
+            sx = -yr./J;
+            ry = -xs./J;
+            sy =  xr./J;
+            D = Jacobian(rx,ry,[],sx,sy,[],[],[],[]);
+        end
         
     else
         (xr, xs, xt) = tensor_grad3(refel.Dg, pts[1,:][:]);

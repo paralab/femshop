@@ -37,6 +37,8 @@ mutable struct Refel
     invVg::Array{Float64}   # Inverse Vg
     
     Dr::Array{Float64}      # Differentiation matrix for r
+    Ds::Array{Float64}      # Differentiation matrix for s
+    Dt::Array{Float64}      # Differentiation matrix for t
     Dg::Array{Float64}      # Differentiation matrix for g
     
     # Useful matrices, use them like so
@@ -65,7 +67,7 @@ mutable struct Refel
         [],[],
         [],[],[],
         [],[],[],
-        [],[],
+        [],[],[],[],
         [],[],[],[],[],
         [],[],[]
     )
@@ -89,6 +91,8 @@ function copy(ref::Refel)
     newref.gradVg = copy(ref.gradVg);
     newref.invVg = copy(ref.invVg);
     newref.Dr = copy(ref.Dr);
+    newref.Ds = copy(ref.Ds);
+    newref.Dt = copy(ref.Dt);
     newref.Dg = copy(ref.Dg);
     newref.Q1d = copy(ref.Q1d);
     newref.Q = copy(ref.Q);
