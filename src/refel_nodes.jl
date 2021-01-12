@@ -2,6 +2,7 @@
 # Compute the node locations for the reference element
 =#
 include("jacobi_gauss_quad.jl");
+include("triangle_nodes.jl");
 
 function refel_nodes!(refel, nodetype)
     if refel.dim == 0

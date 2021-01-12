@@ -77,12 +77,13 @@ end
 # lhs contains terms including the unknown variable
 # rhs contains terms without it
 function sp_parse(ex, var)
-    debug = false;
+    # debug = false;
     lhs = nothing;
     rhs = nothing;
     varcount = 1;
     timederiv = false;
-    if debug println("expr = "*string(ex)); end
+    # if debug println("expr = "*string(ex)); end
+    log_entry("SP expr = "*string(ex), 3);
     
     # Check that there are as many vars as exs
     if typeof(var) <: Array
@@ -98,19 +99,23 @@ function sp_parse(ex, var)
     
     # Insert parameters
     symex = insert_parameters(symex);
-    if debug println("insert parameters -> "*string(symex)); end
+    # if debug println("insert parameters -> "*string(symex)); end
+    log_entry("SP insert parameters -> "*string(symex), 3);
     
     # Replace symbols for variables, coefficients, test functions, and special operators
     symex = replace_symbols(symex);
-    if debug println("replace symbols -> "*string(symex)); end
+    # if debug println("replace symbols -> "*string(symex)); end
+    log_entry("SP replace symbols -> "*string(symex), 3);
     
     # Evaluate the expression to apply symbolic operators
     symex = apply_ops(symex);
-    if debug println("apply ops -> "*string(symex)); end
+    # if debug println("apply ops -> "*string(symex)); end
+    log_entry("SP apply ops -> "*string(symex), 3);
     
     # Expand the expression and separate terms
     sterms = get_sym_terms(symex);
-    if debug println("sterms = "*string(sterms)); end
+    # if debug println("sterms = "*string(sterms)); end
+    log_entry("SP sterms = "*string(sterms), 3);
     
     # Check for time derivatives
     timederiv = check_for_dt(sterms);
@@ -171,14 +176,20 @@ function sp_parse(ex, var)
         end
     end
     
-    if debug println("volLHS = "*string(lhs)); end
-    if debug println("volRHS = "*string(rhs)); end
+    # if debug println("volLHS = "*string(lhs)); end
+    # if debug println("volRHS = "*string(rhs)); end
+    log_entry("SP volLHS = "*string(lhs), 3);
+    log_entry("SP volRHS = "*string(rhs), 3);
     if timederiv
-        if debug println("dtLHS = "*string(dtlhs)); end
-        if debug println("dtRHS = "*string(dtrhs)); end
+        # if debug println("dtLHS = "*string(dtlhs)); end
+        # if debug println("dtRHS = "*string(dtrhs)); end
+        log_entry("SP dtLHS = "*string(dtlhs), 3);
+        log_entry("SP dtRHS = "*string(dtrhs), 3);
         if has_surface
-            if debug println("surfLHS = "*string(surflhs)); end
-            if debug println("surfRHS = "*string(surfrhs)); end
+            # if debug println("surfLHS = "*string(surflhs)); end
+            # if debug println("surfRHS = "*string(surfrhs)); end
+            log_entry("SP surfLHS = "*string(surflhs), 3);
+            log_entry("SP surfRHS = "*string(surfrhs), 3);
             return ((dtlhs,lhs), rhs, surflhs, surfrhs);
         else
             return ((dtlhs,lhs), rhs);
@@ -186,8 +197,10 @@ function sp_parse(ex, var)
         
     else
         if has_surface
-            if debug println("surfLHS = "*string(surflhs)); end
-            if debug println("surfRHS = "*string(surfrhs)); end
+            # if debug println("surfLHS = "*string(surflhs)); end
+            # if debug println("surfRHS = "*string(surfrhs)); end
+            log_entry("SP surfLHS = "*string(surflhs), 3);
+            log_entry("SP surfRHS = "*string(surfrhs), 3);
             return (lhs, rhs, surflhs, surfrhs);
         else
             return (lhs, rhs);

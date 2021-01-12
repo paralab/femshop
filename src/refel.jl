@@ -6,8 +6,9 @@
 #
 # Can be used for 1, 2, 3, 4 dimensions
 =#
-include("refel_nodes.jl");
 include("jacobi_polynomial.jl");
+include("refel_nodes.jl");
+include("refel_triangle.jl");
 
 mutable struct Refel
     dim::Int                # Dimension
@@ -145,65 +146,63 @@ function build_refel(dimension, order, nfaces, nodetype)
         return refel;
     end
     
-    # Vandermonde matrix and grad,inv
-    refel.V = zeros(order+1, order+1);
-    refel.gradV = zeros(order+1, order+1);
-    for i=1:refel.N+1
-        refel.V[:,i] = jacobi_polynomial(refel.r1d, 0, 0, i-1);
+    if (dimension == 2 && nfaces == 3) # triangle
+        refel = build_triangle_refel(refel);
+        
+    elseif (dimension == 3 && nfaces == 4) # tet
+        #refel = build_tetrahedron_refel(refel);
+        
+    else # quad or hex or ??
+        # Vandermonde matrix and grad,inv
+        refel.V = zeros(order+1, order+1);
+        refel.gradV = zeros(order+1, order+1);
+        for i=1:refel.N+1
+            refel.V[:,i] = jacobi_polynomial(refel.r1d, 0, 0, i-1);
+        end
+        for i=1:refel.N
+            refel.gradV[:,i+1] = sqrt(i*(i+1)) .* jacobi_polynomial(refel.r1d, 1, 1, i-1);
+        end
+        refel.invV = inv(refel.V);
+        
+        # Gauss versions
+        refel.Vg = zeros(order+1, order+1);
+        refel.gradVg = zeros(order+1, order+1);
+        for i=1:refel.N+1
+            refel.Vg[:,i] = jacobi_polynomial(refel.g1d, 0, 0, i-1);
+        end
+        for i=1:refel.N
+            refel.gradVg[:,i+1] = sqrt(i*(i+1)) .* jacobi_polynomial(refel.g1d, 1, 1, i-1);
+        end
+        refel.invVg = inv(refel.Vg);
+        
+        # Differentiation matrices
+        refel.Dr = refel.gradV*refel.invV;
+        refel.Dg = refel.gradVg*refel.invV;
+        
+        refel.Q1d = refel.Vg*refel.invV;
+        
+        if dimension == 1
+            refel.Q = refel.Q1d;
+            refel.Qr = refel.Dg;
+            refel.Ddr = refel.Dr;
+        elseif dimension == 2
+            ident = Matrix(1.0*I,order+1,order+1);
+            refel.Q = kron(refel.Q1d,refel.Q1d);
+            refel.Qr = kron(refel.Q1d,refel.Dg);
+            refel.Qs = kron(refel.Dg,refel.Q1d);
+            refel.Ddr = kron(ident,refel.Dr);
+            refel.Dds = kron(refel.Dr,ident);
+        elseif dimension == 3
+            ident = Matrix(1.0*I,order+1,order+1);
+            refel.Q = kron(kron(refel.Q1d, refel.Q1d), refel.Q1d);
+            refel.Qr = kron(kron(refel.Q1d, refel.Q1d), refel.Dg);
+            refel.Qs = kron(kron(refel.Q1d, refel.Dg), refel.Q1d);
+            refel.Qt = kron(kron(refel.Dg, refel.Q1d), refel.Q1d);
+            refel.Ddr = kron(kron(ident, ident), refel.Dg);
+            refel.Dds = kron(kron(ident, refel.Dg), ident);
+            refel.Ddt = kron(kron(refel.Dg, ident), ident);
+        end
     end
-    for i=1:refel.N
-        refel.gradV[:,i+1] = sqrt(i*(i+1)) .* jacobi_polynomial(refel.r1d, 1, 1, i-1);
-    end
-    refel.invV = inv(refel.V);
-    
-    # Gauss versions
-    refel.Vg = zeros(order+1, order+1);
-    refel.gradVg = zeros(order+1, order+1);
-    for i=1:refel.N+1
-        refel.Vg[:,i] = jacobi_polynomial(refel.g1d, 0, 0, i-1);
-    end
-    for i=1:refel.N
-        refel.gradVg[:,i+1] = sqrt(i*(i+1)) .* jacobi_polynomial(refel.g1d, 1, 1, i-1);
-    end
-    refel.invVg = inv(refel.Vg);
-    
-    # Differentiation matrices
-    refel.Dr = refel.gradV*refel.invV;
-    refel.Dg = refel.gradVg*refel.invV;
-    
-    refel.Q1d = refel.Vg*refel.invV;
-    
-    if dimension == 1
-        refel.Q = refel.Q1d;
-        refel.Qr = refel.Dg;
-        refel.Ddr = refel.Dr;
-    elseif dimension == 2
-        ident = Matrix(1.0*I,order+1,order+1);
-        refel.Q = kron(refel.Q1d,refel.Q1d);
-        refel.Qr = kron(refel.Q1d,refel.Dg);
-        refel.Qs = kron(refel.Dg,refel.Q1d);
-        refel.Ddr = kron(ident,refel.Dr);
-        refel.Dds = kron(refel.Dr,ident);
-    elseif dimension == 3
-        ident = Matrix(1.0*I,order+1,order+1);
-        refel.Q = kron(kron(refel.Q1d, refel.Q1d), refel.Q1d);
-        refel.Qr = kron(kron(refel.Q1d, refel.Q1d), refel.Dg);
-        refel.Qs = kron(kron(refel.Q1d, refel.Dg), refel.Q1d);
-        refel.Qt = kron(kron(refel.Dg, refel.Q1d), refel.Q1d);
-        refel.Ddr = kron(kron(ident, ident), refel.Dg);
-        refel.Dds = kron(kron(ident, refel.Dg), ident);
-        refel.Ddt = kron(kron(refel.Dg, ident), ident);
-    end
-    
-    # # Build surface integral matrix
-    # if dimension == 1
-    #     edgemat = zeros(refel.Np, 2);
-    #     edgemat[1,1] = 1;
-    #     edgemat[refel.Np,2] = 1;
-    #     refel.lift = refel.V * (refel.V' * edgemat);
-    # else
-    #     # not ready
-    # end
     
     return refel;
 end
