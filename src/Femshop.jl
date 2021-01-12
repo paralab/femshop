@@ -148,14 +148,18 @@ function add_mesh(mesh)
         if config.solver_type == DG
             global grid_data = cg_grid_to_dg_grid(grid_data, mesh_data);
         end
+        log_entry("Added mesh with "*string(mesh_data.nx)*" vertices and "*string(mesh_data.nel)*" elements.");
+        log_entry("Full grid has "*string(size(grid_data.allnodes,2))*" nodes.");
     else
         global mesh_data = mesh;
+        printerr("Warning: mesh is built, but grid and refel have not yet. see add_mesh() in Femshop.jl");
+        log_entry("Added mesh with "*string(mesh_data.nx)*" vertices and "*string(mesh_data.nel)*" elements.");
     end
     # set elemental loop ordering
     global elemental_order = 1:mesh_data.nel;
 
-    log_entry("Added mesh with "*string(mesh_data.nx)*" vertices and "*string(mesh_data.nel)*" elements.");
-    log_entry("Full grid has "*string(size(grid_data.allnodes,2))*" nodes.");
+    # log_entry("Added mesh with "*string(mesh_data.nx)*" vertices and "*string(mesh_data.nel)*" elements.");
+    # log_entry("Full grid has "*string(size(grid_data.allnodes,2))*" nodes.");
 end
 
 function output_mesh(file, format)

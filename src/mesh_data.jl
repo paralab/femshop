@@ -36,6 +36,7 @@ struct MeshData
         # bdry = Array{Int,1}(undef,0);
         
         # uncomment these to compute. WARNING: can be slow
+        inv = invert_index(ind);
         (face2v, face2e, e2face) = build_faces(ne, el, et);
         norms = find_normals(face2v, x);
         bdry = find_boundaries(face2e);
@@ -51,7 +52,7 @@ end
 # line, triangle, quad, tet, hex, prism, 5-pyramid
 etypetonv = [2, 3, 4, 4, 8, 6, 5, 2, 3, 4, 4, 8, 6, 5, 1, 4, 8, 6, 5]; # number of vertices
 etypetonf = [2, 3, 4, 4, 6, 5, 5, 2, 3, 4, 4, 6, 5, 5, 1, 4, 6, 5, 5]; # number of faces
-etypetonfn= [1, 3, 4, 3, 4, 4, 4, 1, 3, 4, 3, 4, 4, 4, 1, 3, 4, 4, 4]; # number of vertices for each face (except prism and 5-pyramids!)
+etypetonfn= [1, 2, 2, 3, 4, 4, 4, 1, 2, 2, 3, 4, 4, 4, 1, 2, 2, 4, 4]; # number of vertices for each face (except prism and 5-pyramids!)
 
 # Builds invind.
 function invert_index(ind)
@@ -68,7 +69,7 @@ function build_faces(nel, elements, etypes)
     NfacesPerElement = etypetonf[etypes[1]]; # For now assumes only one type of element.
     Nfp = etypetonfn[etypes[1]]; # For now assumes only one type of element.
     
-    Nfaces = 1; # will be incremented as discovered
+    Nfaces = 0; # will be incremented as discovered
     e2face = zeros(Int, NfacesPerElement, nel);
     
     face2v = zeros(Int, Nfp, NfacesPerElement * nel);
@@ -76,105 +77,105 @@ function build_faces(nel, elements, etypes)
     
     for ei=1:nel
         if etypes[ei] == 1 # line
-            face2v[1,Nfaces] = elements[1, ei];
-            face2v[1,Nfaces+1] = elements[2, ei];
-            face2e[1,Nfaces] = ei; #
+            face2v[1,Nfaces+1] = elements[1, ei];
+            face2v[1,Nfaces+2] = elements[2, ei];
             face2e[1,Nfaces+1] = ei; #
-            e2face[1,ei] = Nfaces;
-            e2face[2,ei] = Nfaces+1;
+            face2e[1,Nfaces+2] = ei; #
+            e2face[1,ei] = Nfaces+1;
+            e2face[2,ei] = Nfaces+2;
             Nfaces += 2;
         elseif etypes[ei] == 2 # triangle
-            face2v[:,Nfaces] = elements[1:2, ei];
-            face2v[:,Nfaces+1] = elements[2:3, ei];
-            face2v[:,Nfaces+2] = elements[[3,1], ei];
-            face2e[1,Nfaces] = ei; #
+            face2v[:,Nfaces+1] = elements[1:2, ei];
+            face2v[:,Nfaces+2] = elements[2:3, ei];
+            face2v[:,Nfaces+3] = elements[[3,1], ei];
             face2e[1,Nfaces+1] = ei; #
             face2e[1,Nfaces+2] = ei; #
-            e2face[1,ei] = Nfaces;
-            e2face[2,ei] = Nfaces+1;
-            e2face[3,ei] = Nfaces+1;
+            face2e[1,Nfaces+3] = ei; #
+            e2face[1,ei] = Nfaces+1;
+            e2face[2,ei] = Nfaces+2;
+            e2face[3,ei] = Nfaces+3;
             Nfaces += 3;
         elseif etypes[ei] == 3 # quad
-            face2v[:,Nfaces] = elements[1:2, ei];
-            face2v[:,Nfaces+1] = elements[2:3, ei];
-            face2v[:,Nfaces+2] = elements[3:4, ei];
-            face2v[:,Nfaces+3] = elements[[4,1], ei];
-            face2e[1,Nfaces] = ei; #
+            face2v[:,Nfaces+1] = elements[1:2, ei];
+            face2v[:,Nfaces+2] = elements[2:3, ei];
+            face2v[:,Nfaces+3] = elements[3:4, ei];
+            face2v[:,Nfaces+4] = elements[[4,1], ei];
             face2e[1,Nfaces+1] = ei; #
             face2e[1,Nfaces+2] = ei; #
             face2e[1,Nfaces+3] = ei; #
-            e2face[1,ei] = Nfaces;
-            e2face[2,ei] = Nfaces+1;
-            e2face[3,ei] = Nfaces+2;
-            e2face[4,ei] = Nfaces+3;
+            face2e[1,Nfaces+4] = ei; #
+            e2face[1,ei] = Nfaces+1;
+            e2face[2,ei] = Nfaces+2;
+            e2face[3,ei] = Nfaces+3;
+            e2face[4,ei] = Nfaces+4;
             Nfaces += 4;
         elseif etypes[ei] == 4 # tet
-            face2v[:,Nfaces] = elements[[1,3,2], ei];
-            face2v[:,Nfaces+1] = elements[[2,3,4], ei];
-            face2v[:,Nfaces+2] = elements[[1,2,4], ei];
-            face2v[:,Nfaces+3] = elements[[1,4,3], ei];
-            face2e[1,Nfaces] = ei; #
+            face2v[:,Nfaces+1] = elements[[1,3,2], ei];
+            face2v[:,Nfaces+2] = elements[[2,3,4], ei];
+            face2v[:,Nfaces+3] = elements[[1,2,4], ei];
+            face2v[:,Nfaces+4] = elements[[1,4,3], ei];
             face2e[1,Nfaces+1] = ei; #
             face2e[1,Nfaces+2] = ei; #
             face2e[1,Nfaces+3] = ei; #
-            e2face[1,ei] = Nfaces;
-            e2face[2,ei] = Nfaces+1;
-            e2face[3,ei] = Nfaces+2;
-            e2face[4,ei] = Nfaces+3;
+            face2e[1,Nfaces+4] = ei; #
+            e2face[1,ei] = Nfaces+1;
+            e2face[2,ei] = Nfaces+2;
+            e2face[3,ei] = Nfaces+3;
+            e2face[4,ei] = Nfaces+4;
             Nfaces += 4;
         elseif etypes[ei] == 5 # hex
-            face2v[:,Nfaces] = elements[[1,5,8,4], ei];
-            face2v[:,Nfaces+1] = elements[[2,3,7,6], ei];
-            face2v[:,Nfaces+2] = elements[[1,2,6,5], ei];
-            face2v[:,Nfaces+3] = elements[[3,4,8,7], ei];
-            face2v[:,Nfaces+4] = elements[[1,4,3,2], ei];
-            face2v[:,Nfaces+5] = elements[[5,6,7,8], ei];
-            face2e[1,Nfaces] = ei; #
+            face2v[:,Nfaces+1] = elements[[1,5,8,4], ei];
+            face2v[:,Nfaces+2] = elements[[2,3,7,6], ei];
+            face2v[:,Nfaces+3] = elements[[1,2,6,5], ei];
+            face2v[:,Nfaces+4] = elements[[3,4,8,7], ei];
+            face2v[:,Nfaces+5] = elements[[1,4,3,2], ei];
+            face2v[:,Nfaces+6] = elements[[5,6,7,8], ei];
             face2e[1,Nfaces+1] = ei; #
             face2e[1,Nfaces+2] = ei; #
             face2e[1,Nfaces+3] = ei; #
             face2e[1,Nfaces+4] = ei; #
             face2e[1,Nfaces+5] = ei; #
-            e2face[1,ei] = Nfaces;
-            e2face[2,ei] = Nfaces+1;
-            e2face[3,ei] = Nfaces+2;
-            e2face[4,ei] = Nfaces+3;
-            e2face[5,ei] = Nfaces+4;
-            e2face[6,ei] = Nfaces+5;
+            face2e[1,Nfaces+6] = ei; #
+            e2face[1,ei] = Nfaces+1;
+            e2face[2,ei] = Nfaces+2;
+            e2face[3,ei] = Nfaces+3;
+            e2face[4,ei] = Nfaces+4;
+            e2face[5,ei] = Nfaces+5;
+            e2face[6,ei] = Nfaces+6;
             Nfaces += 6;
         elseif etypes[ei] == 6 # prism
-            face2v[1:3,Nfaces] = elements[[1,3,2], ei];
-            face2v[1:3,Nfaces+1] = elements[[4,5,6], ei];
-            face2v[:,Nfaces+2] = elements[[1,2,5,4], ei];
-            face2v[:,Nfaces+3] = elements[[1,4,6,3], ei];
-            face2v[:,Nfaces+4] = elements[[2,3,6,5], ei];
-            face2e[1,Nfaces] = ei; #
+            face2v[1:3,Nfaces+1] = elements[[1,3,2], ei];
+            face2v[1:3,Nfaces+2] = elements[[4,5,6], ei];
+            face2v[:,Nfaces+3] = elements[[1,2,5,4], ei];
+            face2v[:,Nfaces+4] = elements[[1,4,6,3], ei];
+            face2v[:,Nfaces+5] = elements[[2,3,6,5], ei];
             face2e[1,Nfaces+1] = ei; #
             face2e[1,Nfaces+2] = ei; #
             face2e[1,Nfaces+3] = ei; #
             face2e[1,Nfaces+4] = ei; #
-            e2face[1,ei] = Nfaces;
-            e2face[2,ei] = Nfaces+1;
-            e2face[3,ei] = Nfaces+2;
-            e2face[4,ei] = Nfaces+3;
-            e2face[5,ei] = Nfaces+4;
+            face2e[1,Nfaces+5] = ei; #
+            e2face[1,ei] = Nfaces+1;
+            e2face[2,ei] = Nfaces+2;
+            e2face[3,ei] = Nfaces+3;
+            e2face[4,ei] = Nfaces+4;
+            e2face[5,ei] = Nfaces+5;
             Nfaces += 5;
         elseif etypes[ei] == 7 # 5-pyramid
-            face2v[:,Nfaces] = elements[[1,4,3,2], ei];
-            face2v[1:3,Nfaces+1] = elements[[1,2,5], ei];
-            face2v[1:3,Nfaces+2] = elements[[3,4,5], ei];
-            face2v[1:3,Nfaces+3] = elements[[2,3,5], ei];
-            face2v[1:3,Nfaces+4] = elements[[4,1,5], ei];
-            face2e[1,Nfaces] = ei; #
+            face2v[:,Nfaces+1] = elements[[1,4,3,2], ei];
+            face2v[1:3,Nfaces+2] = elements[[1,2,5], ei];
+            face2v[1:3,Nfaces+3] = elements[[3,4,5], ei];
+            face2v[1:3,Nfaces+4] = elements[[2,3,5], ei];
+            face2v[1:3,Nfaces+5] = elements[[4,1,5], ei];
             face2e[1,Nfaces+1] = ei; #
             face2e[1,Nfaces+2] = ei; #
             face2e[1,Nfaces+3] = ei; #
             face2e[1,Nfaces+4] = ei; #
-            e2face[1,ei] = Nfaces;
-            e2face[2,ei] = Nfaces+1;
-            e2face[3,ei] = Nfaces+2;
-            e2face[4,ei] = Nfaces+3;
-            e2face[5,ei] = Nfaces+4;
+            face2e[1,Nfaces+5] = ei; #
+            e2face[1,ei] = Nfaces+1;
+            e2face[2,ei] = Nfaces+2;
+            e2face[3,ei] = Nfaces+3;
+            e2face[4,ei] = Nfaces+4;
+            e2face[5,ei] = Nfaces+5;
             Nfaces += 5;
         end
     end
@@ -274,7 +275,7 @@ function find_boundaries(face2e)
         end
     end
     
-    return (bdry);
+    return bdry;
 end
 
 function shared_face(f1, f2)
