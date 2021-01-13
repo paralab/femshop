@@ -37,3 +37,11 @@ function jacobi_polynomial(x, alpha::Int, beta::Int, N::Int)
     return PL[N+1,:];
 end
 
+# sqrt(N*(N+alpha+beta+1))*JacobiP(r(:),alpha+1,beta+1, N-1);
+function grad_jacobi_polynomial(x, alpha::Int, beta::Int, N::Int)
+    if N < 1
+        return zeros(size(x));
+    end
+    
+    return sqrt(N*(N+alpha+beta+1)) .* jacobi_polynomial(x, alpha+1, beta+1, N-1);
+end

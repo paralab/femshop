@@ -79,7 +79,7 @@ function read_msh_v2(file)
                 # parse each element's numbers
                 nv = zeros(Int, nel);
                 etypes = zeros(Int, nel);
-                elements = zeros(Int, nel, 8);
+                elements = zeros(Int, 8, nel);
                 i = 1;
                 line = readline(file);
                 while !occursin("\$EndElements", line) && !eof(file)
@@ -88,7 +88,7 @@ function read_msh_v2(file)
                     nv[i] = etypetonv[etypes[i]];
                     offset = parse(Int, vals[3]) + 3;
                     for j=1:nv[i]
-                        elements[i,j] = parse(Int, vals[offset + j]);
+                        elements[j,i] = parse(Int, vals[offset + j]);
                     end
                     i += 1;
                     line = readline(file);
@@ -182,7 +182,7 @@ function read_msh_v4(file)
                 # parse elements
                 nv = zeros(Int, nel);
                 etypes = zeros(Int, nel);
-                elements = zeros(Int, nel, 8);
+                elements = zeros(Int, 8, nel);
                 i = 1;
                 line = readline(file);
                 while !occursin("\$EndElements", line) && !eof(file)
@@ -198,7 +198,7 @@ function read_msh_v4(file)
                         etypes[i-1 + ei] = enttype;
                         nv[i-1 + ei] = entnv;
                         for j=1:entnv
-                            elements[i-1 + ei,j] = parse(Int, vals[1 + j]);
+                            elements[j, i-1 + ei] = parse(Int, vals[1 + j]);
                         end
                     end
                     
