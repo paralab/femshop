@@ -23,7 +23,7 @@ function triangle_refel_nodes!(refel)
     refel.r[:,2] = s;
     
     # quadrature nodes/weights from a table
-    xyw = triangle_quadrature_nodes_weights(refel.N);
+    xyw = triangle_quadrature_nodes_weights(refel.N+1);
     refel.g = xyw[:,1:2];
     refel.wg = xyw[:,3];
     
@@ -42,8 +42,8 @@ function triangle_equilateral_nodes(N)
     end
 
     # total number of nodes
-    Np = (N+1)*(N+2)/2;
-    Np = Int64(Np)
+    Np = Int64((N+1)*(N+2)/2);
+
     # Create equidistributed nodes on equilateral triangle
     L1 = zeros(Np); 
     L2 = zeros(Np); 
@@ -56,14 +56,14 @@ function triangle_equilateral_nodes(N)
             sk = sk+1;
         end
     end
-    L2 = 1.0 .- L1 .- L3;
+    L2 = 1 .- L1 .- L3;
     x = -L2+L3; 
-    y = (-L2-L3+2*L1) * 0.5773502691896258; # 1/sqrt(3)=0.5773502691896258
+    y = (-L2 - L3 + 2 .* L1) .* 0.5773502691896258; # 1/sqrt(3)=0.5773502691896258
 
     # Compute blending function at each node for each edge
-    blend1 = 4*L2.*L3; 
-    blend2 = 4*L1.*L3; 
-    blend3 = 4*L1.*L2;
+    blend1 = 4 .* L2 .* L3; 
+    blend2 = 4 .* L1 .* L3; 
+    blend3 = 4 .* L1 .* L2;
 
     # Amount of warp for each node, for each edge
     warpf1 = triangle_warpfactor(N,L3-L2); 
@@ -71,9 +71,9 @@ function triangle_equilateral_nodes(N)
     warpf3 = triangle_warpfactor(N,L2-L1);
 
     # Combine blend & warp
-    warp1 = blend1.*warpf1.*(1 .+ (alpha*L1).^2);
-    warp2 = blend2.*warpf2.*(1 .+ (alpha*L2).^2);
-    warp3 = blend3.*warpf3.*(1 .+ (alpha*L3).^2);
+    warp1 = blend1 .* warpf1 .* (1 .+ (alpha*L1).^2);
+    warp2 = blend2 .* warpf2 .* (1 .+ (alpha*L2).^2);
+    warp3 = blend3 .* warpf3 .* (1 .+ (alpha*L3).^2);
 
     # Accumulate deformations associated with each edge
     # x = x + 1*warp1 + cos(2*pi/3)*warp2 + cos(4*pi/3)*warp3;
@@ -108,22 +108,24 @@ function triangle_warpfactor(N, rout)
     # Compute warp factor
     warp = Lmat'*(LGLr - req);
     
-    # Scale factor
-    sf = zeros(length(rout))
+    # Apply Scale factor
     for i=1:length(rout)
-        sf[i] = (abs(rout[i]) < 0.9999999999) ? (1-rout[i]*rout[i]) : 1
+        if abs(rout[i]) < 0.9999999999
+            warp[i] = warp[i] / (1-rout[i]*rout[i]);
+        else
+            warp[i] = 0;
+        end
     end
-    ## warp = warp./sf + warp.*(zerof-1);   zerof?
     
     return warp;
 end
 
 # From (x,y) in equilateral triangle to (r,s) coordinates in standard triangle
 function triangle_equilateral_to_rs(x,y)
-    # 1/sqrt(3)=0.5773502691896258
-    L1 = (0.5773502691896258*y .+ 1.0)/3.0;
-    L2 = (-3.0*x - 0.5773502691896258*y .+ 2.0)/6.0;
-    L3 = ( 3.0*x - 0.5773502691896258*y .+ 2.0)/6.0;
+    # sqrt(3)=1.7320508075688772
+    L1 = (1.7320508075688772 .* y .+ 1.0) ./ 3.0;
+    L2 = (-3.0 .* x .- 1.7320508075688772 .* y .+ 2.0) ./ 6.0;
+    L3 = ( 3.0 .* x .- 1.7320508075688772 .* y .+ 2.0) ./ 6.0;
     
     r = -L2 + L3 - L1; 
     s = -L2 - L3 + L1;
@@ -134,8 +136,8 @@ end
 # From (r,s) coordinates in reference triangle to (x,y) in triangle with vertices v
 # v is a 2x3 array [x1 x2 x3; y1 y2 y3]
 function triangle_refel_to_xy(r, s, v)
-    x = 0.5*(-(r+s)*v[1,1]+(1+r)*v[1,2]+(1+s)*v[1,3]);
-    y = 0.5*(-(r+s)*v[2,1]+(1+r)*v[2,2]+(1+s)*v[2,3]);
+    x = 0.5 .* (-(r+s) .* v[1,1] .+ (1+r) .* v[1,2] .+ (1+s) .* v[1,3]);
+    y = 0.5 .* (-(r+s) .* v[2,1] .+ (1+r) .* v[2,2] .+ (1+s) .* v[2,3]);
     
     return (x, y);
 end
