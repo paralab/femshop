@@ -11,7 +11,7 @@ function build_triangle_refel(refel)
     (refel.V, refel.Dr, refel.Ds) = triangle_vandermonds(refel, refel.r);
     refel.invV = inv(refel.V);
     
-    (refel.Vg, DVgr, DVgs) = triangle_vandermonds(refel, refel.g);
+    ## (refel.Vg, DVgr, DVgs) = triangle_vandermonds(refel, refel.g);  error?
     refel.invVg = inv(refel.Vg);
     
     refel.Q = refel.Vg*refel.invV;
@@ -32,7 +32,7 @@ function triangle_vandermonds(refel, r)
     # Transfer (r,s) to (a,b) coordinates
     a = zeros(Np,1);
     for ni=1:Np
-        if r[ni,2] != 1
+        if r[ni,2] != 1  # Np = 3 r = [-0.333333333333333 -0.333333333333333] error
             a[ni] = 2*(1+r[ni,1])/(1-r[ni,2])-1;
         else 
             a[ni] = -1; 
@@ -48,24 +48,24 @@ function triangle_vandermonds(refel, r)
         for j=0:refel.N - i
             h2 = jacobi_polynomial(b,2*i+1,0,j);
             dgb = grad_jacobi_polynomial(b, 2*i+1,0, j);
-            V[:,sk] = 1.4142135623730951*h1.*h2.*(1-b).^i;
+            V[:,sk] = 1.4142135623730951*h1.*h2.*(1 .- b).^i;
             
             # r-derivative
             # d/dr = da/dr d/da + db/dr d/db = (2/(1-s)) d/da = (2/(1-b)) d/da
             dmodedr = dfa.*h2;
             if i>0
-                dmodedr = dmodedr.*((0.5*(1-b)).^(i-1));
+                dmodedr = dmodedr.*((0.5*(1 .- b)).^(i-1));
             end
             # s-derivative
             # d/ds = ((1+a)/2)/((1-b)/2) d/da + d/db
-            dmodeds = dfa.*(h2.*(0.5*(1+a)));
+            dmodeds = dfa.*(h2.*(0.5*(1 .+ a)));
             if i>0
-                dmodeds = dmodeds.*((0.5*(1-b)).^(i-1));
+                dmodeds = dmodeds.*((0.5*(1 .- b)).^(i-1));
             end
             
-            tmp = dgb.*((0.5*(1-b)).^i);
+            tmp = dgb.*((0.5*(1 .- b)).^i);
             if i>0
-                tmp = tmp-0.5*i*h2.*((0.5*(1-b)).^(i-1));
+                tmp = tmp-0.5*i*h2.*((0.5*(1 .- b)).^(i-1));
             end
             dmodeds = dmodeds+h1.*tmp;
             
