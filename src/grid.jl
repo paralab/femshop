@@ -39,11 +39,6 @@ function grid_from_mesh_1d(mesh)
     nel = mesh.nel;
     
     refel = build_refel(1, ord, nfaces, config.elemental_nodes);
-    leftnodes =    [-1]; # maps 0D gauss node to 1D face
-    rightnodes =   [1]; # maps 0D gauss node to 1D face
-    frefelLeft =   custom_quadrature_refel(refel, leftnodes, [1]); # refel for left face
-    frefelRight =  custom_quadrature_refel(refel, rightnodes, [1]); # refel for right face
-    refelfc = [frefelLeft, frefelRight];
     
     N = (nx-1)*ord + 1;         # number of total nodes
     Np = refel.Np;              # number of nodes per element
@@ -103,7 +98,7 @@ function grid_from_mesh_1d(mesh)
     end
     
     
-    return (refel, refelfc, Grid(x, bdry, bdryfc, bdrynorm, bids, loc2glb, glbvertex, f2glb, fvtx2glb));
+    return (refel, Grid(x, bdry, bdryfc, bdrynorm, bids, loc2glb, glbvertex, f2glb, fvtx2glb));
 end
 
 function grid_from_mesh_2d(mesh)

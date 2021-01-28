@@ -433,12 +433,6 @@ macro weakForm(var, ex)
     end)
 end
 
-# macro PDE(var, ex)
-#     return esc(quote
-#         # do the thing
-#     end)
-# end
-
 macro finalize()
     return esc(:(Femshop.finalize()));
 end

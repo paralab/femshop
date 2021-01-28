@@ -120,8 +120,8 @@ function simple_line_mesh(nx, bn, interval)
     
     # grid = Grid(x, bdry, bdryel, bdrynorm, bids, loc2glb, glbvertex);
     
-    (refel, refelfc, grid) = grid_from_mesh_1d(mesh);
-    return (mesh, refel, refelfc, grid);
+    (refel, grid) = grid_from_mesh_1d(mesh);
+    return (mesh, refel, grid);
 end
 
 #=
@@ -263,16 +263,6 @@ function simple_quad_mesh(nxy, bn, interval)
     # grid
     ord = config.basis_order_min;
     refel = build_refel(2, ord, 4, config.elemental_nodes);  # refel for elements
-    tmprefel = build_refel(1, ord, 2, config.elemental_nodes); # 1D refel for getting face nodes
-    leftnodes =    map_face_nodes_2d(tmprefel.g, [-1,-1], [-1,1]); # maps 1D gauss nodes to 2D face
-    rightnodes =   map_face_nodes_2d(tmprefel.g, [1,-1], [1,1]); # maps 1D gauss nodes to 2D face
-    bottomnodes =  map_face_nodes_2d(tmprefel.g, [-1,-1], [1,-1]); # maps 1D gauss nodes to 2D face
-    topnodes =     map_face_nodes_2d(tmprefel.g, [-1,1], [1,1]); # maps 1D gauss nodes to 2D face
-    frefelLeft =   custom_quadrature_refel(refel, leftnodes, tmprefel.wg); # refel for left face
-    frefelRight =  custom_quadrature_refel(refel, rightnodes, tmprefel.wg); # refel for right face
-    frefelBottom = custom_quadrature_refel(refel, bottomnodes, tmprefel.wg); # refel for bottom face
-    frefelTop =    custom_quadrature_refel(refel, topnodes, tmprefel.wg); # refel for top face
-    refelfc = [frefelLeft, frefelRight, frefelBottom, frefelTop];
     
     N = ((nx-1)*ord + 1)*((ny-1)*ord + 1); # number of total nodes
     Np = refel.Np;              # number of nodes per element
@@ -282,7 +272,7 @@ function simple_quad_mesh(nxy, bn, interval)
     bdrynorm = [];              # normal at boundary nodes
     loc2glb = zeros(Int, Np, nel)# local to global index map for each element's nodes
     glbvertex = zeros(Int, 4, nel);# local to global for vertices
-    f2glb = zeros(Int, size(leftnodes,2), Nf);  # face node local to global
+    f2glb = zeros(Int, refel.Nfp[1], Nf);  # face node local to global
     fvtx2glb = zeros(Int, 2, Nf);# face vertex local to global
     
     # Elements are ordered along x then y
@@ -509,7 +499,7 @@ function simple_quad_mesh(nxy, bn, interval)
     
     grid = Grid(x, bdry, bdryfc, bdrynorm, bids, loc2glb, glbvertex, f2glb, fvtx2glb);
     
-    return (mesh, refel, refelfc, grid);
+    return (mesh, refel, grid);
 end
 
 #=
@@ -722,35 +712,6 @@ function simple_hex_mesh(nxyz, bn, interval)
     
     ord = config.basis_order_min;
     refel = build_refel(3, ord, 6, config.elemental_nodes);
-    tmprefel = build_refel(2, ord, 4, config.elemental_nodes); # 2D refel for getting face nodes
-    # leftnodes =    map_face_nodes_3d(tmprefel.g, [-1,-1,-1], [-1,1,-1], [-1,-1,1], [-1,1,1]); # maps 2D gauss nodes to 3D face
-    # rightnodes =   map_face_nodes_3d(tmprefel.g, [1,-1,-1], [1,1,-1], [1,-1,1], [1,1,1]); 
-    # bottomnodes =  map_face_nodes_3d(tmprefel.g, [-1,-1,-1], [1,-1,-1], [-1,-1,1], [1,-1,1]); 
-    # topnodes =     map_face_nodes_3d(tmprefel.g, [-1,1,-1], [1,1,-1], [-1,1,1], [1,1,1]); 
-    # frontnodes =   map_face_nodes_3d(tmprefel.g, [-1,-1,-1], [1,-1,-1], [-1,1,-1], [1,1,-1]); 
-    # backnodes =    map_face_nodes_3d(tmprefel.g, [-1,-1,1], [1,-1,1], [-1,1,1], [1,1,1]); 
-    g2d= tmprefel.g;
-    leftnodes =    -ones(3, length(tmprefel.wg));
-    rightnodes =   ones(3, length(tmprefel.wg));
-    bottomnodes =  -ones(3, length(tmprefel.wg));
-    topnodes =     ones(3, length(tmprefel.wg));
-    frontnodes =   -ones(3, length(tmprefel.wg));
-    backnodes =    ones(3, length(tmprefel.wg));
-    
-    leftnodes[[2,3],:] = g2d';
-    rightnodes[[2,3],:] = g2d';
-    bottomnodes[[1,3],:] = g2d';
-    topnodes[[1,3],:] = g2d';
-    frontnodes[[1,2],:] = g2d';
-    backnodes[[1,2],:] = g2d';
-    
-    frefelLeft =   custom_quadrature_refel(refel, leftnodes, tmprefel.wg); # refel for left face
-    frefelRight =  custom_quadrature_refel(refel, rightnodes, tmprefel.wg); # refel for right face
-    frefelBottom = custom_quadrature_refel(refel, bottomnodes, tmprefel.wg); # refel for bottom face
-    frefelTop =    custom_quadrature_refel(refel, topnodes, tmprefel.wg); # refel for top face
-    frefelFront =  custom_quadrature_refel(refel, frontnodes, tmprefel.wg); # refel for front face
-    frefelBack =   custom_quadrature_refel(refel, backnodes, tmprefel.wg); # refel for back face
-    refelfc = [frefelLeft, frefelRight, frefelBottom, frefelTop, frefelFront, frefelBack];
     
     N = ((nx-1)*ord + 1)*((ny-1)*ord + 1)*((nz-1)*ord + 1);# number of total nodes
     Np = refel.Np;              # number of nodes per element
@@ -764,8 +725,8 @@ function simple_hex_mesh(nxyz, bn, interval)
     fvtx2glb = zeros(Int, 4, Nf);# face vertex local to global
     
     # Start with a 2d quad mesh
-    (mesh2d, refel2d, refelfc2d, grid2d) = simple_quad_mesh([nx,ny], 1, interval[1:4]);
-    (mesh1d, refel1d, refelfc1d, grid1d) = simple_line_mesh(nz, 1, interval[5:6]);
+    (mesh2d, refel2d, grid2d) = simple_quad_mesh([nx,ny], 1, interval[1:4]);
+    (mesh1d, refel1d, grid1d) = simple_line_mesh(nz, 1, interval[5:6]);
 
     # Use 2d quad mesh to build hex mesh nodes
     n1d = ord+1;
@@ -1368,5 +1329,5 @@ function simple_hex_mesh(nxyz, bn, interval)
     
     grid = Grid(x, bdry, bdryfc, bdrynorm, bids, loc2glb, glbvertex, f2glb, fvtx2glb);
     
-    return (mesh, refel, refelfc, grid);
+    return (mesh, refel, grid);
 end

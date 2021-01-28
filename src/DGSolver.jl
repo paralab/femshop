@@ -14,7 +14,7 @@ import ..Femshop: JULIA, CPP, MATLAB, SQUARE, IRREGULAR, UNIFORM_GRID, TREE, UNS
             LHS, RHS,
             LINEMESH, QUADMESH, HEXMESH
 import ..Femshop: log_entry, printerr
-import ..Femshop: config, prob, variables, mesh_data, grid_data, refel, face_refels, time_stepper, elemental_order
+import ..Femshop: config, prob, variables, mesh_data, grid_data, refel, time_stepper, elemental_order
 import ..Femshop: Variable, Coefficient, GenFunction, Jacobian
 import ..Femshop: geometric_factors, geometric_factors_face, build_deriv_matrix, build_face_deriv_matrix, build_refel
 
@@ -67,6 +67,9 @@ function init_dgsolver()
 end
 
 function linear_solve(var, bilinear, linear, face_bilinear, face_linear, stepper=nothing)
+    printerr("DG solver unavailable. currently updating surface quadrature.")
+    return;
+    
     if config.linalg_matrixfree
         return solve_matrix_free_sym(var, bilinear, linear, stepper);
         #return solve_matrix_free_asym(var, bilinear, linear, stepper);
