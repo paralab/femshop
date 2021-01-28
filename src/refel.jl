@@ -15,7 +15,11 @@ mutable struct Refel
     N::Int                  # Order of polynomials
     Np::Int                 # Number of nodes
     Nfaces::Int             # Number of faces
+    Nfp::Array{Int,1}   # Number of nodes for each face
     
+    ######################################
+    # Volume nodes and quadrature matrices
+    ######################################
     r1d::Array{Float64}     # Node coordinates in 1D
     r::Array{Float64}       # dim-dim Node coordinates
     
@@ -28,11 +32,11 @@ mutable struct Refel
     g::Array{Float64}       # dim-dim Gauss points
     wg::Array{Float64}      # dim-dim Gauss weights
     
-    V::Array{Float64}       # Vandermonde matrix at r
+    V::Array{Float64}       # basis at r
     gradV::Array{Float64}   # grad of basis at r
     invV::Array{Float64}    # Inverse V
     
-    Vg::Array{Float64}      # Vandermonde matrix at Gauss
+    Vg::Array{Float64}      # basis at Gauss
     gradVg::Array{Float64}  # grad of basis at g
     invVg::Array{Float64}   # Inverse Vg
     
@@ -41,26 +45,57 @@ mutable struct Refel
     Dt::Array{Float64}      # Differentiation matrix for t
     Dg::Array{Float64}      # Differentiation matrix for g
     
-    # Useful matrices, use them like so
-    # for integral(basis_j*basis_i) -> invV' * integral(modal_j*modal_i) * invV -> invV'*Vg'*diag(w*detJ)*Vg*invV -> Q'*diag(w*detJ)*Q
-    # for integral(gradbasis_j dot gradbasis_i) -> invV'*gradVg'*Jacobian'*diag(w*detJ)*Jacobian*gradVg*invV 
-    #                                           -> [QrQsQt]*Jacobian' * diag(w*detJ) * Jacobian*[QrQsQt]'
+    # Useful quadrature matrices for the volume integrals
     Q1d::Array{Float64}     # 1D quadrature matrix: like Vg*invV
     Q::Array{Float64}       # dim-dim quadrature matrix
     Qr::Array{Float64}      # quad of derivative matrix: like gradVg*invV
     Qs::Array{Float64}      # 
     Qt::Array{Float64}      # 
     
-    Ddr::Array{Float64}      # Similar to Qr, but for the elemental nodes, not quadrature nodes
+    Ddr::Array{Float64}      # Derivatives at the elemental nodes, not quadrature nodes
     Dds::Array{Float64}      # 
-    Ddt::Array{Float64}      # 
+    Ddt::Array{Float64}      #
+    
+    #######################################
+    # Surface nodes and quadrature matrices
+    #######################################
+    face2local::Array{Array{Int}}       # maps face nodes to local indices
+    
+    surf_r::Array{Array{Float64}}       # surface node coordinates
+    surf_wr::Array{Array{Float64}}      # surface gll weights
+    
+    surf_g::Array{Array{Float64}}       # surface Gauss points
+    surf_wg::Array{Array{Float64}}      # surface Gauss weights
+    
+    surf_V::Array{Array{Float64}}       # basis at surf_r
+    surf_gradV::Array{Array{Float64}}   # grad of basis at surf_r
+    surf_invV::Array{Array{Float64}}    # Inverse surf_V
+    
+    surf_Vg::Array{Array{Float64}}      # basis at surf_g
+    surf_gradVg::Array{Array{Float64}}  # grad of basis at surf_g
+    surf_invVg::Array{Array{Float64}}   # Inverse surf_Vg
+    
+    surf_Dr::Array{Array{Float64}}      # Differentiation matrix for surf_r
+    surf_Ds::Array{Array{Float64}}      # Differentiation matrix for surf_s
+    surf_Dt::Array{Array{Float64}}      # Differentiation matrix for surf_t
+    surf_Dg::Array{Array{Float64}}      # Differentiation matrix for surf_g
+    
+    surf_Q::Array{Array{Float64}}       # quadrature matrix
+    surf_Qr::Array{Array{Float64}}      # derivative quadrature matrix
+    surf_Qs::Array{Array{Float64}}      # 
+    surf_Qt::Array{Array{Float64}}      # 
+    
+    surf_Ddr::Array{Array{Float64}}     # Derivatives at the elemental nodes, not quadrature nodes
+    surf_Dds::Array{Array{Float64}}     # 
+    surf_Ddt::Array{Array{Float64}}     #
     
     # Constructor needs at least this information
-    Refel(dim, order, nnodes, nfaces) = new(
+    Refel(dim, order, nnodes, nfaces, nfp) = new(
         dim,
         order,
         nnodes,
         nfaces,
+        nfp,
         [],[],
         [],[],
         [],[],
@@ -69,13 +104,21 @@ mutable struct Refel
         [],[],[],
         [],[],[],[],
         [],[],[],[],[],
-        [],[],[]
+        [],[],[],
+        [[]],
+        [[]],[[]],
+        [[]],[[]],
+        [[]],[[]],[[]],
+        [[]],[[]],[[]],
+        [[]],[[]],[[]],[[]],
+        [[]],[[]],[[]],[[]],
+        [[]],[[]],[[]]
     )
 end
 
 import Base.copy
 function copy(ref::Refel)
-    newref = Refel(ref.dim, ref.N, ref.Np, ref.Nfaces);
+    newref = Refel(ref.dim, ref.N, ref.Np, ref.Nfaces, ref.Nfp);
     newref.r1d = copy(ref.r1d);
     newref.r = copy(ref.r);
     newref.wr1d = copy(ref.wr1d);
@@ -114,16 +157,38 @@ function build_refel(dimension, order, nfaces, nodetype)
     end
     
     # Number of points determined by order element type
-    if (dimension == 0) Np = 1; #point
-    elseif (dimension == 1)     Np = order+1; # line segment
-    elseif (dimension == 2 && nfaces == 3) Np = (Int)((order+1)*(order+2)/2); # triangle
-    elseif (dimension == 2 && nfaces == 4) Np = (Int)((order+1)*(order+1)); # quad
-    elseif (dimension == 3 && nfaces == 4) Np = (Int)((order+1)*(order+2)*(order+3)/6); # tet
-    elseif (dimension == 3 && nfaces == 6) Np = (Int)((order+1)*(order+1)*(order+1)); # hex
-    elseif (dimension == 4) Np = (Int)((order+1)*(order+2)*(order+3)*(order+4)/24); # ??
+    if (dimension == 0) 
+        Np = 1; #point
+        Nfp = []; #no faces 
+        
+    elseif (dimension == 1) # line segment
+        Np = order+1; 
+        Nfp = [1, 1]; # face points
+        
+    elseif (dimension == 2 && nfaces == 3) # triangle
+        Np = (Int)((order+1)*(order+2)/2);
+        Nfp = [order+1, order+1, order+1]; # face lines
+        
+    elseif (dimension == 2 && nfaces == 4) # quad
+        Np = (Int)((order+1)*(order+1));
+        Nfp = [order+1, order+1, order+1, order+1]; # face lines
+        
+    elseif (dimension == 3 && nfaces == 4)  # tet
+        Np = (Int)((order+1)*(order+2)*(order+3)/6);
+        M = (Int)((order+1)*(order+2)/2);
+        Nfp = [M, M, M]; # face triangles
+        
+    elseif (dimension == 3 && nfaces == 6)  # hex
+        Np = (Int)((order+1)*(order+1)*(order+1)); # hex
+        M = (Int)((order+1)*(order+1));
+        Nfp = [M, M, M, M]; # face quads
+        
+    elseif (dimension == 4)  # ??
+        Np = (Int)((order+1)*(order+2)*(order+3)*(order+4)/24); # ??
+        # TODO
     end
     
-    refel = Refel(dimension, order, Np, nfaces);
+    refel = Refel(dimension, order, Np, nfaces, Nfp);
     
     # Get nodes on the reference element
     refel_nodes!(refel, nodetype);
@@ -156,8 +221,9 @@ function build_refel(dimension, order, nfaces, nodetype)
     elseif (dimension == 3 && nfaces == 4) # tet
         #refel = build_tetrahedron_refel(refel);
         
-    else # quad or hex or ??
+    else # line, quad, hex or ??
         # Vandermonde matrix and grad,inv
+        # Values of basis functions and derivs at points
         refel.V = zeros(order+1, order+1);
         refel.gradV = zeros(order+1, order+1);
         for i=1:refel.N+1
@@ -186,9 +252,15 @@ function build_refel(dimension, order, nfaces, nodetype)
         refel.Q1d = refel.Vg*refel.invV;
         
         if dimension == 1
+            # volume
             refel.Q = refel.Q1d;
             refel.Qr = refel.Dg;
             refel.Ddr = refel.Dr;
+            #surface
+            # refel.surf_Q = [[],[]];
+            # refel.surf_Qr = [[],[]];
+            # refel.surf_Ddr = [[],[]];
+            
         elseif dimension == 2
             ident = Matrix(1.0*I,order+1,order+1);
             refel.Q = kron(refel.Q1d,refel.Q1d);

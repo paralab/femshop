@@ -6,7 +6,7 @@ include("triangle_nodes.jl");
 
 function refel_nodes!(refel, nodetype)
     if refel.dim == 0
-        # 0D is a point
+        # 0D is a point so some of this doesn't make sense
         refel.r1d = [0];
         refel.wr1d = [2];
         refel.g1d = [0];
@@ -17,7 +17,7 @@ function refel_nodes!(refel, nodetype)
         refel.wg = [2];
         
     elseif refel.dim == 1
-        # 1D has segments
+        # 1D has line segments
         if nodetype == UNIFORM
             refel.r1d = Array(-1:(2/(refel.Np-1)):1);
             refel.wr1d = ones(length(refel.r1d)) ./ length(refel.r1d);
@@ -52,6 +52,13 @@ function refel_nodes!(refel, nodetype)
         refel.wg = refel.wg1d;
         refel.r = refel.r1d;
         refel.wr = refel.wr1d;
+        
+        # surface is just points
+        refel.face2local = [[1], [refel.Np]];
+        refel.surf_r = [[-1], [1]];
+        refel.surf_wr = [[2], [2]];
+        refel.surf_g = [[-1], [1]];
+        refel.surf_wg = [[2], [2]];
         
     elseif refel.dim == 2
         # 2D has triangles and quads
@@ -103,6 +110,29 @@ function refel_nodes!(refel, nodetype)
                     refel.wg[k] = refel.wg1d[i] * refel.wg1d[j];
                 end
             end
+            
+            ### surface lines ################
+            # First get the face2local maps
+            tol = 1e-8;
+            qf1(x) = abs(x[1] + 1) < tol;
+            qf2(x) = abs(x[2] + 1) < tol;
+            qf3(x) = abs(x[1] - 1) < tol;
+            qf4(x) = abs(x[2] - 1) < tol;
+            refel.face2local = [get_face2local_map(refel.r, qf1),
+                                get_face2local_map(refel.r, qf2),
+                                get_face2local_map(refel.r, qf3),
+                                get_face2local_map(refel.r, qf4)];
+            
+            tmp = zeros(2,0);
+            refel.surf_r = [tmp, tmp, tmp, tmp];
+            refel.surf_g = [tmp, tmp, tmp, tmp];
+            
+            for fi=1:4
+                refel.surf_r[fi] = refel.r[refel.face2local[fi], :];
+                refel.surf_g[fi] = refel.g[refel.face2local[fi], :];
+            end
+            refel.surf_wr = [refel.wr1d, refel.wr1d, refel.wr1d, refel.wr1d];
+            refel.surf_wg = [refel.wg1d, refel.wg1d, refel.wg1d, refel.wg1d];
         end
         
         
@@ -157,9 +187,64 @@ function refel_nodes!(refel, nodetype)
             end
         end
         
+        ### surface quads ################
+        # First get the face2local maps
+        tol = 1e-8;
+        hf1(x) = abs(x[1] + 1) < tol;
+        hf2(x) = abs(x[2] + 1) < tol;
+        hf3(x) = abs(x[3] + 1) < tol;
+        hf4(x) = abs(x[1] - 1) < tol;
+        hf5(x) = abs(x[2] - 1) < tol;
+        hf6(x) = abs(x[3] - 1) < tol;
+        refel.face2local = [get_face2local_map(refel.r, hf1),
+                            get_face2local_map(refel.r, hf2),
+                            get_face2local_map(refel.r, hf3),
+                            get_face2local_map(refel.r, hf4),
+                            get_face2local_map(refel.r, hf5),
+                            get_face2local_map(refel.r, hf6)];
+        
+        tmp = zeros(3,0);
+        refel.surf_r = [tmp, tmp, tmp, tmp, tmp, tmp];
+        refel.surf_g = [tmp, tmp, tmp, tmp, tmp, tmp];
+        
+        for fi=1:6
+            refel.surf_r[fi] = refel.r[refel.face2local[fi], :];
+            refel.surf_g[fi] = refel.g[refel.face2local[fi], :];
+        end
+        
+        # The weights are a little more tricky
+        fwr = zeros(refel.Nfp[1]);
+        fwg = zeros(refel.Nfp[1]);
+        n1d = length(refel.r1d);
+        for j=1:n1d
+            for i=1:n1d
+                k = (j-1)*n1d + i;
+                fwr[k] = refel.wr1d[i] * refel.wr1d[j];
+                fwg[k] = refel.wg1d[i] * refel.wg1d[j];
+            end
+        end
+        refel.surf_wr = [fwr, fwr, fwr, fwr];
+        refel.surf_wg = [fwg, fwg, fwg, fwg];
+        
     else
         # Not ready
     end
+end
+
+# Determines surface nodes using a supplied function.
+# Returns a face to local map. The order of which will be omnipotent.
+function get_face2local_map(r, compare)
+    n = size(r,1);
+    map = zeros(Int,n);
+    nf = 0;
+    for i=1:n
+        if compare(r[i,:])
+            nf = nf+1;
+            map[nf] = i;
+        end
+    end
+    
+    return map[1:nf];
 end
 
 # Returns the global node locations for elemental nodes
