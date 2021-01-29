@@ -67,8 +67,10 @@ function init_dgsolver()
 end
 
 function linear_solve(var, bilinear, linear, face_bilinear, face_linear, stepper=nothing)
-    printerr("DG solver unavailable. currently updating surface quadrature.")
-    return;
+    if config.dimension > 1
+        printerr("DG solver only available for 1D. Surface quadrature under construction.")
+        return;
+    end
     
     if config.linalg_matrixfree
         return solve_matrix_free_sym(var, bilinear, linear, stepper);
@@ -243,8 +245,6 @@ function assemble(var, bilinear, linear, face_bilinear, face_linear, t=0.0, dt=0
         mass = 0;
     end
     
-    dim2face = [0,2,4,6];
-    facerefel = build_refel(refel.dim-1, refel.N, dim2face[refel.dim], config.elemental_nodes);
     vol_J = Array{Jacobian,1}(undef,nel);
     
     loop_time = Base.Libc.time();
@@ -300,39 +300,39 @@ function assemble(var, bilinear, linear, face_bilinear, face_linear, t=0.0, dt=0
         
         for fid = 1:size(grid_data.face2glb,3)
             
-            frefel = [face_refels[grid_data.faceRefelInd[1,fid]], face_refels[grid_data.faceRefelInd[2,fid]]];
+            frefelind = [grid_data.faceRefelInd[1,fid], grid_data.faceRefelInd[2,fid]]; # refel based index of face in both elements
             
-            face2glb = grid_data.face2glb[:,:,fid];
+            face2glb = grid_data.face2glb[:,:,fid]; # local to global for face
             
-            facenodes = grid_data.allnodes[:,face2glb[:,1]];      # coordinates of this face's nodes for evaluating coefficient functions
+            facenodes = grid_data.allnodes[:,face2glb[:,1]]; # coordinates of this face's nodes for evaluating coefficient functions
             
-            flocal = [grid_data.face2local[:,1,fid], grid_data.face2local[:,2,fid]];
+            flocal = [grid_data.face2local[:,1,fid], grid_data.face2local[:,2,fid]]; # local indices of face in both elements
             
-            normal = grid_data.facenorm[:,fid];
+            normal = grid_data.facenorm[:,fid]; # normal vector
             
-            faceBID = mesh_data.bdryID[fid];
+            faceBID = mesh_data.bdryID[fid]; # BID of face (0 for interior)
             
-            (fdetJ, fJ) = geometric_factors_face(frefel[1], facenodes); # compute geometric factors here for the face
+            (fdetJ, fJ) = geometric_factors_face(refel, frefelind[1], facenodes); # compute geometric factors here for the face
             #fdetJ = [1];
             #fJ = [1];
             
-            e1 = mesh_data.face2element[1,fid];
-            e2 = mesh_data.face2element[2,fid];
-            if e1==0
+            e1 = mesh_data.face2element[1,fid]; # element on side 1
+            e2 = mesh_data.face2element[2,fid]; # and 2
+            if e1==0 # boundary
                 e1=e2;
             end
-            if e2==0
+            if e2==0 # boundary
                 e2=e1;
             end
-            vol_J1 = vol_J[e1];
-            vol_J2 = vol_J[e2];
+            vol_J1 = vol_J[e1]; # volume gepmetric factors for e1
+            vol_J2 = vol_J[e2]; # and e2
             
-            loc2glb = [grid_data.loc2glb[:,e1], grid_data.loc2glb[:,e2]];
+            loc2glb = [grid_data.loc2glb[:,e1], grid_data.loc2glb[:,e2]]; # volume local to global
             
-            face_wgdetj = frefel[1].wg .* fdetJ;
+            face_wgdetj = refel.surf_wg[1] .* fdetJ;
             
-            rhsargs = (var, refel, loc2glb, fid, frefel, facenodes, flocal, face2glb, normal, faceBID, fdetJ, fJ, vol_J1, vol_J2, face_wgdetj, RHS, t, dt);
-            lhsargs = (var, refel, loc2glb, fid, frefel, facenodes, flocal, face2glb, normal, faceBID, fdetJ, fJ, vol_J1, vol_J2, face_wgdetj, LHS, t, dt);
+            rhsargs = (var, refel, loc2glb, fid, frefelind, facenodes, flocal, face2glb, normal, faceBID, fdetJ, fJ, vol_J1, vol_J2, face_wgdetj, RHS, t, dt);
+            lhsargs = (var, refel, loc2glb, fid, frefelind, facenodes, flocal, face2glb, normal, faceBID, fdetJ, fJ, vol_J1, vol_J2, face_wgdetj, LHS, t, dt);
             
             if dofs_per_node == 1
                 linchunk = face_linear.func(rhsargs);  # get the elemental linear part
@@ -611,36 +611,38 @@ function assemble_rhs_only(var, linear, face_linear, t=0.0, dt=0.0)
         
         for fid = 1:size(grid_data.face2glb,3)
             
-            frefel = [face_refels[grid_data.faceRefelInd[1,fid]], face_refels[grid_data.faceRefelInd[2,fid]]];
+            frefelind = [grid_data.faceRefelInd[1,fid], grid_data.faceRefelInd[2,fid]]; # refel based index of face in both elements
             
-            face2glb = grid_data.face2glb[:,:,fid];
+            face2glb = grid_data.face2glb[:,:,fid]; # local to global for face
             
-            facenodes = grid_data.allnodes[:,face2glb[:,1]];      # coordinates of this face's nodes for evaluating coefficient functions
+            facenodes = grid_data.allnodes[:,face2glb[:,1]]; # coordinates of this face's nodes for evaluating coefficient functions
             
-            flocal = [grid_data.face2local[:,1,fid], grid_data.face2local[:,2,fid]];
+            flocal = [grid_data.face2local[:,1,fid], grid_data.face2local[:,2,fid]]; # local indices of face in both elements
             
-            normal = grid_data.facenorm[:,fid];
+            normal = grid_data.facenorm[:,fid]; # normal vector
             
-            faceBID = mesh_data.bdryID[fid];
+            faceBID = mesh_data.bdryID[fid]; # BID of face (0 for interior)
             
-            (fdetJ, fJ) = geometric_factors_face(frefel[1], facenodes); # compute geometric factors here for the face
+            (fdetJ, fJ) = geometric_factors_face(refel, frefelind[1], facenodes); # compute geometric factors here for the face
+            #fdetJ = [1];
+            #fJ = [1];
             
-            e1 = mesh_data.face2element[1,fid];
-            e2 = mesh_data.face2element[2,fid];
-            if e1==0
+            e1 = mesh_data.face2element[1,fid]; # element on side 1
+            e2 = mesh_data.face2element[2,fid]; # and 2
+            if e1==0 # boundary
                 e1=e2;
             end
-            if e2==0
+            if e2==0 # boundary
                 e2=e1;
             end
-            vol_J1 = vol_J[e1];
-            vol_J2 = vol_J[e2];
+            vol_J1 = vol_J[e1]; # volume gepmetric factors for e1
+            vol_J2 = vol_J[e2]; # and e2
             
-            loc2glb = [grid_data.loc2glb[:,e1], grid_data.loc2glb[:,e2]];
+            loc2glb = [grid_data.loc2glb[:,e1], grid_data.loc2glb[:,e2]]; # volume local to global
             
-            face_wgdetj = frefel[1].wg .* fdetJ;
+            face_wgdetj = refel.surf_wg[1] .* fdetJ;
             
-            rhsargs = (var, refel, loc2glb, fid, frefel, facenodes, flocal, face2glb, normal, faceBID, fdetJ, fJ, vol_J1, vol_J2, face_wgdetj, RHS, t, dt);
+            rhsargs = (var, refel, loc2glb, fid, frefelind, facenodes, flocal, face2glb, normal, faceBID, fdetJ, fJ, vol_J1, vol_J2, face_wgdetj, RHS, t, dt);
             
             if dofs_per_node == 1
                 linchunk = face_linear.func(rhsargs);  # get the elemental linear part

@@ -226,6 +226,22 @@ function build_refel(dimension, order, nfaces, nodetype)
         # Values of basis functions and derivs at points
         refel.V = zeros(order+1, order+1);
         refel.gradV = zeros(order+1, order+1);
+        # Gauss versions
+        refel.Vg = zeros(order+1, order+1);
+        refel.gradVg = zeros(order+1, order+1);
+        # surface versions
+        refel.surf_V = fill!(Array{Array{Float64}}(undef, nfaces), []);
+        refel.surf_gradV = fill!(Array{Array{Float64}}(undef, nfaces), []);
+        refel.surf_Vg = fill!(Array{Array{Float64}}(undef, nfaces), []);
+        refel.surf_gradVg = fill!(Array{Array{Float64}}(undef, nfaces), []);
+        for fi=1:nfaces
+            refel.surf_V[fi] = zeros(refel.Nfp[fi], order+1);
+            refel.surf_gradV[fi] = zeros(refel.Nfp[fi], order+1);
+            refel.surf_Vg[fi] = zeros(refel.Nfp[fi], order+1);
+            refel.surf_gradVg[fi] = zeros(refel.Nfp[fi], order+1);
+        end
+        
+        # nodal versions
         for i=1:refel.N+1
             refel.V[:,i] = jacobi_polynomial(refel.r1d, 0, 0, i-1);
         end
@@ -235,8 +251,6 @@ function build_refel(dimension, order, nfaces, nodetype)
         refel.invV = inv(refel.V);
         
         # Gauss versions
-        refel.Vg = zeros(order+1, order+1);
-        refel.gradVg = zeros(order+1, order+1);
         for i=1:refel.N+1
             refel.Vg[:,i] = jacobi_polynomial(refel.g1d, 0, 0, i-1);
         end
@@ -257,9 +271,9 @@ function build_refel(dimension, order, nfaces, nodetype)
             refel.Qr = refel.Dg;
             refel.Ddr = refel.Dr;
             #surface
-            # refel.surf_Q = [[],[]];
-            # refel.surf_Qr = [[],[]];
-            # refel.surf_Ddr = [[],[]];
+            refel.surf_Q = [refel.V[[1],:] * refel.invV, refel.V[[Np],:] * refel.invV];
+            refel.surf_Qr = [refel.gradV[[1],:] * refel.invV, refel.gradV[[Np],:] * refel.invV];
+            refel.surf_Ddr = refel.surf_Qr;
             
         elseif dimension == 2
             ident = Matrix(1.0*I,order+1,order+1);

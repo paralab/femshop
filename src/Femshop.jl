@@ -145,6 +145,7 @@ function add_mesh(mesh)
         if config.solver_type == DG
             global grid_data = cg_grid_to_dg_grid(grid_data, mesh_data);
         end
+        
         log_entry("Added mesh with "*string(mesh_data.nx)*" vertices and "*string(mesh_data.nel)*" elements.");
         log_entry("Full grid has "*string(size(grid_data.allnodes,2))*" nodes.");
     else

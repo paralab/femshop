@@ -16,7 +16,7 @@ struct DG_Grid
     faceVertex2glb::Array{Int,3}    # global indices of face vertices
     face2local::Array{Int,3}        # local map for faces
     facenorm::Array{Float64,2}      # Normal vector for each face
-    faceRefelInd::Array{Int,2}      # Refel index in face_refels for each side
+    faceRefelInd::Array{Int,2}      # Index for face matching the one used by refel for each side
 end
 
 function cg_grid_to_dg_grid(cggrid, mesh)
@@ -140,8 +140,8 @@ function cg_grid_to_dg_grid(cggrid, mesh)
             end
         end
         # remove zeros from the list
-        println(nbp);
-        println(nzeros);
+        # println(nbp);
+        # println(nzeros);
         newdgbdry = zeros(Int, nbp - nzeros);
         newdgbdrynorm = zeros(dim, nbp - nzeros);
         ind = 0;
@@ -160,6 +160,8 @@ function cg_grid_to_dg_grid(cggrid, mesh)
     
 end
 
+# Determine which face of the element this is.
+# Note: currently only works for line/quad/hex
 function which_face(f2g, l2g, dim, nfp)
     # To determine face refel index, look at first two nodes
     ind = 0;
@@ -176,7 +178,7 @@ function which_face(f2g, l2g, dim, nfp)
         if f2g[1] == l2g[1]
             if f2g[2] == l2g[2]
                 # bottom
-                ind = 3;
+                ind = 2;
             else
                 # left
                 ind = 1;
@@ -184,7 +186,7 @@ function which_face(f2g, l2g, dim, nfp)
         else
             if f2g[1] == l2g[nfp]
                 # right
-                ind = 2;
+                ind = 3;
             else
                 # top
                 ind = 4;
@@ -196,10 +198,10 @@ function which_face(f2g, l2g, dim, nfp)
             if f2g[2] == l2g[2]
                 if f2g[nfp] == l2g[nfp]
                     # front
-                    ind = 5;
+                    ind = 3;
                 else
                     # bottom
-                    ind = 3;
+                    ind = 2;
                 end
             else
                 # left
@@ -212,11 +214,11 @@ function which_face(f2g, l2g, dim, nfp)
                     ind = 6;
                 else
                     # top
-                    ind = 4;
+                    ind = 5;
                 end
             else
                 # right
-                ind = 2;
+                ind = 4;
             end
         end
     end

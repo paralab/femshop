@@ -43,14 +43,14 @@ function generate_code_layer_julia_surface(symex, var, lorr)
     #########################
     
     # This is the basic info passed in "args"
-    # args = (var, fid, frefel, facenodes, face2glb, normal, faceBID, fdetJ, fJ, face_wgdetj, RHS, t, dt);
+    # args = (var, fid, frefelind, facenodes, face2glb, normal, faceBID, fdetJ, fJ, face_wgdetj, RHS, t, dt);
     code = Expr(:block);
     
     push!(code.args, :(var =        args[1]));  # list of unknown variables for this expression
     push!(code.args, :(refel =      args[2]));  # reference element for volume
     push!(code.args, :(loc2glb =    args[3]));  # loc2glb for full elements
     push!(code.args, :(fid =        args[4]));  # face index
-    push!(code.args, :(frefel =     args[5]));  # reference element for faces
+    push!(code.args, :(frefelind =     args[5]));  # reference element indices for faces
     push!(code.args, :(fnodes =     args[6]));  # global coords of face nodes 
     push!(code.args, :(flocal =     args[7]));  # local coords of face nodes within element refel
     push!(code.args, :(face2glb =   args[8]));  # Global indices of inside face nodes
@@ -67,10 +67,10 @@ function generate_code_layer_julia_surface(symex, var, lorr)
     
     # push!(code.args, :(Q1 = zeros(size(fnodes,2))));
     # push!(code.args, :(Q2 = zeros(size(fnodes,2))));
-    # Qloop = :(for i=1:size(frefel[1].Q, 2) end);
+    # Qloop = :(for i=1:size(refel.surf_Q[frefelind[1]], 2) end);
     # Qloopin = Expr(:block);
-    # push!(Qloopin.args, :(Q1 = Q1 + frefel[1].Q[:,i]));
-    # push!(Qloopin.args, :(Q2 = Q2 + frefel[2].Q[:,i]));
+    # push!(Qloopin.args, :(Q1 = Q1 + refel.surf_Q[frefelind[1]][:,i]));
+    # push!(Qloopin.args, :(Q2 = Q2 + refel.surf_Q[frefelind[2][:,i]));
     # Qloop.args[2] = Qloopin;
     # push!(code.args, Qloop);
     
@@ -162,18 +162,18 @@ function generate_code_layer_julia_surface(symex, var, lorr)
             # push!(code.args, :((RQ1_s2,RD1_s2) = build_face_deriv_matrix(refel, vol_J2, flocal[2,:])));
             # push!(code.args, :(TRQ1_s1 = RQ1_s1'));
             # push!(code.args, :(TRQ1_s2 = RQ1_s2'));
-            push!(code.args, :(RQ1_1 = frefel[1].Qr[:,flocal[1]] .* vol_J1.rx[1]));
-            push!(code.args, :(RQ2_1 = frefel[2].Qr[:,flocal[2]] .* vol_J2.rx[1]));
+            push!(code.args, :(RQ1_1 = refel.surf_Qr[frefelind[1]][:,flocal[1]] .* vol_J1.rx[1]));
+            push!(code.args, :(RQ2_1 = refel.surf_Q[frefelind[2]][:,flocal[2]] .* vol_J2.rx[1]));
             push!(code.args, :(TRQ1_1 = RQ1_1'));
             push!(code.args, :(TRQ2_1 = RQ2_1'));
         elseif config.dimension == 2
-            push!(code.args, :((RQ1_1,RQ1_2,RD1_1,RD1_2) = build_face_deriv_matrix(frefel[1], vol_J1, flocal[1,:])));
-            push!(code.args, :((RQ2_1,RQ2_2,RD2_1,RD2_2) = build_face_deriv_matrix(frefel[2], vol_J2, flocal[2,:])));
+            push!(code.args, :((RQ1_1,RQ1_2,RD1_1,RD1_2) = build_face_deriv_matrix(refel, frefelind[1], vol_J1, flocal[1,:])));
+            push!(code.args, :((RQ2_1,RQ2_2,RD2_1,RD2_2) = build_face_deriv_matrix(refel, frefelind[2], vol_J2, flocal[2,:])));
             push!(code.args, :((TRQ1_1,TRQ1_2) = (RQ1_1',RQ1_2')));
             push!(code.args, :((TRQ2_1,TRQ2_2) = (RQ2_1',RQ2_2')));
         elseif config.dimension == 3
-            push!(code.args, :((RQ1_1,RQ1_2,RQ1_3,RD1_1,RD1_2,RD1_3) = build_face_deriv_matrix(frefel[1], vol_J1, flocal[1,:])));
-            push!(code.args, :((RQ2_1,RQ2_2,RQ2_3,RD2_1,RD2_2,RD2_3) = build_face_deriv_matrix(frefel[2], vol_J2, flocal[2,:])));
+            push!(code.args, :((RQ1_1,RQ1_2,RQ1_3,RD1_1,RD1_2,RD1_3) = build_face_deriv_matrix(refel, frefel[1], vol_J1, flocal[1,:])));
+            push!(code.args, :((RQ2_1,RQ2_2,RQ2_3,RD2_1,RD2_2,RD2_3) = build_face_deriv_matrix(refel, frefel[2], vol_J2, flocal[2,:])));
             push!(code.args, :((TRQ1_1,TRQ1_2,TRQ1_3) = (RQ1_1',RQ1_2',RQ1_3')));
             push!(code.args, :((TRQ2_1,TRQ2_2,TRQ2_3) = (RQ2_1',RQ2_2',RQ2_3')));
         end
@@ -220,7 +220,7 @@ function generate_code_layer_julia_surface(symex, var, lorr)
     # end
     ######################################
     if length(needed_coef) > 0
-        cloop = :(for coefi=1:frefel.Np end);
+        cloop = :(for coefi=1:refel.Nfp[frefelind[1]] end);
         cloopin = Expr(:block);
         cargs = [:(fnodes[coefi]); 0; 0; :time];
         if config.dimension == 2
@@ -261,8 +261,8 @@ function generate_code_layer_julia_surface(symex, var, lorr)
                     tmpb = :(a.func());
                     tmpb.args[1].args[1]= tmpn;
                     append!(tmpb.args, cargs);
-                    push!(code.args, Expr(:(=), tmpc1, :(zeros(frefel.Np)))); # allocate coef_n
-                    push!(code.args, Expr(:(=), tmpc2, :(zeros(frefel.Np))));
+                    push!(code.args, Expr(:(=), tmpc1, :(zeros(refel.Nfp[frefelind[1]])))); # allocate coef_n
+                    push!(code.args, Expr(:(=), tmpc2, :(zeros(refel.Nfp[frefelind[1]]))));
                     #push!(code.args, Expr(:(=), tmpc, tmpc1));
                     push!(cloopin.args, Expr(:(=), tmpv, tmpb)); # add it to the loop
                     
@@ -405,13 +405,13 @@ function generate_code_layer_julia_surface(symex, var, lorr)
     
     #if dofsper > 1
         if lorr == RHS
-            push!(code.args, Expr(:(=), :element_vectorL, :(zeros(frefel[1].Np*$dofsper)))); # allocate vector
-            push!(code.args, Expr(:(=), :element_vectorR, :(zeros(frefel[1].Np*$dofsper))));
+            push!(code.args, Expr(:(=), :element_vectorL, :(zeros(refel.Np*$dofsper)))); # allocate vector
+            push!(code.args, Expr(:(=), :element_vectorR, :(zeros(refel.Np*$dofsper))));
         elseif dofsper > 1
-            push!(code.args, Expr(:(=), :element_matrixLL, :(zeros(frefel[1].Np*$dofsper, frefel[1].Np*$dofsper)))); # allocate matrix
-            push!(code.args, Expr(:(=), :element_matrixLR, :(zeros(frefel[1].Np*$dofsper, frefel[1].Np*$dofsper))));
-            push!(code.args, Expr(:(=), :element_matrixRL, :(zeros(frefel[1].Np*$dofsper, frefel[1].Np*$dofsper))));
-            push!(code.args, Expr(:(=), :element_matrixRR, :(zeros(frefel[1].Np*$dofsper, frefel[1].Np*$dofsper))));
+            push!(code.args, Expr(:(=), :element_matrixLL, :(zeros(refel.Np*$dofsper, refel.Np*$dofsper)))); # allocate matrix
+            push!(code.args, Expr(:(=), :element_matrixLR, :(zeros(refel.Np*$dofsper, refel.Np*$dofsper))));
+            push!(code.args, Expr(:(=), :element_matrixRL, :(zeros(refel.Np*$dofsper, refel.Np*$dofsper))));
+            push!(code.args, Expr(:(=), :element_matrixRR, :(zeros(refel.Np*$dofsper, refel.Np*$dofsper))));
         end
     #end
     
@@ -689,10 +689,10 @@ function generate_code_layer_julia_surface(symex, var, lorr)
         
     end
     if lorr == LHS
-        if (result[1] === nothing || result[1] == 0) result[1] = :(zeros(frefel.Np*$dofsper,frefel.Np*$dofsper)); end
-        if (result[2] === nothing || result[2] == 0) result[2] = :(zeros(frefel.Np*$dofsper,frefel.Np*$dofsper)); end
-        if (result[3] === nothing || result[3] == 0) result[3] = :(zeros(frefel.Np*$dofsper,frefel.Np*$dofsper)); end
-        if (result[4] === nothing || result[4] == 0) result[4] = :(zeros(frefel.Np*$dofsper,frefel.Np*$dofsper)); end
+        if (result[1] === nothing || result[1] == 0) result[1] = :(zeros(refel.Nfp[frefelind[1]]*$dofsper,refel.Nfp[frefelind[1]]*$dofsper)); end
+        if (result[2] === nothing || result[2] == 0) result[2] = :(zeros(refel.Nfp[frefelind[1]]*$dofsper,refel.Nfp[frefelind[1]]*$dofsper)); end
+        if (result[3] === nothing || result[3] == 0) result[3] = :(zeros(refel.Nfp[frefelind[1]]*$dofsper,refel.Nfp[frefelind[1]]*$dofsper)); end
+        if (result[4] === nothing || result[4] == 0) result[4] = :(zeros(refel.Nfp[frefelind[1]]*$dofsper,refel.Nfp[frefelind[1]]*$dofsper)); end
         
         r1 = result[1];
         r2 = result[2];
@@ -700,8 +700,8 @@ function generate_code_layer_julia_surface(symex, var, lorr)
         r4 = result[4];
         finalresult = :([$r1, $r2, $r3, $r4]);
     else
-        if (result[1] === nothing || result[1] == 0) result[1] = :(zeros(frefel.Np*$dofsper)); end
-        if (result[4] === nothing || result[4] == 0) result[4] = :(zeros(frefel.Np*$dofsper)); end
+        if (result[1] === nothing || result[1] == 0) result[1] = :(zeros(refel.Nfp[frefelind[1]]*$dofsper)); end
+        if (result[4] === nothing || result[4] == 0) result[4] = :(zeros(refel.Nfp[frefelind[1]]*$dofsper)); end
         
         r1 = result[1];
         r4 = result[4];
@@ -831,8 +831,8 @@ function process_surface_term_julia(sterm, var, lorr, offset_ind=0)
                             test_parts[3] = :EMPTY;
                             test_parts[4] = :EMPTY;
                         else
-                            test_parts[1] = :(frefel[1].Q');
-                            test_parts[2] = :(frefel[1].Q');
+                            test_parts[1] = :(refel.surf_Q[frefelind[1]]');
+                            test_parts[2] = :(refel.surf_Q[frefelind[1]]');
                             test_parts[3] = :EMPTY;
                             test_parts[4] = :EMPTY;
                         end
@@ -849,8 +849,8 @@ function process_surface_term_julia(sterm, var, lorr, offset_ind=0)
                         else
                             test_parts[1] = :EMPTY;
                             test_parts[2] = :EMPTY;
-                            test_parts[3] = :(frefel[2].Q');
-                            test_parts[4] = :(frefel[2].Q');
+                            test_parts[3] = :(refel.surf_Q[frefelind[2]]');
+                            test_parts[4] = :(refel.surf_Q[frefelind[2]]');
                         end
                         
                     elseif occursin("D", mods[1])
@@ -863,10 +863,10 @@ function process_surface_term_julia(sterm, var, lorr, offset_ind=0)
                     end
                 else
                     # no mods
-                    test_parts[1] = :(frefel[1].Q');
-                    test_parts[2] = :(frefel[1].Q');
-                    test_parts[3] = :(frefel[2].Q');
-                    test_parts[4] = :(frefel[2].Q');
+                    test_parts[1] = :(refel.surf_Q[frefelind[1]]');
+                    test_parts[2] = :(refel.surf_Q[frefelind[1]]');
+                    test_parts[3] = :(refel.surf_Q[frefelind[2]]');
+                    test_parts[4] = :(refel.surf_Q[frefelind[2]]');
                 end
             elseif is_unknown_var(v, var) && lorr == LHS # If rhs, treat as a coefficient
                 # if !(trial_parts[1] === nothing)
@@ -898,9 +898,9 @@ function process_surface_term_julia(sterm, var, lorr, offset_ind=0)
                             trial_parts[4] = :EMPTY;
                             
                         else
-                            trial_parts[1] = :(frefel[1].Q);
+                            trial_parts[1] = :(refel.surf_Q[frefelind[1]]);
                             trial_parts[2] = :EMPTY;
-                            trial_parts[3] = :(frefel[1].Q);
+                            trial_parts[3] = :(refel.surf_Q[frefelind[1]]);
                             trial_parts[4] = :EMPTY;
                         end
                         
@@ -916,9 +916,9 @@ function process_surface_term_julia(sterm, var, lorr, offset_ind=0)
                             
                         else
                             trial_parts[1] = :EMPTY;
-                            trial_parts[2] = :(frefel[2].Q);
+                            trial_parts[2] = :(refel.surf_Q[frefelind[2]]);
                             trial_parts[3] = :EMPTY;
-                            trial_parts[4] = :(frefel[2].Q);
+                            trial_parts[4] = :(refel.surf_Q[frefelind[2]]);
                         end
                         
                     elseif occursin("D", mods[1])
@@ -931,10 +931,10 @@ function process_surface_term_julia(sterm, var, lorr, offset_ind=0)
                     end
                 else
                     # no mods
-                    trial_parts[1] = :(frefel[1].Q);
+                    trial_parts[1] = :(refel.surf_Q[frefelind[1]]);
                     trial_parts[2] = :EMPTY;
                     trial_parts[3] = :EMPTY;
-                    trial_parts[4] = :(frefel[2].Q);
+                    trial_parts[4] = :(refel.surf_Q[frefelind[2]]);
                 end
                 
             else # coefficients
@@ -1095,9 +1095,9 @@ function process_surface_term_julia(sterm, var, lorr, offset_ind=0)
         # If there's no trial part, need to do this
         if trial_parts[tind] === nothing
             if tind == 1 || tind == 3
-                trial_parts[tind] = :(frefel[1].Q);
+                trial_parts[tind] = :(refel.surf_Q[frefelind[1]]);
             else
-                trial_parts[tind] = :(frefel[2].Q);
+                trial_parts[tind] = :(refel.surf_Q[frefelind[2]]);
             end
         end
         

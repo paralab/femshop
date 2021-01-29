@@ -84,7 +84,7 @@ function geometric_factors(refel, pts)
     return (J,D);
 end
 
-function geometric_factors_face(refel, pts)
+function geometric_factors_face(refel, face, pts)
     # pts = face node global coords
     # J = detJ
     # D = Jacobian
@@ -173,23 +173,23 @@ function build_deriv_matrix(refel, J)
 end
 
 # Build the regular deriv matrices, then extract the relevant face parts
-function build_face_deriv_matrix(refel, J, flocal)
+function build_face_deriv_matrix(refel, face, J, flocal)
     if refel.dim == 1
         (RQ1,RD1) = build_deriv_matrix(refel, J);
         
         return (RQ1[flocal,:],RD1[flocal,:]);
         
     elseif refel.dim == 2
-        RQ1 = J.rx[1]*refel.Qr + J.sx[1]*refel.Qs;
-        RQ2 = J.ry[1]*refel.Qr + J.sy[1]*refel.Qs;
+        RQ1 = J.rx[1]*refel.surf_Qr[face] + J.sx[1]*refel.surf_Qs[face];
+        RQ2 = J.ry[1]*refel.surf_Qr[face] + J.sy[1]*refel.surf_Qs[face];
         RD1 = 0;
         RD2 = 0; #TODO derivative matrices for faces
         return (RQ1, RQ2, RD1, RD2);
         
     elseif refel.dim == 3
-        RQ1 = J.rx[1]*refel.Qr + J.sx[1]*refel.Qs + J.tx[1]*refel.Qt;
-        RQ2 = J.ry[1]*refel.Qr + J.sy[1]*refel.Qs + J.ty[1]*refel.Qt;
-        RQ3 = J.ry[1]*refel.Qr + J.sy[1]*refel.Qs + J.tz[1]*refel.Qt;
+        RQ1 = J.rx[1]*refel.surf_Qr[face] + J.sx[1]*refel.surf_Qs[face] + J.tx[1]*refel.surf_Qt[face];
+        RQ2 = J.ry[1]*refel.surf_Qr[face] + J.sy[1]*refel.surf_Qs[face] + J.ty[1]*refel.surf_Qt[face];
+        RQ3 = J.ry[1]*refel.surf_Qr[face] + J.sy[1]*refel.surf_Qs[face] + J.tz[1]*refel.surf_Qt[face];
         RD1 = 0;
         RD2 = 0; #TODO derivative matrices for faces
         RD3 = 0;

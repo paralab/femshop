@@ -97,7 +97,6 @@ function grid_from_mesh_1d(mesh)
         end
     end
     
-    
     return (refel, Grid(x, bdry, bdryfc, bdrynorm, bids, loc2glb, glbvertex, f2glb, fvtx2glb));
 end
 
