@@ -52,18 +52,18 @@ function generate_code_layer_julia_surface(symex, var, lorr)
     push!(code.args, :(fid =        args[4]));  # face index
     push!(code.args, :(frefelind =     args[5]));  # reference element indices for faces
     push!(code.args, :(fnodes =     args[6]));  # global coords of face nodes 
-    push!(code.args, :(flocal =     args[7]));  # local coords of face nodes within element refel
-    push!(code.args, :(face2glb =   args[8]));  # Global indices of inside face nodes
-    push!(code.args, :(normal =     args[9]));  # Global indices of outside face nodes
-    push!(code.args, :(faceBID =    args[10])); # Coordinates of face nodes
-    push!(code.args, :(face_detJ =  args[11])); # geometric factor for face
-    push!(code.args, :(face_J =     args[12])); # geometric factor for face
-    push!(code.args, :(vol_J1 =     args[13])); # geometric factor for el1
-    push!(code.args, :(vol_J2 =     args[14])); # geometric factor for el2
-    push!(code.args, :(face_wgdetj =args[15])); # quadrature weights*detJ
-    push!(code.args, :(borl =       args[16])); # bilinear or linear? lhs or rhs?
-    push!(code.args, :(time =       args[17])); # time for time dependent coefficients
-    push!(code.args, :(dt =         args[18])); # dt for time dependent problems
+    #push!(code.args, :(flocal =     args[7]));  # local coords of face nodes within element refel
+    push!(code.args, :(face2glb =   args[7]));  # Global indices of inside face nodes
+    push!(code.args, :(normal =     args[8]));  # Global indices of outside face nodes
+    push!(code.args, :(faceBID =    args[9])); # Coordinates of face nodes
+    push!(code.args, :(face_detJ =  args[10])); # geometric factor for face
+    push!(code.args, :(face_J =     args[11])); # geometric factor for face
+    push!(code.args, :(vol_J1 =     args[12])); # geometric factor for el1
+    push!(code.args, :(vol_J2 =     args[13])); # geometric factor for el2
+    push!(code.args, :(face_wgdetj =args[14])); # quadrature weights*detJ
+    push!(code.args, :(borl =       args[15])); # bilinear or linear? lhs or rhs?
+    push!(code.args, :(time =       args[16])); # time for time dependent coefficients
+    push!(code.args, :(dt =         args[17])); # dt for time dependent problems
     
     # push!(code.args, :(Q1 = zeros(size(fnodes,2))));
     # push!(code.args, :(Q2 = zeros(size(fnodes,2))));
@@ -158,22 +158,18 @@ function generate_code_layer_julia_surface(symex, var, lorr)
     # If derivatives are needed, prepare the appropriate matrices
     if need_derivative
         if config.dimension == 1
-            # push!(code.args, :((RQ1_s1,RD1_s1) = build_face_deriv_matrix(refel, vol_J1, flocal[1,:])));
-            # push!(code.args, :((RQ1_s2,RD1_s2) = build_face_deriv_matrix(refel, vol_J2, flocal[2,:])));
-            # push!(code.args, :(TRQ1_s1 = RQ1_s1'));
-            # push!(code.args, :(TRQ1_s2 = RQ1_s2'));
-            push!(code.args, :(RQ1_1 = refel.surf_Qr[frefelind[1]][:,flocal[1]] .* vol_J1.rx[1]));
-            push!(code.args, :(RQ2_1 = refel.surf_Q[frefelind[2]][:,flocal[2]] .* vol_J2.rx[1]));
+            push!(code.args, :(RQ1_1 = refel.surf_Qr[frefelind[1]] .* vol_J1.rx[1]));
+            push!(code.args, :(RQ2_1 = refel.surf_Qr[frefelind[2]] .* vol_J2.rx[1]));
             push!(code.args, :(TRQ1_1 = RQ1_1'));
             push!(code.args, :(TRQ2_1 = RQ2_1'));
         elseif config.dimension == 2
-            push!(code.args, :((RQ1_1,RQ1_2,RD1_1,RD1_2) = build_face_deriv_matrix(refel, frefelind[1], vol_J1, flocal[1,:])));
-            push!(code.args, :((RQ2_1,RQ2_2,RD2_1,RD2_2) = build_face_deriv_matrix(refel, frefelind[2], vol_J2, flocal[2,:])));
+            push!(code.args, :((RQ1_1,RQ1_2,RD1_1,RD1_2) = build_face_deriv_matrix(refel, frefelind[1], vol_J1)));
+            push!(code.args, :((RQ2_1,RQ2_2,RD2_1,RD2_2) = build_face_deriv_matrix(refel, frefelind[2], vol_J2)));
             push!(code.args, :((TRQ1_1,TRQ1_2) = (RQ1_1',RQ1_2')));
             push!(code.args, :((TRQ2_1,TRQ2_2) = (RQ2_1',RQ2_2')));
         elseif config.dimension == 3
-            push!(code.args, :((RQ1_1,RQ1_2,RQ1_3,RD1_1,RD1_2,RD1_3) = build_face_deriv_matrix(refel, frefel[1], vol_J1, flocal[1,:])));
-            push!(code.args, :((RQ2_1,RQ2_2,RQ2_3,RD2_1,RD2_2,RD2_3) = build_face_deriv_matrix(refel, frefel[2], vol_J2, flocal[2,:])));
+            push!(code.args, :((RQ1_1,RQ1_2,RQ1_3,RD1_1,RD1_2,RD1_3) = build_face_deriv_matrix(refel, frefel[1], vol_J1)));
+            push!(code.args, :((RQ2_1,RQ2_2,RQ2_3,RD2_1,RD2_2,RD2_3) = build_face_deriv_matrix(refel, frefel[2], vol_J2)));
             push!(code.args, :((TRQ1_1,TRQ1_2,TRQ1_3) = (RQ1_1',RQ1_2',RQ1_3')));
             push!(code.args, :((TRQ2_1,TRQ2_2,TRQ2_3) = (RQ2_1',RQ2_2',RQ2_3')));
         end
@@ -816,6 +812,8 @@ function process_surface_term_julia(sterm, var, lorr, offset_ind=0)
             
         else
             (index, v, mods) = extract_symbols(factors[i]);
+            
+            #println("factor: "*string(factors[i])*", mods: "*string(mods));
             
             if is_test_func(v)
                 test_component = index; # the vector index
