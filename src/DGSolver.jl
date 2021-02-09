@@ -67,8 +67,8 @@ function init_dgsolver()
 end
 
 function linear_solve(var, bilinear, linear, face_bilinear, face_linear, stepper=nothing)
-    if config.dimension > 1
-        printerr("DG solver only available for 1D. Surface quadrature under construction.")
+    if config.dimension > 2
+        printerr("DG solver only available for 1D and 2D. Surface quadrature under construction.")
         return;
     end
     
@@ -306,7 +306,7 @@ function assemble(var, bilinear, linear, face_bilinear, face_linear, t=0.0, dt=0
             
             facenodes = grid_data.allnodes[:,face2glb[:,1]]; # coordinates of this face's nodes for evaluating coefficient functions
             
-            flocal = [grid_data.face2local[:,1,fid], grid_data.face2local[:,2,fid]]; # local indices of face in both elements
+            flocal = [refel.face2local[frefelind[1]], refel.face2local[frefelind[2]]]; # local indices of face in both elements
             
             normal = grid_data.facenorm[:,fid]; # normal vector
             
@@ -331,8 +331,8 @@ function assemble(var, bilinear, linear, face_bilinear, face_linear, t=0.0, dt=0
             
             face_wgdetj = refel.surf_wg[1] .* fdetJ;
             
-            rhsargs = (var, refel, loc2glb, fid, frefelind, facenodes, flocal, face2glb, normal, faceBID, fdetJ, fJ, vol_J1, vol_J2, face_wgdetj, RHS, t, dt);
-            lhsargs = (var, refel, loc2glb, fid, frefelind, facenodes, flocal, face2glb, normal, faceBID, fdetJ, fJ, vol_J1, vol_J2, face_wgdetj, LHS, t, dt);
+            rhsargs = (var, refel, loc2glb, fid, frefelind, facenodes, face2glb, normal, faceBID, fdetJ, fJ, vol_J1, vol_J2, face_wgdetj, RHS, t, dt);
+            lhsargs = (var, refel, loc2glb, fid, frefelind, facenodes, face2glb, normal, faceBID, fdetJ, fJ, vol_J1, vol_J2, face_wgdetj, LHS, t, dt);
             
             if dofs_per_node == 1
                 linchunk = face_linear.func(rhsargs);  # get the elemental linear part
@@ -617,7 +617,7 @@ function assemble_rhs_only(var, linear, face_linear, t=0.0, dt=0.0)
             
             facenodes = grid_data.allnodes[:,face2glb[:,1]]; # coordinates of this face's nodes for evaluating coefficient functions
             
-            flocal = [grid_data.face2local[:,1,fid], grid_data.face2local[:,2,fid]]; # local indices of face in both elements
+            flocal = [refel.face2local[frefelind[1]], refel.face2local[frefelind[2]]]; # local indices of face in both elements
             
             normal = grid_data.facenorm[:,fid]; # normal vector
             
@@ -642,7 +642,8 @@ function assemble_rhs_only(var, linear, face_linear, t=0.0, dt=0.0)
             
             face_wgdetj = refel.surf_wg[1] .* fdetJ;
             
-            rhsargs = (var, refel, loc2glb, fid, frefelind, facenodes, flocal, face2glb, normal, faceBID, fdetJ, fJ, vol_J1, vol_J2, face_wgdetj, RHS, t, dt);
+            rhsargs = (var, refel, loc2glb, fid, frefelind, facenodes, face2glb, normal, faceBID, fdetJ, fJ, vol_J1, vol_J2, face_wgdetj, RHS, t, dt);
+            lhsargs = (var, refel, loc2glb, fid, frefelind, facenodes, face2glb, normal, faceBID, fdetJ, fJ, vol_J1, vol_J2, face_wgdetj, LHS, t, dt);
             
             if dofs_per_node == 1
                 linchunk = face_linear.func(rhsargs);  # get the elemental linear part

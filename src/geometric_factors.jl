@@ -173,11 +173,12 @@ function build_deriv_matrix(refel, J)
 end
 
 # Build the regular deriv matrices, then extract the relevant face parts
-function build_face_deriv_matrix(refel, face, J, flocal)
+function build_face_deriv_matrix(refel, face, J)
     if refel.dim == 1
-        (RQ1,RD1) = build_deriv_matrix(refel, J);
+        RQ1 = J.rx[1]*refel.surf_Qr[face];
+        RD1 = J.rx[1]*refel.surf_Ddr[face];
         
-        return (RQ1[flocal,:],RD1[flocal,:]);
+        return (RQ1,RD1);
         
     elseif refel.dim == 2
         RQ1 = J.rx[1]*refel.surf_Qr[face] + J.sx[1]*refel.surf_Qs[face];
