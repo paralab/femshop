@@ -17,7 +17,7 @@ function jacobi_polynomial(x, alpha::Int, beta::Int, N::Int)
         return PL[1,:];
     end
     gamma1 = (alpha+1)*(beta+1)/(alpha+beta+3) * gamma0;
-    PL[2,:] .= ((alpha+beta+2)/(2*sqrt(gamma1))) .* x .+ (alpha-beta)/(2*sqrt(gamma1));
+    PL[2,:] = ((alpha+beta+2)/(2*sqrt(gamma1))) .* x .* ones(length(x)) .+ (alpha-beta)/(2*sqrt(gamma1));
     if N==1
         return PL[2,:];
     end
