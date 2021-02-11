@@ -144,7 +144,10 @@ function read_msh_v4(file)
                 while !occursin("\$EndNodes", line) && !eof(file)
                     # process entity blocks 
                     # The first line has entity info. 
-                    entnx = parse(Int, split(line, " ", keepempty=false)[4]);
+                    entinfo = split(line, " ", keepempty=false);
+                    entdim = parse(Int, entinfo[1]);
+                    parametric = parse(Int, entinfo[3]);
+                    entnx = parse(Int, entinfo[4]);
                     # Node indices
                     for ni=1:entnx
                         line = readline(file);
@@ -155,10 +158,16 @@ function read_msh_v4(file)
                     for ni=1:entnx
                         line = readline(file);
                         vals = split(line, " ", keepempty=false);
-                        indices[i-1 + ni] = parse(Int, vals[1]);
                         nodes[i-1 + ni,1] = parse(Float64, vals[1]);
                         nodes[i-1 + ni,2] = parse(Float64, vals[2]);
                         nodes[i-1 + ni,3] = parse(Float64, vals[3]);
+                    end
+                    # Parametric (ignore)
+                    if parametric > 0
+                        printerr("Paremetric entity found in mesh file. Ignoring parameters.")
+                        for ni=1:entdim
+                            line = readline(file);
+                        end
                     end
                     i += entnx;
                     line = readline(file);
@@ -189,22 +198,40 @@ function read_msh_v4(file)
                     # Process entity blocks
                     # The first line has entity info. 
                     vals = split(line, " ", keepempty=false);
-                    entnel = parse(Int, vals[4]);
+                    entdim = parse(Int, vals[3]);
                     enttype = parse(Int, vals[3]);
-                    entnv = etypetonv[etypes[i]];
-                    # read element info
-                    for ei=1:entnel
-                        line = readline(file);
-                        etypes[i-1 + ei] = enttype;
-                        nv[i-1 + ei] = entnv;
-                        for j=1:entnv
-                            elements[j, i-1 + ei] = parse(Int, vals[1 + j]);
+                    entnel = parse(Int, vals[4]);
+                    
+                    # Ignore elements with lower dimension (faces, points etc.)
+                    if entdim == config.dimension
+                        # read element info
+                        for ei=1:entnel
+                            line = readline(file);
+                            vals = split(line, " ", keepempty=false);
+                            etypes[i-1 + ei] = enttype;
+                            entnv = etypetonv[enttype];
+                            nv[i-1 + ei] = entnv;
+                            for j=1:entnv
+                                elements[j, i-1 + ei] = parse(Int, vals[1 + j]);
+                            end
                         end
+                        
+                        i += entnel;
+                        line = readline(file);
+                    else
+                        for ei=1:entnel
+                            line = readline(file); # skip lines
+                        end
+                        line = readline(file);
                     end
                     
-                    i += entnel;
-                    line = readline(file);
                 end
+                
+                # adjust nel to remove unwanted elements
+                nel = i-1;
+                elements = elements[:,1:nel];
+                etypes = etypes[1:nel];
+                nv = nv[1:nel];
                 
                 elements_done = true;
             end
