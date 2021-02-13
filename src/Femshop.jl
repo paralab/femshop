@@ -150,8 +150,19 @@ function add_mesh(mesh)
         log_entry("Full grid has "*string(size(grid_data.allnodes,2))*" nodes.");
     else
         global mesh_data = mesh;
-        printerr("Warning: mesh is built, but grid and refel have not yet. see add_mesh() in Femshop.jl");
-        log_entry("Added mesh with "*string(mesh_data.nx)*" vertices and "*string(mesh_data.nel)*" elements.");
+        global refel;
+        global grid_data;
+        if config.dimension < 3
+            (refel, grid_data) = grid_from_mesh(mesh_data);
+            
+            log_entry("Added mesh with "*string(mesh_data.nx)*" vertices and "*string(mesh_data.nel)*" elements.");
+            log_entry("Full grid has "*string(size(grid_data.allnodes,2))*" nodes.");
+            
+        else
+            printerr("Warning: mesh is built, but grid and refel are not. see add_mesh() in Femshop.jl");
+            log_entry("Added mesh with "*string(mesh_data.nx)*" vertices and "*string(mesh_data.nel)*" elements.");
+        end
+        
     end
     # set elemental loop ordering
     global elemental_order = 1:mesh_data.nel;
@@ -162,7 +173,7 @@ end
 
 function output_mesh(file, format)
     write_mesh(file, format, mesh_data);
-    log_entry("Wrote mesh data to file: "*file*".msh");
+    log_entry("Wrote mesh data to file.");
 end
 
 function add_test_function(v, type)
