@@ -193,8 +193,8 @@ function simple_quad_mesh(nxy, bn, interval)
             
             el[1,ei] = i + (j-1)*nx;
             el[2,ei] = i + (j-1)*nx + 1;
-            el[3,ei] = i + (j)*nx;
-            el[4,ei] = i + (j)*nx + 1;
+            el[3,ei] = i + (j)*nx + 1;
+            el[4,ei] = i + (j)*nx;
             
             # face2node, face2element, element2face, normals
             f1 = 2*(ei-1)+1 + (j-1); # left face index
@@ -203,13 +203,13 @@ function simple_quad_mesh(nxy, bn, interval)
             f4 = j==(ny-1) ? Nf-(nx-1)+i : j*2*(nx-1) + j + i*2; # top
             
             f2n[1,f1] = el[1,ei];
-            f2n[2,f1] = el[3,ei];
+            f2n[2,f1] = el[4,ei];
             f2n[1,f2] = el[1,ei];
             f2n[2,f2] = el[2,ei];
             f2n[1,f3] = el[2,ei];
-            f2n[2,f3] = el[4,ei];
-            f2n[1,f4] = el[3,ei];
-            f2n[2,f4] = el[4,ei];
+            f2n[2,f3] = el[3,ei];
+            f2n[1,f4] = el[4,ei];
+            f2n[2,f4] = el[3,ei];
             
             f2e[2,f1] = ei;
             f2e[2,f2] = ei;

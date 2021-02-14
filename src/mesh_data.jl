@@ -96,10 +96,10 @@ function build_faces(nel, elements, etypes)
             e2face[3,ei] = Nfaces+3;
             Nfaces += 3;
         elseif etypes[ei] == 3 # quad
-            face2v[:,Nfaces+1] = elements[1:2, ei];
-            face2v[:,Nfaces+2] = elements[2:3, ei];
-            face2v[:,Nfaces+3] = elements[3:4, ei];
-            face2v[:,Nfaces+4] = elements[[4,1], ei];
+            face2v[:,Nfaces+1] = elements[[4,1], ei];
+            face2v[:,Nfaces+2] = elements[1:2, ei];
+            face2v[:,Nfaces+3] = elements[2:3, ei];
+            face2v[:,Nfaces+4] = elements[[4,3], ei];
             face2e[1,Nfaces+1] = ei; #
             face2e[1,Nfaces+2] = ei; #
             face2e[1,Nfaces+3] = ei; #
@@ -180,46 +180,71 @@ function build_faces(nel, elements, etypes)
         end
     end
     
+    # println("before:");
+    # println(face2e)
+    # println(e2face)
+    
     # Remove duplicates
     # This is slow. Checks each face against other faces
-    matched = zeros(Bool,Nfaces);
-    Ncuts = 0;
-    for fi=1:Nfaces
-        if !matched[fi]
-            myinds = face2v[:,fi];
-            for fj=(fi+1):Nfaces
-                if !matched[fj]
-                    inds = face2v[:,fj];
-                    if shared_face(myinds, inds)
-                        matched[fj] = true; # This one will be eliminated
-                        Ncuts = Ncuts + 1;
-                        
-                        face2e[2,fi] = face2e[1,fj]; # set the element on side 2
-                        for fk=1:length(e2face[:,face2e[2,fi]])
-                            if e2face[fk,face2e[2,fi]] == fj
-                                e2face[fk,face2e[2,fi]] = fi; # set this face in e2face
-                            end
-                        end
-                        
-                        break; # skip to the next fi
-                    end #if shared
-                end #if fj matched
-            end #for fj
-        end #if fi matched
-    end #for fi
-    
-    newface2v = zeros(Int, Nfp, Nfaces-Ncuts);
-    newface2e = zeros(Int, 2, Nfaces-Ncuts);
-    tmpind = 1;
-    for fi=1:Nfaces
-        if !matched[fi]
-            newface2v[:,tmpind] = face2v[:,fi];
-            newface2e[:,tmpind] = face2e[:,fi];
-            tmpind = tmpind+1;
+    newface2v = zeros(Int, Nfp, Nfaces);
+    newface2e = zeros(Int, 2, Nfaces);
+    newe2face = zeros(Int, NfacesPerElement, nel);
+    newface2v[:,1] = face2v[:,1];
+    newface2e[:,1] = face2e[:,1];
+    for fk=1:length(e2face[:,face2e[1,1]])
+        if e2face[fk,face2e[1,1]] == 1
+            newe2face[fk,face2e[1,1]] = 1;
         end
     end
-    face2v = newface2v;
-    face2e = newface2e;
+    
+    next_ind = 2;
+    remove_count = 0;
+    found = false;
+    for fi=2:Nfaces
+        found = false;
+        removeinds = face2v[:,fi];
+        for fj=1:next_ind-1
+            keepinds = newface2v[:,fj];
+            if shared_face(keepinds, removeinds) # fi is a duplicate. 
+                #newface2e[1,fj] = face2e[1,fj];
+                newface2e[2,fj] = face2e[1,fi];
+                for fk=1:length(e2face[:,face2e[1,fi]])
+                    # if e2face[fk,newface2e[1,fj]] == fj
+                    #     newe2face[fk,newface2e[1,fj]] = fj;
+                    # end
+                    if e2face[fk,face2e[1,fi]] == fi
+                        newe2face[fk,face2e[1,fi]] = fj;
+                    end
+                end
+                
+                remove_count += 1;
+                found = true;
+                break;
+            end
+        end
+        if !found # fi wasn't a duplicate. give it a new index.
+            newface2e[1,next_ind] = face2e[1,fi];
+            newface2e[2,next_ind] = 0;
+            newface2v[:,next_ind] = face2v[:,fi];
+            for fk=1:length(e2face[:,face2e[1,fi]])
+                if e2face[fk,face2e[1,fi]] == fi
+                    newe2face[fk,face2e[1,fi]] = next_ind;
+                end
+            end
+            
+            next_ind += 1;
+        end
+    end
+    
+    # cut off the excess
+    remaining = Nfaces-remove_count;
+    face2e = newface2e[:,1:remaining];
+    face2v = newface2v[:,1:remaining];
+    e2face = newe2face;
+    
+    # println("after:");
+    # println(face2e)
+    # println(e2face)
     
     return (face2v, face2e, e2face);
 end

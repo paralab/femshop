@@ -14,9 +14,16 @@ function write_mesh_MSHv2(file, mesh::MeshData)
     # Write the nodes
     println(file, "\$Nodes");
     println(file, string(mesh.nx));
+    tmp = [0.0,0.0,0.0];
     for i=1:mesh.nx
-        println(file, string(mesh.indices[i])*" "*string(mesh.nodes[i,1])*
-                " "*string(mesh.nodes[i,2])*" "*string(mesh.nodes[i,3]));
+        if config.dimension == 1
+            tmp[1] = mesh.nodes[1,i];
+        elseif config.dimension == 2
+            tmp[1:2] = mesh.nodes[:,i];
+        else
+            tmp = mesh.nodes[:,i];
+        end
+        println(file, string(mesh.indices[i])*" "*string(tmp[1])*" "*string(tmp[2])*" "*string(tmp[3]));
     end
     println(file, "\$EndNodes");
     
@@ -26,7 +33,7 @@ function write_mesh_MSHv2(file, mesh::MeshData)
     for i=1:mesh.nel
         line = string(i)*" "*string(mesh.etypes[i])*" 0 ";
         for j=1:mesh.nv[i]
-            line = line*" "*string(mesh.elements[i,j]);
+            line = line*" "*string(mesh.elements[j,i]);
         end
         println(file, line);
     end

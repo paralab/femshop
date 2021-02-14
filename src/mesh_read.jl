@@ -55,16 +55,16 @@ function read_msh_v2(file)
             nx = parse(Int, split(line, " ", keepempty=false)[1]);
             if nx > 0
                 # parse each node's coordinates
-                nodes = zeros(nx, 3);
+                nodes = zeros(3, nx);
                 indices = zeros(Int, nx);
                 i = 1;
                 line = readline(file);
                 while !occursin("\$EndNodes", line) && !eof(file)
                     vals = split(line, " ", keepempty=false);
                     indices[i] = parse(Int, vals[1]);
-                    nodes[i,1] = parse(Float64, vals[2]);
-                    nodes[i,2] = parse(Float64, vals[3]);
-                    nodes[i,3] = parse(Float64, vals[4]);
+                    nodes[1,i] = parse(Float64, vals[2]);
+                    nodes[2,i] = parse(Float64, vals[3]);
+                    nodes[3,i] = parse(Float64, vals[4]);
                     i += 1;
                     line = readline(file);
                 end
@@ -98,6 +98,7 @@ function read_msh_v2(file)
             end
         end
     end
+    nodes = nodes[1:config.dimension, :];
     
     return MeshData(nx, nodes, indices, nel, elements, etypes, nv);
 end
@@ -137,7 +138,7 @@ function read_msh_v4(file)
             nx = parse(Int, split(line, " ", keepempty=false)[2]);
             if nx > 0
                 # parse node info
-                nodes = zeros(nx, 3);
+                nodes = zeros(3,nx);
                 indices = zeros(Int, nx);
                 i = 1;
                 line = readline(file);
@@ -158,9 +159,9 @@ function read_msh_v4(file)
                     for ni=1:entnx
                         line = readline(file);
                         vals = split(line, " ", keepempty=false);
-                        nodes[i-1 + ni,1] = parse(Float64, vals[1]);
-                        nodes[i-1 + ni,2] = parse(Float64, vals[2]);
-                        nodes[i-1 + ni,3] = parse(Float64, vals[3]);
+                        nodes[1,i-1 + ni] = parse(Float64, vals[1]);
+                        nodes[2,i-1 + ni] = parse(Float64, vals[2]);
+                        nodes[3,i-1 + ni] = parse(Float64, vals[3]);
                     end
                     # Parametric (ignore)
                     if parametric > 0
@@ -237,6 +238,7 @@ function read_msh_v4(file)
             end
         end
     end
+    nodes = nodes[1:config.dimension, :];
     
     return MeshData(nx, nodes, indices, nel, elements, etypes, nv);
 end

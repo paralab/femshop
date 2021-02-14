@@ -330,7 +330,7 @@ function assemble(var, bilinear, linear, face_bilinear, face_linear, t=0.0, dt=0
             loc2glb = [grid_data.loc2glb[:,e1], grid_data.loc2glb[:,e2]]; # volume local to global
             
             face_wgdetj = refel.surf_wg[1] .* fdetJ;
-            println("face "*string(fid)*" fdetJ "*string(fdetJ)*" wgdetj "*string(face_wgdetj));
+            #println("face "*string(fid)*" fdetJ "*string(fdetJ)*" wgdetj "*string(face_wgdetj));
             
             rhsargs = (var, refel, loc2glb, fid, frefelind, facenodes, face2glb, normal, faceBID, fdetJ, fJ, vol_J1, vol_J2, face_wgdetj, RHS, t, dt);
             lhsargs = (var, refel, loc2glb, fid, frefelind, facenodes, face2glb, normal, faceBID, fdetJ, fJ, vol_J1, vol_J2, face_wgdetj, LHS, t, dt);
