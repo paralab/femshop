@@ -264,75 +264,156 @@ end
 function grid_from_mesh_2d_triangle(mesh)
     ord = config.basis_order_min;
     nfaces = etypetonf[mesh.etypes[1]];
-    Nf = size(mesh.face2vertex, 2);
+    totalfaces = nfaces*mesh.nel;
     nx = mesh.nx;
     nel = mesh.nel;
-    nodes = mesh.nodes[:,1:end-1]
+    
     refel = build_refel(2, ord, nfaces, config.elemental_nodes);
     
-    N = (nx-1)*ord + 1;         # number of total nodes  ??might change for ord >= 2 
-    Np = refel.Np;              # number of nodes per element
-    x = zeros(2,N);             # coordinates of all nodes
-    bdry = [];                  # index(in x) of boundary nodes for each BID
-    bids = collectBIDs(mesh);
-    loc2glb = zeros(Int, Np, nel)# local to global index map for each element's nodes
-    glbvertex = zeros(Int, 3, nel);# local to global for vertices
+    Np = refel.Np;                      # number of nodes per element
+    bdry = [];                          # index(in x) of boundary nodes for each BID
+    bdryfc = [];                        # index of faces touching each BID
+    bdrynorm = [];                      # normal at boundary nodes
+    bids = collectBIDs(mesh);           # BID list
+    nbids = length(bids);
+    for i=1:nbids
+        push!(bdry, zeros(Int, 0));
+        push!(bdryfc, zeros(Int,0));
+        push!(bdrynorm, zeros(config.dimension,0));
+    end
+    loc2glb = zeros(Int, Np, nel)       # local to global index map for each element's nodes
+    glbvertex = zeros(Int, 3, nel);     # local to global for vertices
+    f2glb = zeros(Int, refel.Nfp[1], totalfaces);  # face node local to global
+    fvtx2glb = zeros(Int, 2, totalfaces);   # face vertex local to global
     
-    #Wait till DG
-    f2glb = zeros(Int, 3, Nf);# face local to global
-    fvtx2glb = zeros(Int, 3, Nf);# face vertex local to global
-    bdryfc = [];                # index of elements touching each BID
-    bdrynorm = [];              # normal at boundary nodes
-
-    #Regid mesh of rectangles 
-    nx = Int64(sqrt(nx)) - 1
-    ny = nx
-    n1d = ord+1;
-    rowsize = (nx)*(n1d-1) + 1;
-
-    odd = 1
-    for i=1:(ny)
-        for j=1:(nx)
-            ei = odd # element index
-            glbvertex[1,ei] = ((j-1)*(n1d-1))*rowsize + (i-1)*(n1d-1) + 1;
-            glbvertex[2,ei] = ((j-1)*(n1d-1))*rowsize + i*(n1d-1) + 1;
-            glbvertex[3,ei] = (j*(n1d-1))*rowsize + (i-1)*(n1d-1) + 1;
-            
-            x[1, glbvertex[:, ei]] .= triangle_element_nodes_(refel, 1*cat(nodes[glbvertex[:, ei], 1], nodes[glbvertex[:, ei], 2], dims=2)')[1]
-            x[2, glbvertex[:, ei]] .= triangle_element_nodes_(refel, 1*cat(nodes[glbvertex[:, ei], 1], nodes[glbvertex[:, ei], 2], dims=2)')[2]
-            
-            ei += 1
-            glbvertex[1,ei] = ((j-1)*(n1d-1))*rowsize + i*(n1d-1) + 1;
-            glbvertex[2,ei] = (j*(n1d-1))*rowsize + (i-1)*(n1d-1) + 1;
-            glbvertex[3,ei] = (j*(n1d-1))*rowsize + i*(n1d-1) + 1;
-
-            x[1, glbvertex[:, ei]] .= triangle_element_nodes_(refel, 1*cat(nodes[glbvertex[:, ei], 1], nodes[glbvertex[:, ei], 2], dims=2)')[1]
-            x[2, glbvertex[:, ei]] .= triangle_element_nodes_(refel, 1*cat(nodes[glbvertex[:, ei], 1], nodes[glbvertex[:, ei], 2], dims=2)')[2]
-            
-            odd += 2 
+    
+    tmpallnodes = zeros(2, mesh.nel*refel.Np);
+    for ei=1:nel
+        # Find this element's nodes
+        e_vert = mesh.nodes[1:2, mesh.elements[1:3, ei]];
+        (e_x, e_y) = triangle_refel_to_xy_(refel.r[:,1], refel.r[:,2], e_vert);
+        
+        # Add them to the tmp global nodes
+        tmpallnodes[1, ((ei-1)*Np+1):(ei*Np)] = e_x;
+        tmpallnodes[2, ((ei-1)*Np+1):(ei*Np)] = e_y;
+        
+        # temporary mapping
+        loc2glb[:,ei] = ((ei-1)*Np+1):(ei*Np);
+    end
+    
+    # Go back and remove duplicate nodes. Adjust loc2glb.
+    to_remove = [];
+    remove_count = 0;
+    tol = 1e-9;
+    found = false;
+    next_ind = Np+1;
+    allnodes = zeros(size(tmpallnodes));
+    allnodes[:,1:Np] = tmpallnodes[:,1:Np];
+    for ei=2:nel
+        for ni=1:Np
+            found = false;
+            for ej=1:ei-1
+                for nj=1:Np
+                    if is_same_node(tmpallnodes[:,loc2glb[ni,ei]], allnodes[:,loc2glb[nj,ej]], tol)
+                        # duplicates: keep the ej one, remove ei
+                        push!(to_remove, loc2glb[ni,ei]);
+                        loc2glb[ni,ei] = loc2glb[nj,ej];
+                        remove_count += 1;
+                        found = true;
+                        break;
+                    end
+                end
+                if found
+                    break;
+                end
+            end
+            if !found
+                allnodes[:,next_ind] = tmpallnodes[:,loc2glb[ni,ei]];
+                loc2glb[ni,ei] = next_ind;
+                next_ind += 1;
+            end
         end
-    end 
-
-    loc2glb = glbvertex # ?? Till Np == 3
-    
-    # boundary
-    rowsize = (nx)*(n1d-1) + 1; 
-    colsize = (ny)*(n1d-1) + 1;
-    #bdry = zeros(Int, rowsize*2 + colsize*2 - 4);
-    bdry = zeros(Int, (nx+1)*(ny+1));
-
-    for i=1:rowsize
-        bdry[i] = i; # bottom
-        bdry[i+rowsize] = N-rowsize + i; # top
     end
-    for i=2:colsize-1
-        bdry[i-1 + rowsize*2] = (i-1)*rowsize + 1; # left
-        bdry[i-3 + rowsize*2 + colsize] = i*rowsize; # right
+    N = next_ind-1;
+    allnodes = allnodes[:,1:N];
+
+    # face to global
+    for ei=1:nel
+        for fi=1:nfaces
+            fid = (ei-1)*nfaces + fi;
+            f2glb[:,fid] = loc2glb[refel.face2local[fi], ei];
+        end
     end
     
-    bdry = [bdry];
+    # vertices and boundary
+    for ei=1:nel
+        mfids = mesh.element2face[:,ei];
+        normals = mesh.normals[:,mfids];
+        
+        # vertices
+        for ni=1:Np
+            for vi=1:3
+                if is_same_node(mesh.nodes[:, mesh.elements[vi,ei]], allnodes[:,loc2glb[ni,ei]], tol)
+                    glbvertex[vi, ei] = loc2glb[ni,ei];
+                end
+            end
+        end
+        
+        # mesh and grid face indices may be different, so we need to map them
+        gfids = ((ei-1)*nfaces+1):(ei*nfaces);
+        g2mfids = [0,0,0];
+        meshfaces = mesh.element2face[:,ei];
+        for gfi=1:3
+            for mfi=1:3
+                if is_same_line(mesh.nodes[:,mesh.face2vertex[:,meshfaces[mfi]]], allnodes[:, f2glb[:,gfids[gfi]]], tol)
+                    g2mfids[gfi] = mfi;
+                end
+            end
+        end
+        # println("grid2mesh faces for element "*string(ei)*":")
+        # println(g2mfids)
+        
+        # Now that we have a mapping to mesh faces, copy boundary info
+        # bdry, bdryface, bdrynorm
+        for fi=1:3
+            b = mesh.bdryID[mesh.element2face[g2mfids[fi],ei]];
+            bind = indexin([b], bids)[1];
+            if !(bind === nothing)
+                append!(bdry[bind], f2glb[:,gfids[fi]]);
+                push!(bdryfc[bind], gfids[fi]);
+                bdrynorm[bind] = hcat(bdrynorm[bind], normals[:,indexin([fi],g2mfids)]);
+            end
+        end
+        
+    end # element loop 
+    # There are duplicates in the bdry info. Remove them
+    newbdry = similar(bdry);
+    for i=1:length(bdry)
+        newbdry[i] = [];
+    end
     
-    return (refel, Grid(x, bdry, bdryfc, bdrynorm, bids, loc2glb, glbvertex, f2glb, fvtx2glb));
+    for bidi=1:length(bids)
+        for bi=1:length(bdry[bidi])
+            found = false;
+            for bidj=1:bidi
+                for bj=1:length(newbdry[bidj])
+                    if bdry[bidi][bi] == newbdry[bidj][bj]
+                        # bi already exists in newbdry
+                        found = true;
+                        break;
+                    end
+                end
+                if found
+                    break;
+                end
+            end
+            if !found # it's a new bdry node
+                push!(newbdry[bidi], bdry[bidi][bi]);
+            end
+        end
+    end
+    bdry = newbdry;
+    return (refel, Grid(allnodes, bdry, bdryfc, bdrynorm, bids, loc2glb, glbvertex, f2glb, fvtx2glb));
 end
 
 function grid_from_mesh_3d(mesh)
