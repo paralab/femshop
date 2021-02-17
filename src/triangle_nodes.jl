@@ -26,6 +26,15 @@ function triangle_refel_nodes!(refel)
     xyw = triangle_quadrature_nodes_weights(refel.N+1);
     refel.g = xyw[:,1:2];
     refel.wg = xyw[:,3];
+    tol = 1e-8;
+    qf1(x) = abs(x[1] + 1) < tol;
+    qf2(x) = abs(x[2] + 1) < tol;
+    qf3(x) = abs(x[1] - 1) < tol;
+    qf4(x) = abs(x[2] - 1) < tol;
+    refel.face2local = [get_face2local_map(refel.r, qf1),
+                        get_face2local_map(refel.r, qf2),
+                        [get_face2local_map(refel.r, qf3)[1],
+                        get_face2local_map(refel.r, qf4)[1]]];
     
 end
 
@@ -140,4 +149,18 @@ function triangle_refel_to_xy(r, s, v)
     y = 0.5 .* (-(r+s) .* v[2,1] .+ (1+r) .* v[2,2] .+ (1+s) .* v[2,3]);
     
     return (x, y);
+end
+
+function get_face2local_map(r, compare)
+    n = size(r,1);
+    map = zeros(Int,n);
+    nf = 0;
+    for i=1:n
+        if compare(r[i,:])
+            nf = nf+1;
+            map[nf] = i;
+        end
+    end
+    
+    return map[1:nf];
 end
