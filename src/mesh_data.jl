@@ -53,6 +53,7 @@ end
 etypetonv = [2, 3, 4, 4, 8, 6, 5, 2, 3, 4, 4, 8, 6, 5, 1, 4, 8, 6, 5]; # number of vertices
 etypetonf = [2, 3, 4, 4, 6, 5, 5, 2, 3, 4, 4, 6, 5, 5, 1, 4, 6, 5, 5]; # number of faces
 etypetonfn= [1, 2, 2, 3, 4, 4, 4, 1, 2, 2, 3, 4, 4, 4, 1, 2, 2, 4, 4]; # number of vertices for each face (except prism and 5-pyramids!)
+etypetodim= [1, 2, 2, 3, 3, 3, 3, 1, 2, 2, 3, 3, 3, 3, 1, 2, 2, 3, 3]; # dimension of each type
 
 # Builds invind.
 function invert_index(ind)

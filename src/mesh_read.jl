@@ -6,7 +6,8 @@ export read_mesh
 
 # numbers of CORNER nodes for first and second order elements as defined by GMSH
 # TODO add higher order types
-etypetonv = [2, 3, 4, 4, 8, 6, 5, 2, 3, 4, 4, 8, 6, 5, 1, 4, 8, 6, 5];
+etypetonv = [2, 3, 4, 4, 8, 6, 5, 2, 3, 4, 4, 8, 6, 5, 1, 4, 8, 6, 5]; # number of vertices for each type
+etypetodim= [1, 2, 2, 3, 3, 3, 3, 1, 2, 2, 3, 3, 3, 3, 1, 2, 2, 3, 3]; # dimension of each type
 
 # Reads from the file stream
 # Returns a MeshData struct
@@ -84,15 +85,25 @@ function read_msh_v2(file)
                 line = readline(file);
                 while !occursin("\$EndElements", line) && !eof(file)
                     vals = split(line, " ", keepempty=false);
-                    etypes[i] = parse(Int, vals[2]);
-                    nv[i] = etypetonv[etypes[i]];
-                    offset = parse(Int, vals[3]) + 3;
-                    for j=1:nv[i]
-                        elements[j,i] = parse(Int, vals[offset + j]);
+                    # Skip lower dimensional elements
+                    tmptype = parse(Int, vals[2]);
+                    if etypetodim[tmptype] == config.dimension
+                        etypes[i] = tmptype;
+                        nv[i] = etypetonv[tmptype];
+                        offset = parse(Int, vals[3]) + 3;
+                        for j=1:nv[i]
+                            elements[j,i] = parse(Int, vals[offset + j]);
+                        end
+                        i += 1;
                     end
-                    i += 1;
+                    
                     line = readline(file);
                 end
+                # adjust to correct number of elements
+                nel = i-1;
+                nv = nv[1:nel];
+                etypes = etypes[1:nel];
+                elements = elements[:, 1:nel];
                 
                 elements_done = true;
             end

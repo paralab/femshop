@@ -37,10 +37,10 @@ function geometric_factors(refel, pts)
         
     elseif refel.dim == 2
         if refel.Nfaces == 3 # triangle
-            xr = refel.Dr*pts[1,:];
-            xs = refel.Ds*pts[1,:];
-            yr = refel.Dr*pts[2,:];
-            ys = refel.Ds*pts[2,:];
+            xr = refel.Ddr*pts[1,:];
+            xs = refel.Dds*pts[1,:];
+            yr = refel.Ddr*pts[2,:];
+            ys = refel.Dds*pts[2,:];
             J = -xs.*yr + xr.*ys;
             
             rx =  ys./J;

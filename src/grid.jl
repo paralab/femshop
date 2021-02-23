@@ -451,17 +451,36 @@ function triangle_refel_to_xy_(r, s, v)
     return (x, y);
 end
 
+# function quad_refel_to_xy(r, s, v)
+#     dx = v[1,2] - v[1,1];
+#     dy = v[2,2] - v[2,1];
+#     if abs(v[1,3]-v[1,1]) > abs(dx)
+#         dx = v[1,3]-v[1,1];
+#     end
+#     if abs(v[2,3]-v[2,1]) > abs(dy)
+#         dy = v[2,3]-v[2,1];
+#     end
+#     x = v[1,1] .+ (r .+ 1) .* dx*0.5;
+#     y = v[2,1] .+ (s .+ 1) .* dy*0.5;
+    
+#     return (x, y);
+# end
+
 function quad_refel_to_xy(r, s, v)
-    dx = v[1,2] - v[1,1];
-    dy = v[2,2] - v[2,1];
-    if abs(v[1,3]-v[1,1]) > abs(dx)
-        dx = [1,3]-v[1,1];
-    end
-    if abs(v[2,3]-v[2,1]) > abs(dy)
-        dy = v[2,3]-v[2,1];
-    end
-    x = v[1,1] .+ (r .+ 1) .* dx*0.5;
-    y = v[2,1] .+ (s .+ 1) .* dy*0.5;
+    vx = v[1,:];
+    vy = v[2,:];
+    
+    # g(r,s) = (1-r)(1-s)v1 + r(1-s)v2 + rsv3 + (1-r)sv4   for unit square
+    # x = (1 .- r) .* (1 .- s) .* vx[1] .+ r .* (1 .- s) .* vx[2] .+ r .* s .* vx[3] .+ (1 .- r) .* s .* vx[4]; 
+    # y = (1 .- r) .* (1 .- s) .* vy[1] .+ r .* (1 .- s) .* vy[2] .+ r .* s .* vy[3] .+ (1 .- r) .* s .* vy[4];
+    
+    # g(r,s) = 0.25(1-r)(1-s)v1 + 0.25(r+1)(1-s)v2 + 0.25(r+1)(s+1)v3 + 0.25(1-r)(s+1)v4   for [-1,1]x[-1,1]
+    rp = 1 .+ r;
+    rm = 1 .- r;
+    sp = 1 .+ s;
+    sm = 1 .- s;
+    x = 0.25 .* (rm .* sm .* vx[1] .+ rp .* sm .* vx[2] .+ rp .* sp .* vx[3] .+ rm .* sp .* vx[4]); 
+    y = 0.25 .* (rm .* sm .* vy[1] .+ rp .* sm .* vy[2] .+ rp .* sp .* vy[3] .+ rm .* sp .* vy[4]); 
     
     return (x, y);
 end
