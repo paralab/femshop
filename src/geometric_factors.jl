@@ -42,6 +42,7 @@ function geometric_factors(refel, pts)
             yr = refel.Ddr*pts[2,:];
             ys = refel.Dds*pts[2,:];
             J = -xs.*yr + xr.*ys;
+            J = J[1]; # assume constant detJ
             
             rx =  ys./J;
             sx = -yr./J;
@@ -141,8 +142,8 @@ function build_deriv_matrix(refel, J)
         RQ2 = zeros(size(refel.Q));
         RD1 = zeros(size(refel.Q));
         RD2 = zeros(size(refel.Q));
-        for i=1:length(J.rx)
-            for j=1:length(J.rx)
+        for i=1:size(RQ1,1)
+            for j=1:size(RQ1,2)
                 RQ1[i,j] = J.rx[i]*refel.Qr[i,j] + J.sx[i]*refel.Qs[i,j];
                 RQ2[i,j] = J.ry[i]*refel.Qr[i,j] + J.sy[i]*refel.Qs[i,j];
                 RD1[i,j] = J.rx[i]*refel.Ddr[i,j] + J.sx[i]*refel.Dds[i,j];

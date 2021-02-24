@@ -12,7 +12,7 @@ function build_triangle_refel(refel)
     refel.invV = inv(refel.V);
     
     (refel.Vg, DVgr, DVgs) = triangle_vandermonds(refel, refel.g);
-    refel.invVg = inv(refel.Vg);
+    #refel.invVg = inv(refel.Vg);
     
     refel.Q = refel.Vg*refel.invV;
     refel.Qr = DVgr*refel.invV;
@@ -24,14 +24,15 @@ function build_triangle_refel(refel)
 end
 
 function triangle_vandermonds(refel, r)
-    Np = refel.Np;
-    V = zeros(Np, Np);
-    gradVr = zeros(Np, Np);
-    gradVs = zeros(Np, Np);
+    Np = refel.Np;      # number of nodal points
+    Nrp = size(r,1);    # number of quadrature points may be different
+    V = zeros(Nrp, Np);
+    gradVr = zeros(Nrp, Np);
+    gradVs = zeros(Nrp, Np);
     
     # Transfer (r,s) to (a,b) coordinates
-    a = zeros(Np,1);
-    for ni=1:Np
+    a = zeros(Nrp,1);
+    for ni=1:Nrp
         if r[ni,2] != 1
             a[ni] = 2*(1+r[ni,1])/(1-r[ni,2])-1;
         else 

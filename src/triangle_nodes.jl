@@ -27,14 +27,12 @@ function triangle_refel_nodes!(refel)
     refel.g = xyw[:,1:2];
     refel.wg = xyw[:,3];
     tol = 1e-8;
-    qf1(x) = abs(x[1] + 1) < tol;
-    qf2(x) = abs(x[2] + 1) < tol;
-    qf3(x) = abs(x[1] - 1) < tol;
-    qf4(x) = abs(x[2] - 1) < tol;
-    refel.face2local = [get_face2local_map(refel.r, qf1),
-                        get_face2local_map(refel.r, qf2),
-                        [get_face2local_map(refel.r, qf3)[1],
-                        get_face2local_map(refel.r, qf4)[1]]];
+    tf1(x) = abs(x[1] + 1) < tol;
+    tf2(x) = abs(x[2] + 1) < tol;
+    tf3(x) = abs(x[1] + x[2]) < tol;
+    refel.face2local = [get_face2local_map(refel.r, tf1),
+                        get_face2local_map(refel.r, tf2),
+                        get_face2local_map(refel.r, tf3)];
     
 end
 
