@@ -6,11 +6,11 @@ module Femshop
 
 # Public macros and functions
 export @language, @domain, @mesh, @solver, @stepper, @setSteps, @functionSpace, @trialFunction, @matrixFree,
-        @testFunction, @nodes, @order, @boundary, @referencePoint, @variable, @coefficient, @parameter, @testSymbol, @initial,
+        @testFunction, @nodes, @order, @boundary, @addBoundaryID, @referencePoint, @variable, @coefficient, @parameter, @testSymbol, @initial,
         @timeInterval, @weakForm, @LHS, @RHS, @customOperator, @customOperatorFile,
         @outputMesh, @useLog, @finalize
 export init_femshop, set_language, dendro, set_solver, set_stepper, set_specified_steps, set_matrix_free, reformat_for_stepper, 
-        add_mesh, output_mesh, add_test_function, 
+        add_mesh, output_mesh, add_boundary_ID, add_test_function, 
         add_initial_condition, add_boundary_condition, add_reference_point, set_rhs, set_lhs, set_lhs_surface, set_rhs_surface, solve, 
         finalize, cachesim, cachesim_solve, 
         morton_nodes, hilbert_nodes, tiled_nodes, morton_elements, hilbert_elements, tiled_elements, ef_nodes, random_nodes, random_elements
@@ -174,6 +174,79 @@ end
 function output_mesh(file, format)
     write_mesh(file, format, mesh_data);
     log_entry("Wrote mesh data to file.");
+end
+
+function add_boundary_ID(bid, on_bdry)
+    # Find if this bid exists. If so, just add points to it, removing from others.
+    ind = indexin([bid], grid_data.bids)[1];
+    nbids = length(grid_data.bids);
+    if ind === nothing
+        # This is a new bid, add to bids, bdry, bdryface, bdrynorm
+        ind = nbids + 1;
+        nbids += 1;
+        push!(grid_data.bids, bid);
+        push!(grid_data.bdry, zeros(Int, 0));
+        push!(grid_data.bdryface, zeros(Int, 0));
+        push!(grid_data.bdrynorm, zeros(config.dimension, 0));
+    end
+    
+    # Search all other bids for nodes and faces on this segment. Remove them there and add them here.
+    # First find indices and count them. Then move.
+    move_nodes = Array{Array{Int,1},1}(undef,nbids);
+    node_count = zeros(Int, nbids);
+    move_faces = Array{Array{Int,1},1}(undef,nbids);
+    face_count = zeros(Int, nbids);
+    for i=1:nbids
+        bi = grid_data.bids[i];
+        move_nodes[i] = [];
+        move_faces[i] = [];
+        if bi != bid
+            # First the nodes
+            for j=1:length(grid_data.bdry[i])
+                nj = grid_data.bdry[i][j];
+                if config.dimension == 1
+                    if on_bdry(grid_data.allnodes[1, nj])
+                        push!(move_nodes[i], nj);
+                        node_count[i] += 1;
+                    end
+                elseif config.dimension == 2
+                    if on_bdry(grid_data.allnodes[1, nj], grid_data.allnodes[2, nj])
+                        push!(move_nodes[i], nj);
+                        node_count[i] += 1;
+                    end
+                elseif config.dimension == 3
+                    if on_bdry(grid_data.allnodes[1, nj], grid_data.allnodes[2, nj], grid_data.allnodes[3, nj])
+                        push!(move_nodes[i], nj);
+                        node_count[i] += 1;
+                    end
+                end
+            end
+            # Then the faces
+            for j=1:length(grid_data.bdryface[i])
+                fj = grid_data.bdryface[i][j];
+                # TODO
+                
+            end
+        end
+    end # find indices
+    
+    # Move things from other bids to this one
+    for i=1:nbids
+        if i != ind
+            # Add to this bid
+            append!(grid_data.bdry[ind], move_nodes[i]);
+            append!(grid_data.bdryface[ind], move_faces[i]);
+            grid_data.bdrynorm[ind] = hcat(grid_data.bdrynorm[ind], grid_data.bdrynorm[i][:,move_faces[i]]);
+            
+            # Remove things from other bids
+            deleteat!(grid_data.bdry[i], indexin(move_nodes[i], grid_data.bdry[i]));
+            deleteat!(grid_data.bdryface[i], indexin(move_faces[i], grid_data.bdryface[i]));
+            #TODO bdrynorm
+        end
+    end
+    
+    println("Added bdry, but bdryface and bdrynorm are not ready. See add_boundary_ID in Femshop.jl");
+    
 end
 
 function add_test_function(v, type)

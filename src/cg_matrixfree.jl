@@ -166,6 +166,7 @@ function elem_matvec(x, bilinear, dofs_per_node, var, t = 0.0, dt = 0.0)
     Np = refel.Np;
     nel = mesh_data.nel;
     multivar = typeof(var) <: Array;
+    maxvarindex = 0;
     if multivar
         # multiple variables being solved for simultaneously
         dofs_per_node = 0;
@@ -174,6 +175,7 @@ function elem_matvec(x, bilinear, dofs_per_node, var, t = 0.0, dt = 0.0)
             tmp = dofs_per_node;
             dofs_per_node += length(var[vi].symvar.vals);
             push!(var_to_dofs, (tmp+1):dofs_per_node);
+            maxvarindex = max(maxvarindex,var[vi].index);
             
             # # check for neumann bcs
             # for bi=1:length(prob.bc_type[vi,:])
@@ -186,6 +188,7 @@ function elem_matvec(x, bilinear, dofs_per_node, var, t = 0.0, dt = 0.0)
     else
         # one variable
         dofs_per_node = length(var.symvar.vals);
+        maxvarindex = var.index;
     end
     
     Ax = zeros(size(x));
@@ -277,32 +280,34 @@ function elem_matvec(x, bilinear, dofs_per_node, var, t = 0.0, dt = 0.0)
     end
     
     # Reference points
-    if multivar
-        posind = zeros(Int,0);
-        vals = zeros(0);
-        for vi=1:length(var)
-            if prob.ref_point[var[vi].index,1]
-                eii = prob.ref_point[var[vi].index, 2];
-                tmp = (grid_data.glbvertex[eii[1], eii[2]] - 1)*dofs_per_node + var_to_dofs[vi][1];
-                if length(prob.ref_point[var[vi].index, 3]) > 1
-                    tmp = tmp:(tmp+length(prob.ref_point[var[vi].index, 3])-1);
+    if size(prob.ref_point,1) >= maxvarindex
+        if multivar
+            posind = zeros(Int,0);
+            vals = zeros(0);
+            for vi=1:length(var)
+                if prob.ref_point[var[vi].index,1]
+                    eii = prob.ref_point[var[vi].index, 2];
+                    tmp = (grid_data.glbvertex[eii[1], eii[2]] - 1)*dofs_per_node + var_to_dofs[vi][1];
+                    if length(prob.ref_point[var[vi].index, 3]) > 1
+                        tmp = tmp:(tmp+length(prob.ref_point[var[vi].index, 3])-1);
+                    end
+                    posind = [posind; tmp];
+                    vals = [vals; prob.ref_point[var[vi].index, 3]];
                 end
-                posind = [posind; tmp];
-                vals = [vals; prob.ref_point[var[vi].index, 3]];
             end
-        end
-        if length(vals) > 0
-            Ax[posind] = vals;
-        end
-        
-    else
-        if prob.ref_point[var.index,1]
-            eii = prob.ref_point[var.index, 2];
-            posind = (grid_data.glbvertex[eii[1], eii[2]] - 1)*dofs_per_node + 1;
-            if length(prob.ref_point[var.index, 3]) > 1
-                posind = posind:(posind+length(prob.ref_point[var[vi].index, 3])-1);
+            if length(vals) > 0
+                Ax[posind] = vals;
             end
-            Ax[posind] = prob.ref_point[var.index, 3];
+            
+        else
+            if prob.ref_point[var.index,1]
+                eii = prob.ref_point[var.index, 2];
+                posind = (grid_data.glbvertex[eii[1], eii[2]] - 1)*dofs_per_node + 1;
+                if length(prob.ref_point[var.index, 3]) > 1
+                    posind = posind:(posind+length(prob.ref_point[var[vi].index, 3])-1);
+                end
+                Ax[posind] = prob.ref_point[var.index, 3];
+            end
         end
     end
     

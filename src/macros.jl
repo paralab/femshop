@@ -251,6 +251,13 @@ macro parameter(p, type, val)
     end)
 end
 
+macro addBoundaryID(bid, expression)
+    return esc(quote
+        trueOnBdry(x, y=0, z=0) = $expression; # points with x,y,z on this bdry segment evaluate true here
+        add_boundary_ID($bid, trueOnBdry);
+    end)
+end
+
 macro boundary(var, bid, bc_type) return esc(:(@boundary($var,$bid,$bc_type, 0))); end
 macro boundary(var, bid, bc_type, bc_exp)
     return esc(quote
