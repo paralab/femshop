@@ -15,7 +15,7 @@ mutable struct Refel
     N::Int                  # Order of polynomials
     Np::Int                 # Number of nodes
     Nfaces::Int             # Number of faces
-    Nfp::Array{Int,1}   # Number of nodes for each face
+    Nfp::Array{Int,1}       # Number of nodes for each face
     
     ######################################
     # Volume nodes and quadrature matrices

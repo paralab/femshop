@@ -134,3 +134,48 @@ function matlab_function_call(indent, name, args)
     end
     return indent*name*"("*arg*")";
 end
+
+# Returns a string like "fread(f, [3, 15], 'double')" for an array with size (3,15) and type Float64
+function matlab_fread(A)
+    if typeof(A) <: Array
+        if length(A) == 0
+            return "0";
+        end
+        if typeof(A[1]) == Int
+            typ = "\'int64\'";
+        else
+            typ = "\'double\'";
+        end
+        if length(size(A)) == 1
+            sz = "["*string(length(A))*",1]";
+        else
+            sz = "["*string(size(A,1))*","*string(size(A,2))*"]";
+        end
+        return "fread(f, "*sz*", "*typ*")"
+    else
+        if typeof(A) == Int64
+            typ = "\'int64\'";
+        else
+            typ = "\'double\'";
+        end
+        return "fread(f, [1], "*typ*")"
+    end
+end
+
+# produces code to read a binary struct into matlab
+# The struct is labeled with the name and has the same fieldnames as s
+function matlab_struct_reader(name, s)
+    code = "";
+    for fn in fieldnames(typeof(s))
+        f = getfield(s,fn);
+        if typeof(f) <: Array && length(f) > 0 && typeof(f[1]) <: Array
+            code = code * name * "." * string(fn) * " = cell([" * string(length(f)) * ", 1]);\n";
+            for i=1:length(f)
+                code = code * name * "." * string(fn) * "{" * string(i) * "} = " * matlab_fread(f[i]) * ";\n";
+            end
+        else
+            code = code * name * "." * string(fn) * " = " * matlab_fread(f) * ";\n";
+        end
+    end
+    return code;
+end

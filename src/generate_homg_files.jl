@@ -1,8 +1,8 @@
 #=
-# Matlab file generation functions
+# Matlab HOMG file generation functions
 =#
 
-function matlab_main_file()
+function homg_main_file()
     file = genfiles.main;
     println(file, "clear;");
     # for using HOMG
@@ -31,7 +31,7 @@ function matlab_main_file()
     println(file, "");
 end
 
-function matlab_config_file()
+function homg_config_file()
     file = genfiles.config;
     # Duplicate the config struct
     for f in fieldnames(Femshop_config)
@@ -40,7 +40,7 @@ function matlab_config_file()
     println(file, "order = config.basis_order_min;");
 end
 
-function matlab_prob_file()
+function homg_prob_file()
     file = genfiles.problem;
     # Duplicate the prob struct
     for f in fieldnames(Femshop_prob)
@@ -48,7 +48,7 @@ function matlab_prob_file()
     end
 end
 
-function matlab_mesh_file()
+function homg_mesh_file()
     file = genfiles.mesh;
     # For using HOMG
     if config.dimension == 1
@@ -63,7 +63,7 @@ function matlab_mesh_file()
     println(file, "bdry = mesh.get_boundary_node_indices(config.basis_order_min);");
 end
 
-function matlab_genfunction_file()
+function homg_genfunction_file()
     file = genfiles.genfunction;
     for i = 1:length(genfunctions)
         println(file, genfunctions[i].name*"_fun = @(x,y,z,t) ("*genfunctions[i].str*");");
@@ -84,7 +84,7 @@ function matlab_genfunction_file()
     end
 end
 
-function matlab_bilinear_file(code)
+function homg_bilinear_file(code)
     file = genfiles.bilinear;
     # insert the code part into this skeleton
     content = 
@@ -119,7 +119,7 @@ LHS = sparse(I,J,val,dof,dof);";
     println(file, "LHS((size(LHS,1)+1)*(bdry-1)+1) = 1;"); # dirichlet bc
 end
 
-function matlab_linear_file(code)
+function homg_linear_file(code)
     file = genfiles.linear;
     # insert the code part into this skeleton
     content = 
@@ -145,6 +145,6 @@ end
     println(file, "RHS(bdry) = prob.bc_func(bdry);"); # dirichlet bc
 end
 
-function matlab_stepper_file()
+function homg_stepper_file()
     file = genfiles.stepper;
 end

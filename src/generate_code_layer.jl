@@ -5,6 +5,7 @@ Use the symbolic layer expressions to generate the FEM code
 # External code gen in these similar files
 include("generate_code_layer_dendro.jl");
 include("generate_code_layer_homg.jl");
+include("generate_code_layer_matlab.jl");
 include("generate_code_layer_cachesim.jl");
 
 # Surface integrals are generated separately
@@ -14,10 +15,10 @@ function generate_code_layer(ex, var, lorr)
     if use_cachesim
         if language == 0 || language == JULIA
             return generate_code_layer_cachesim(ex, var, lorr);
-        elseif language == CPP
+        elseif language == CPP || language == DENDRO
             printerr("Using cachesim. Not generating external code.")
             return "";
-        elseif language == MATLAB
+        elseif language == MATLAB || language == HOMG
             printerr("Using cachesim. Not generating external code.")
             return "";
         end
@@ -26,7 +27,11 @@ function generate_code_layer(ex, var, lorr)
             return generate_code_layer_julia(ex, var, lorr);
         elseif language == CPP
             return generate_code_layer_dendro(ex, var, lorr);
+        elseif language == DENDRO
+            return generate_code_layer_dendro(ex, var, lorr);
         elseif language == MATLAB
+            return generate_code_layer_matlab(ex, var, lorr);
+        elseif language == HOMG
             return generate_code_layer_homg(ex, var, lorr);
         end
     end

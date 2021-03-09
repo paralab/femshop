@@ -14,7 +14,9 @@ export JULIA, CPP, MATLAB, SQUARE, IRREGULAR, UNIFORM_GRID, TREE, UNSTRUCTURED, 
 # Languages for generated code
 const JULIA = "Julia";
 const CPP = "C++";
+const DENDRO = "Dendro";
 const MATLAB = "Matlab";
+const HOMG = "HOMG";
 
 # Domain types
 const SQUARE = "square";

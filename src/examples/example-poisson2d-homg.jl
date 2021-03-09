@@ -1,6 +1,6 @@
 #=
 # 2D Poisson, Dirichlet bc
-# Uses Matlab
+# Uses HOMG(MATLAB)
 =#
 if !@isdefined(Femshop)
     include("../Femshop.jl");

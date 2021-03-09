@@ -1,10 +1,10 @@
 
 ###############################################################################################################
-# homg
+# Matlab
 ###############################################################################################################
 
-# homg version returns a string that will be included in the Linear of Bilinear file
-function generate_code_layer_homg(symex, var, lorr)
+# Matlab version returns a string that will be included in the Linear of Bilinear file
+function generate_code_layer_matlab(symex, var, lorr)
     code = ""; # the code will be in this string
     
     need_derivative = false;
@@ -41,7 +41,7 @@ function generate_code_layer_homg(symex, var, lorr)
     # Process the terms turning them into the code layer
     code_terms = [];
     for i=1:length(terms)
-        (codeterm, der, coe, coeind, testi, trialj) = process_term_homg(terms[i], var, lorr);
+        (codeterm, der, coe, coeind, testi, trialj) = process_term_matlab(terms[i], var, lorr);
         if coeind == -1
             # processing failed due to nonlinear term
             printerr("term processing failed for: "*string(terms[i]));
@@ -93,7 +93,6 @@ function generate_code_layer_homg(symex, var, lorr)
     coef_alloc = "";
     coef_loop = "";
     if length(needed_coef) > 0
-        coef_loop = "gpts = mesh.element_gauss(e, refel);\n";
         for i=1:length(needed_coef)
             if !(typeof(needed_coef[i]) <: Number || needed_coef[i] === :dt)
                 cind = get_coef_index(needed_coef[i]);
@@ -101,7 +100,7 @@ function generate_code_layer_homg(symex, var, lorr)
                     # probably a variable
                     cind = string(needed_coef[i]);
                     # This presents a problem in dendro. TODO
-                    printerr("HOMG not yet available for multivariate problems. Expect an error.");
+                    printerr("Matlab not yet available for multivariate problems. Expect an error.");
                 end
                 # The string name for this coefficient
                 cname = "coef_"*string(cind)*"_"*string(needed_coef_ind[i]);
@@ -135,7 +134,7 @@ function generate_code_layer_homg(symex, var, lorr)
     end
     # Not ready
     if dofsper > 1
-        printerr("homg not ready for multi dofs per node. Expect errors");
+        printerr("Matlab not ready for multi dofs per node. Expect errors");
     end
     
     # Put the pieces together
@@ -159,7 +158,7 @@ end
 
 # Changes the symbolic layer term into a code layer term
 # also records derivative and coefficient needs
-function process_term_homg(sterm, var, lorr)
+function process_term_matlab(sterm, var, lorr)
     term = copy(sterm);
     need_derivative = false;
     needed_coef = [];
@@ -197,22 +196,24 @@ function process_term_homg(sterm, var, lorr)
                 need_derivative = true;
                 deriv_dir = parse(Int, mods[1][2]);
                 if deriv_dir == 1
-                    if config.dimension == 2
-                        test_part = "([diag(Jac.rx) diag(Jac.sx)] * [refel.Qx; refel.Qy])\'";
+                    if config.dimension == 1
+                        test_part = "(diag(Jac.rx) * refel.Qr)\'";
+                    elseif config.dimension == 2
+                        test_part = "([diag(Jac.rx) diag(Jac.sx)] * [refel.Qr; refel.Qs])\'";
                     else
-                        test_part = "([diag(Jac.rx) diag(Jac.sx) diag(Jac.tx)] * [refel.Qx; refel.Qy; refel.Qz])\'";
+                        test_part = "([diag(Jac.rx) diag(Jac.sx) diag(Jac.tx)] * [refel.Qr; refel.Qs; refel.Qt])\'";
                     end
                 elseif deriv_dir == 2
                     if config.dimension == 2
-                        test_part = "([diag(Jac.ry) diag(Jac.sy)] * [refel.Qx; refel.Qy])\'";
+                        test_part = "([diag(Jac.ry) diag(Jac.sy)] * [refel.Qr; refel.Qs])\'";
                     else
-                        test_part = "([diag(Jac.ry) diag(Jac.sy) diag(Jac.ty)] * [refel.Qx; refel.Qy; refel.Qz])\'";
+                        test_part = "([diag(Jac.ry) diag(Jac.sy) diag(Jac.ty)] * [refel.Qr; refel.Qs; refel.Qt])\'";
                     end
                 elseif deriv_dir == 3
                     if config.dimension == 2
-                        test_part = "([diag(Jac.rz) diag(Jac.sz)] * [refel.Qx; refel.Qy])\'";
+                        test_part = "([diag(Jac.rz) diag(Jac.sz)] * [refel.Qr; refel.Qs])\'";
                     else
-                        test_part = "([diag(Jac.rz) diag(Jac.sz) diag(Jac.tz)] * [refel.Qx; refel.Qy; refel.Qz])\'";
+                        test_part = "([diag(Jac.rz) diag(Jac.sz) diag(Jac.tz)] * [refel.Qr; refel.Qs; refel.Qt])\'";
                     end
                 elseif deriv_dir == 4
                     # This will eventually be a time derivative
@@ -236,22 +237,24 @@ function process_term_homg(sterm, var, lorr)
                 need_derivative = true;
                 deriv_dir = parse(Int, mods[1][2]);
                 if deriv_dir == 1
-                    if config.dimension == 2
-                        trial_part = "[diag(Jac.rx) diag(Jac.sx)] * [refel.Qx; refel.Qy]";
+                    if config.dimension == 1
+                        trial_part = "diag(Jac.rx) * refel.Qr";
+                    elseif config.dimension == 2
+                        trial_part = "[diag(Jac.rx) diag(Jac.sx)] * [refel.Qr; refel.Qs]";
                     else
-                        trial_part = "[diag(Jac.rx) diag(Jac.sx) diag(Jac.tx)] * [refel.Qx; refel.Qy; refel.Qz]";
+                        trial_part = "[diag(Jac.rx) diag(Jac.sx) diag(Jac.tx)] * [refel.Qr; refel.Qs; refel.Qt]";
                     end
                 elseif deriv_dir == 2
                     if config.dimension == 2
-                        trial_part = "[diag(Jac.ry) diag(Jac.sy)] * [refel.Qx; refel.Qy]";
+                        trial_part = "[diag(Jac.ry) diag(Jac.sy)] * [refel.Qr; refel.Qs]";
                     else
-                        trial_part = "[diag(Jac.ry) diag(Jac.sy) diag(Jac.ty)] * [refel.Qx; refel.Qy; refel.Qz]";
+                        trial_part = "[diag(Jac.ry) diag(Jac.sy) diag(Jac.ty)] * [refel.Qr; refel.Qs; refel.Qt]";
                     end
                 elseif deriv_dir == 3
                     if config.dimension == 2
-                        trial_part = "[diag(Jac.rz) diag(Jac.sz)] * [refel.Qx; refel.Qy]";
+                        trial_part = "[diag(Jac.rz) diag(Jac.sz)] * [refel.Qr; refel.Qs]";
                     else
-                        trial_part = "[diag(Jac.rz) diag(Jac.sz) diag(Jac.tz)] * [refel.Qx; refel.Qy; refel.Qz]";
+                        trial_part = "[diag(Jac.rz) diag(Jac.sz) diag(Jac.tz)] * [refel.Qr; refel.Qs; refel.Qt]";
                     end
                 elseif deriv_dir == 4
                     # This will eventually be a time derivative
@@ -286,7 +289,7 @@ function process_term_homg(sterm, var, lorr)
     end
     
     # build weight/coefficient parts
-    weight_part = "refel.W .* detJ";
+    weight_part = "refel.wg .* detJ";
     
     # If term is negative, apply it here
     if neg
