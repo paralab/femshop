@@ -1,34 +1,36 @@
 #=
-# 3D Poisson, Dirichlet bc
-# uses dendro
+# 2D Poisson, Dirichlet bc
+# Uses Matlab imported as a custom gen target
 =#
 if !@isdefined(Femshop)
     include("../Femshop.jl");
     using .Femshop
 end
-init_femshop("poisson3ddendro");
+init_femshop("poisson2dcustom");
 
 # Try making an optional log
-@useLog("poisson3ddendrolog")
+@useLog("poisson2dcustomlog")
 
-# Generate C++ for dendro
-@generateFor(DENDRO, "poisson3d", "This is an example for Poisson, Dirichlet bc.")
-dendro(max_depth=6, wavelet_tol = 0.1, partition_tol = 0.3, solve_tol = 1e-6, max_iters = 100);
+# Generate for the target in customtarget.jl
+@generateFor("customtarget.jl")
 
 # Set up the configuration (order doesn't matter)
-@domain(3)
+@domain(2, SQUARE, UNSTRUCTURED)    # dimension, geometry, decomposition
 @solver(CG)                         # DG, CG, etc.
 @functionSpace(LEGENDRE, 2)         # function, order (or use testFunction and trialFunction)
 @nodes(LOBATTO)                     # elemental node arrangement
+
+# Specify the problem
+@mesh(QUADMESH, 30)                   # .msh file or generate our own
 
 @variable(u)                        # same as @variable(u, SCALAR)
 
 @testSymbol(v)                    # sets the symbol for a test function
 
-@boundary(u, 1, DIRICHLET, "0")
+@boundary(u, 1, DIRICHLET, "sin(3*pi*x)")
 
 # Write the weak form 
-@coefficient(f, "-14*pi*pi*sin(3*pi*x)*sin(2*pi*y)*sin(pi*z)")
+@coefficient(f, "-2*pi*pi*sin(pi*x)*sin(pi*y)")
 @weakForm(u, "-dot(grad(u),grad(v)) - f*v")
 
 solve(u);

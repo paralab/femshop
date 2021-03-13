@@ -4,14 +4,19 @@
 module SymbolicParser
 export sp_parse, add_custom_op, add_custom_op_file
 
-import ..Femshop: JULIA, CPP, MATLAB, SQUARE, IRREGULAR, UNIFORM_GRID, TREE, UNSTRUCTURED, CG, DG, HDG,
-        NODAL, MODAL, LEGENDRE, UNIFORM, GAUSS, LOBATTO, NONLINEAR_NEWTON,
-        NONLINEAR_SOMETHING, EULER_EXPLICIT, EULER_IMPLICIT, CRANK_NICHOLSON, RK4, LSRK4,
-        ABM4, OURS, PETSC, VTK, RAW_OUTPUT, CUSTOM_OUTPUT, DIRICHLET, NEUMANN, ROBIN, NO_BC,
-        MSH_V2, MSH_V4,
-        SCALAR, VECTOR, TENSOR, SYM_TENSOR,
-        LHS, RHS,
-        LINEMESH, QUADMESH, HEXMESH
+import ..Femshop: JULIA, CPP, MATLAB, DENDRO, HOMG, CUSTOM_GEN_TARGET,
+            SQUARE, IRREGULAR, UNIFORM_GRID, TREE, UNSTRUCTURED, 
+            CG, DG, HDG,
+            NODAL, MODAL, LEGENDRE, UNIFORM, GAUSS, LOBATTO, 
+            NONLINEAR_NEWTON, NONLINEAR_SOMETHING, 
+            EULER_EXPLICIT, EULER_IMPLICIT, CRANK_NICHOLSON, RK4, LSRK4, ABM4, 
+            DEFAULT_SOLVER, PETSC, 
+            VTK, RAW_OUTPUT, CUSTOM_OUTPUT, 
+            DIRICHLET, NEUMANN, ROBIN, NO_BC,
+            MSH_V2, MSH_V4,
+            SCALAR, VECTOR, TENSOR, SYM_TENSOR,
+            LHS, RHS,
+            LINEMESH, QUADMESH, HEXMESH
 import ..Femshop: Femshop_config, Femshop_prob, Variable, Coefficient
 import ..Femshop: log_entry, printerr
 import ..Femshop: config, prob, variables, coefficients, parameters, test_functions

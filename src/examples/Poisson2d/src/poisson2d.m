@@ -4,10 +4,9 @@
 This is an example for 2D Poisson, Dirichlet bc.
 %}
 clear;
-import homg.*;
 
-addpath('operators');
 
+Utils;
 Config;
 Mesh;
 Genfunction;
@@ -17,6 +16,17 @@ Linear;
 
 u = LHS\RHS;
 
-N1d = nelem*config.basis_order_min+1;
-surf(reshape(u,N1d,N1d));
+
+gxy = grid_data.allnodes';
+
+X = gxy(:,1);
+Y = gxy(:,2);
+
+DT = delaunay(gxy);
+Tu = triangulation(DT, X, Y, u);
+
+figure();
+trisurf(Tu, 'edgecolor', 'none')
+view(2);
+
 

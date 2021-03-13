@@ -47,7 +47,7 @@ view(2);
 end
 
 function matlab_utils_file()
-    utilsfile = open(genDir*"/Utils.m", "w");
+    utilsfile = open(genDir*"/src/Utils.m", "w");
     
     content = "
 classdef Utils
@@ -177,6 +177,21 @@ classdef Utils
 
             end
         end
+        
+        % pack and unpack variables into a global vector
+        % packed vars are in a vector, unpacked are in a cell table
+        function pk = pack_vars(upk, pk)
+            for i=1:Nvars
+                pk(i:Nvars:length(pk)) = upk{i};
+            end
+        end
+        
+        function upk = unpack_vars(pk)
+            upk = cell(Nvars,1);
+            for i=1:Nvars
+                upk{i} = pk(i:Nvars:length(pk));
+            end
+        end
     end
 end
 
@@ -237,9 +252,12 @@ function matlab_genfunction_file()
     end
     
     # assign variable and coefficient symbols to these vectors
+    nvars = 0
     for v in variables
         println(file, string(v.symbol)*" = '"*string(v.symbol)*"';");
+        nvars += size(v.values,1);
     end
+    println(file, "Nvars = " * string(nvars));
     for v in coefficients
         if typeof(v.value[1]) == GenFunction
             println(file, string(v.symbol)*" = "*v.value[1].name*";");

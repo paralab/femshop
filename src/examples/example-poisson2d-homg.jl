@@ -12,7 +12,7 @@ init_femshop("poisson2dmatlab");
 @useLog("poisson2dmatlablog")
 
 # Generate Matlab
-@language(MATLAB, "poisson2d", "This is an example for 2D Poisson, Dirichlet bc.")
+@generateFor(HOMG, "poisson2d", "This is an example for 2D Poisson, Dirichlet bc.")
 
 # Set up the configuration (order doesn't matter)
 @domain(2, SQUARE, UNSTRUCTURED)    # dimension, geometry, decomposition

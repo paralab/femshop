@@ -15,24 +15,28 @@ function generate_code_layer(ex, var, lorr)
     if use_cachesim
         if language == 0 || language == JULIA
             return generate_code_layer_cachesim(ex, var, lorr);
-        elseif language == CPP || language == DENDRO
-            printerr("Using cachesim. Not generating external code.")
-            return "";
-        elseif language == MATLAB || language == HOMG
-            printerr("Using cachesim. Not generating external code.")
-            return "";
+        else
+            printerr("Using cachesim. Not generating code to solve.")
         end
     else
         if language == 0 || language == JULIA
             return generate_code_layer_julia(ex, var, lorr);
         elseif language == CPP
-            return generate_code_layer_dendro(ex, var, lorr);
-        elseif language == DENDRO
-            return generate_code_layer_dendro(ex, var, lorr);
+            if framework == DENDRO
+                return generate_code_layer_dendro(ex, var, lorr);
+            else
+                printerr("Plain C++ is not ready for code layer gen.")
+            end
+            
         elseif language == MATLAB
-            return generate_code_layer_matlab(ex, var, lorr);
-        elseif language == HOMG
-            return generate_code_layer_homg(ex, var, lorr);
+            if framework == HOMG
+                return generate_code_layer_homg(ex, var, lorr);
+            else
+                return generate_code_layer_matlab(ex, var, lorr);
+            end
+            
+        elseif framework == CUSTOM_GEN_TARGET
+            return custom_code_layer_fun(ex, var, lorr);
         end
     end
 end

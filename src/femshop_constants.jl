@@ -2,21 +2,27 @@
 Define some constants
 Use string values to make printing/interpretation easier
 =#
-export JULIA, CPP, MATLAB, SQUARE, IRREGULAR, UNIFORM_GRID, TREE, UNSTRUCTURED, CG, DG, HDG,
-        NODAL, MODAL, LEGENDRE, UNIFORM, GAUSS, LOBATTO, NONLINEAR_NEWTON,
-        NONLINEAR_SOMETHING, EULER_EXPLICIT, EULER_IMPLICIT, CRANK_NICHOLSON, RK4, LSRK4,
-        ABM4, OURS, PETSC, VTK, RAW_OUTPUT, CUSTOM_OUTPUT, DIRICHLET, NEUMANN, ROBIN, NO_BC,
+export JULIA, CPP, MATLAB, DENDRO, HOMG, CUSTOM_GEN_TARGET,
+        SQUARE, IRREGULAR, UNIFORM_GRID, TREE, UNSTRUCTURED, 
+        CG, DG, HDG,
+        NODAL, MODAL, LEGENDRE, UNIFORM, GAUSS, LOBATTO, 
+        NONLINEAR_NEWTON, NONLINEAR_SOMETHING, 
+        EULER_EXPLICIT, EULER_IMPLICIT, CRANK_NICHOLSON, RK4, LSRK4, ABM4, 
+        DEFAULT_SOLVER, PETSC, 
+        VTK, RAW_OUTPUT, CUSTOM_OUTPUT, 
+        DIRICHLET, NEUMANN, ROBIN, NO_BC,
         MSH_V2, MSH_V4,
         SCALAR, VECTOR, TENSOR, SYM_TENSOR,
         LHS, RHS,
         LINEMESH, QUADMESH, HEXMESH
 
-# Languages for generated code
+# Targets for generated code
 const JULIA = "Julia";
 const CPP = "C++";
-const DENDRO = "Dendro";
 const MATLAB = "Matlab";
+const DENDRO = "Dendro";
 const HOMG = "HOMG";
+const CUSTOM_GEN_TARGET = "Custom gen target";
 
 # Domain types
 const SQUARE = "square";
@@ -55,14 +61,15 @@ const RK4 = "RK4";
 const LSRK4 = "LSRK4";
 const ABM4 = "ABM4";
 
-# Linear system solvers/structures
-const OURS = "ours";
+# Linear system solvers
+const DEFAULT_SOLVER = "Default solver";
 const PETSC = "PETSC";
 
 # Output format
 const VTK = "vtk";
 const RAW_OUTPUT = "raw";
 const CUSTOM_OUTPUT = "custom";
+
 # mesh file
 const MSH_V2 = "msh-2";
 const MSH_V4 = "msh-4";

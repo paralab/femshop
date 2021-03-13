@@ -5,11 +5,11 @@ We can reorganize things and make submodules as desired.
 module Femshop
 
 # Public macros and functions
-export @language, @domain, @mesh, @solver, @stepper, @setSteps, @functionSpace, @trialFunction, @matrixFree,
+export @generateFor, @domain, @mesh, @solver, @stepper, @setSteps, @functionSpace, @trialFunction, @matrixFree,
         @testFunction, @nodes, @order, @boundary, @addBoundaryID, @referencePoint, @variable, @coefficient, @parameter, @testSymbol, @initial,
         @timeInterval, @weakForm, @LHS, @RHS, @customOperator, @customOperatorFile,
         @outputMesh, @useLog, @finalize
-export init_femshop, set_language, dendro, set_solver, set_stepper, set_specified_steps, set_matrix_free, reformat_for_stepper, 
+export init_femshop, set_language, set_custom_gen_target, dendro, set_solver, set_stepper, set_specified_steps, set_matrix_free, reformat_for_stepper, 
         add_mesh, output_mesh, add_boundary_ID, add_test_function, 
         add_initial_condition, add_boundary_condition, add_reference_point, set_rhs, set_lhs, set_lhs_surface, set_rhs_surface, solve, 
         finalize, cachesim, cachesim_solve, 
@@ -28,6 +28,7 @@ prob = nothing;
 project_name = "unnamedProject";
 output_dir = pwd();
 language = 0;
+gen_framework = 0;
 gen_files = nothing;
 solver = nothing;
 dendro_params = nothing;
@@ -63,6 +64,9 @@ use_specified_steps = false;
 
 use_cachesim = false;
 
+#handles for custom code gen functions
+custom_gen_funcs = [];
+
 include("femshop_includes.jl");
 include("macros.jl"); # included here after globals are defined
 
@@ -74,6 +78,7 @@ function init_femshop(name="unnamedProject")
     global prob = Femshop_prob();
     global project_name = name;
     global language = JULIA;
+    global framework = 0;
     global gen_files = nothing;
     global dendro_params = nothing;
     global log_file = "";
@@ -101,11 +106,21 @@ function init_femshop(name="unnamedProject")
     global use_cachesim = false;
 end
 
-function set_language(lang, dirpath, name, head="")
+function set_language(lang, dirpath, name; framework=0, head="")
     global language = lang;
+    global gen_framework = framework;
     global output_dir = dirpath;
     global project_name = name;
-    global gen_files = CodeGenerator.init_codegenerator(lang, dirpath, name, head);
+    global gen_files = CodeGenerator.init_codegenerator(lang, framework, dirpath, name, head);
+end
+
+function set_custom_gen_target(lang_elements, code_layer, file_maker, dirpath, name; head="")
+    global language = -1;
+    global gen_framework = CUSTOM_GEN_TARGET;
+    global output_dir = dirpath;
+    global project_name = name;
+    CodeGenerator.set_custom_target(lang_elements, code_layer, file_maker);
+    global gen_files = CodeGenerator.init_codegenerator(language, gen_framework, dirpath, name, head);
 end
 
 function dendro(;max_depth=6, wavelet_tol=0.1, partition_tol=0.3, solve_tol=1e-6, max_iters=100)
@@ -589,20 +604,20 @@ function solve(var, nlvar=nothing; nonlinear=false)
     if prob.time_dependent
         global time_stepper = init_stepper(grid_data.allnodes, time_stepper);
     end
-    if !(gen_files === nothing && (language == JULIA || language == 0))
-        generate_main();
+    if !(gen_files === nothing && (language == JULIA || language == 0)) # if an external code gen target is ready
+        # generate_main();
         if !(dendro_params === nothing)
-            generate_config(dendro_params);
+            generate_all_files(bilinears[1], linears[1], parameters=dendro_params);
         else
-            generate_config();
+            generate_all_files(bilinears[1], linears[1]);
         end
-        generate_prob();
-        generate_mesh();
-        generate_genfunction();
-        generate_bilinear(bilinears[1]);
-        generate_linear(linears[1]);
-        #generate_stepper();
-        generate_output();
+        # generate_prob();
+        # generate_mesh();
+        # generate_genfunction();
+        # generate_bilinear(bilinears[1]);
+        # generate_linear(linears[1]);
+        # #generate_stepper();
+        # generate_output();
     else
         if typeof(var) <: Array
             varnames = "["*string(var[1].symbol);

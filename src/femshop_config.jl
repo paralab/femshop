@@ -31,7 +31,7 @@ mutable struct Femshop_config
     linalg_matrixfree::Bool # Use matrix free methods?
     linalg_matfree_max::Int # max iters for matrix free
     linalg_matfree_tol::Float64 # tolerance for matrix free
-    linalg_backend::String  # ours, petsc, ?? (What to use for linear algebra)
+    linalg_backend::String  # default, petsc, ?? (What to use for linear algebra)
     output_format::String   # VTK, raw, custom (format for storing solutions)
     
     # Constructor builds a default config.
@@ -53,7 +53,7 @@ mutable struct Femshop_config
         false,
         1,
         1.0,
-        OURS,
+        DEFAULT_SOLVER,
         VTK
     );
 end

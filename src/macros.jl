@@ -3,16 +3,31 @@ Macros for the interface.
 =#
 
 # Initializes code generation module
-macro language(lang, filename) return esc(:(@language($lang, $filename, ""))); end
-macro language(lang, filename, header)
+macro generateFor(lang) return esc(:(@generateFor($lang, Femshop.project_name, ""))); end
+macro generateFor(lang, filename) return esc(:(@generateFor($lang, $filename, ""))); end
+macro generateFor(lang, filename, header)
     return esc(quote
-        language = $lang;
         outputDirPath = pwd()*"/"*uppercasefirst($filename);
         if !isdir(outputDirPath)
             mkdir(outputDirPath);
         end
         outputFileName = $filename;
-        set_language($lang, outputDirPath, outputFileName, $header);
+        language = $lang
+        framew = 0;
+        if !in($lang, [CPP,MATLAB,DENDRO,HOMG])
+            include($lang);
+            set_custom_gen_target(get_custom_language_elements, generate_custom_code_layer, generate_custom_files, outputDirPath, outputFileName, head=$header);
+        else
+            if $lang == DENDRO
+                framew = DENDRO;
+                language = CPP;
+            elseif $lang == HOMG
+                framew = HOMG;
+                language = MATLAB;
+            end
+            set_language(language, outputDirPath, outputFileName, framework=framew, head=$header);
+        end
+        
     end)
 end
 
@@ -432,6 +447,10 @@ macro weakForm(var, ex)
             set_lhs($var, lhs_code);
             set_rhs($var, rhs_code);
         elseif Femshop.language == MATLAB
+            # Don't need to generate any functions
+            set_lhs($var, lhs_code);
+            set_rhs($var, rhs_code);
+        elseif Femshop.language == -1
             # Don't need to generate any functions
             set_lhs($var, lhs_code);
             set_rhs($var, rhs_code);
