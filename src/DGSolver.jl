@@ -74,7 +74,7 @@ end
 function linear_solve(var, bilinear, linear, face_bilinear, face_linear, stepper=nothing)
     if config.dimension > 2
         printerr("DG solver only available for 1D and 2D. Surface quadrature under construction.")
-        return;
+        #return;
     end
     
     if config.linalg_matrixfree

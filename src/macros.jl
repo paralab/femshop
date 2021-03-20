@@ -16,7 +16,7 @@ macro generateFor(lang, filename, header)
         framew = 0;
         if !in($lang, [CPP,MATLAB,DENDRO,HOMG])
             include($lang);
-            set_custom_gen_target(get_custom_language_elements, generate_custom_code_layer, generate_custom_files, outputDirPath, outputFileName, head=$header);
+            set_custom_gen_target(get_external_language_elements, generate_external_code_layer, generate_external_files, outputDirPath, outputFileName, head=$header);
         else
             if $lang == DENDRO
                 framew = DENDRO;

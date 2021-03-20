@@ -197,11 +197,11 @@ function generate_all_files(bilinex, linex; parameters=0)
             matlab_bilinear_file(bilinex);
             matlab_linear_file(linex);
             matlab_stepper_file();
-            # matlab_output_file();
+            matlab_output_file();
         end
         
     elseif using_custom_target
-        custom_files_fun(genDir, genfiles, bilinex, linex);
+        custom_files_fun(bilinex, linex);
         
     end
 end

@@ -168,8 +168,8 @@ function generate_code_layer_julia_surface(symex, var, lorr)
             push!(code.args, :((TRQ1_1,TRQ1_2) = (RQ1_1',RQ1_2')));
             push!(code.args, :((TRQ2_1,TRQ2_2) = (RQ2_1',RQ2_2')));
         elseif config.dimension == 3
-            push!(code.args, :((RQ1_1,RQ1_2,RQ1_3,RD1_1,RD1_2,RD1_3) = build_face_deriv_matrix(refel, frefel[1], vol_J1)));
-            push!(code.args, :((RQ2_1,RQ2_2,RQ2_3,RD2_1,RD2_2,RD2_3) = build_face_deriv_matrix(refel, frefel[2], vol_J2)));
+            push!(code.args, :((RQ1_1,RQ1_2,RQ1_3,RD1_1,RD1_2,RD1_3) = build_face_deriv_matrix(refel, frefelind[1], vol_J1)));
+            push!(code.args, :((RQ2_1,RQ2_2,RQ2_3,RD2_1,RD2_2,RD2_3) = build_face_deriv_matrix(refel, frefelind[2], vol_J2)));
             push!(code.args, :((TRQ1_1,TRQ1_2,TRQ1_3) = (RQ1_1',RQ1_2',RQ1_3')));
             push!(code.args, :((TRQ2_1,TRQ2_2,TRQ2_3) = (RQ2_1',RQ2_2',RQ2_3')));
         end
