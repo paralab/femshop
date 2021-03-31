@@ -167,16 +167,10 @@ function add_mesh(mesh)
         global mesh_data = mesh;
         global refel;
         global grid_data;
-        if config.dimension < 3
-            (refel, grid_data) = grid_from_mesh(mesh_data);
-            
-            log_entry("Added mesh with "*string(mesh_data.nx)*" vertices and "*string(mesh_data.nel)*" elements.");
-            log_entry("Full grid has "*string(size(grid_data.allnodes,2))*" nodes.");
-            
-        else
-            printerr("Warning: mesh is built, but grid and refel are not. see add_mesh() in Femshop.jl");
-            log_entry("Added mesh with "*string(mesh_data.nx)*" vertices and "*string(mesh_data.nel)*" elements.");
-        end
+        (refel, grid_data) = grid_from_mesh(mesh_data);
+        
+        log_entry("Added mesh with "*string(mesh_data.nx)*" vertices and "*string(mesh_data.nel)*" elements.");
+        log_entry("Full grid has "*string(size(grid_data.allnodes,2))*" nodes.");
         
     end
     # set elemental loop ordering

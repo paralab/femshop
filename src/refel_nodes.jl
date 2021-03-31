@@ -3,6 +3,7 @@
 =#
 include("jacobi_gauss_quad.jl");
 include("triangle_nodes.jl");
+include("tet_nodes.jl");
 
 function refel_nodes!(refel, nodetype)
     if refel.dim == 0
@@ -138,96 +139,98 @@ function refel_nodes!(refel, nodetype)
         
     elseif refel.dim == 3
         # 3D has tets, hexs and prisms
-        
-        # for now assume regular hexs
-        if nodetype == UNIFORM
-            refel.r1d = Array(-1:(2/(refel.Np-1)):1);
-            refel.wr1d = ones(length(refel.r1d)) ./ length(refel.r1d);
-        elseif nodetype == GAUSS
-            (r,w) = jacobi_gauss_quad(0,0,refel.N);
-            refel.r1d = r;
-            refel.wr1d = w;
-        elseif nodetype == LOBATTO
-            if refel.N == 1
-                refel.r1d = [-1; 1];
-                refel.wr1d = [1; 1];
-            else
-                (r,w) = jacobi_gauss_quad(1,1,refel.N-2);
-                refel.r1d = [-1; r ; 1];
-                
-                # compute the weights
-                w = jacobi_polynomial(refel.r1d, 0, 0, refel.N);
-                adgammaN = (2*refel.N + 1) / (refel.N * (refel.N + 1));
-                w = w.*w;
-                w = adgammaN./w;
-                
+        if refel.Nfaces == 4 # tets
+            tetrahedron_refel_nodes!(refel);
+        else # hexs
+            if nodetype == UNIFORM
+                refel.r1d = Array(-1:(2/(refel.Np-1)):1);
+                refel.wr1d = ones(length(refel.r1d)) ./ length(refel.r1d);
+            elseif nodetype == GAUSS
+                (r,w) = jacobi_gauss_quad(0,0,refel.N);
+                refel.r1d = r;
                 refel.wr1d = w;
-            end
-        end
-        # Then find Gauss points
-        (g,w) = jacobi_gauss_quad(0,0,refel.N);
-        refel.g1d = g;
-        refel.wg1d = w;
-        
-        # r and w
-        refel.r = zeros(refel.Np,3);
-        refel.wr = zeros(refel.Np);
-        refel.g = zeros(refel.Np,3);
-        refel.wg = zeros(refel.Np);
-        n1d = length(refel.r1d);
-        for k=1:n1d
-            for j=1:n1d
-                for i=1:n1d
-                    ind = (k-1)*n1d*n1d + (j-1)*n1d + i;
-                    refel.r[ind,:] = [refel.r1d[i]; refel.r1d[j]; refel.r1d[k]];
-                    refel.wr[ind] = refel.wr1d[i] * refel.wr1d[j] * refel.wr1d[k];
-                    refel.g[ind,:] = [refel.g1d[i]; refel.g1d[j]; refel.g1d[k]];
-                    refel.wg[ind] = refel.wg1d[i] * refel.wg1d[j] * refel.wg1d[k];
+            elseif nodetype == LOBATTO
+                if refel.N == 1
+                    refel.r1d = [-1; 1];
+                    refel.wr1d = [1; 1];
+                else
+                    (r,w) = jacobi_gauss_quad(1,1,refel.N-2);
+                    refel.r1d = [-1; r ; 1];
+                    
+                    # compute the weights
+                    w = jacobi_polynomial(refel.r1d, 0, 0, refel.N);
+                    adgammaN = (2*refel.N + 1) / (refel.N * (refel.N + 1));
+                    w = w.*w;
+                    w = adgammaN./w;
+                    
+                    refel.wr1d = w;
                 end
             end
-        end
-        
-        ### surface quads ################
-        # First get the face2local maps
-        tol = 1e-8;
-        hf1(x) = abs(x[1] + 1) < tol;
-        hf2(x) = abs(x[2] + 1) < tol;
-        hf3(x) = abs(x[3] + 1) < tol;
-        hf4(x) = abs(x[1] - 1) < tol;
-        hf5(x) = abs(x[2] - 1) < tol;
-        hf6(x) = abs(x[3] - 1) < tol;
-        refel.face2local = [get_face2local_map(refel.r, hf1),
-                            get_face2local_map(refel.r, hf2),
-                            get_face2local_map(refel.r, hf3),
-                            get_face2local_map(refel.r, hf4),
-                            get_face2local_map(refel.r, hf5),
-                            get_face2local_map(refel.r, hf6)];
-        
-        tmp = zeros(3,0);
-        refel.surf_r = [tmp, tmp, tmp, tmp, tmp, tmp];
-        refel.surf_g = [tmp, tmp, tmp, tmp, tmp, tmp];
-        
-        for fi=1:6
-            refel.surf_r[fi] = refel.r[refel.face2local[fi], :];
-            refel.surf_g[fi] = refel.g[refel.face2local[fi], :];
-        end
-        
-        # The weights are a little more tricky
-        fwr = zeros(refel.Nfp[1]);
-        fwg = zeros(refel.Nfp[1]);
-        n1d = length(refel.r1d);
-        for j=1:n1d
-            for i=1:n1d
-                k = (j-1)*n1d + i;
-                fwr[k] = refel.wr1d[i] * refel.wr1d[j];
-                fwg[k] = refel.wg1d[i] * refel.wg1d[j];
+            # Then find Gauss points
+            (g,w) = jacobi_gauss_quad(0,0,refel.N);
+            refel.g1d = g;
+            refel.wg1d = w;
+            
+            # r and w
+            refel.r = zeros(refel.Np,3);
+            refel.wr = zeros(refel.Np);
+            refel.g = zeros(refel.Np,3);
+            refel.wg = zeros(refel.Np);
+            n1d = length(refel.r1d);
+            for k=1:n1d
+                for j=1:n1d
+                    for i=1:n1d
+                        ind = (k-1)*n1d*n1d + (j-1)*n1d + i;
+                        refel.r[ind,:] = [refel.r1d[i]; refel.r1d[j]; refel.r1d[k]];
+                        refel.wr[ind] = refel.wr1d[i] * refel.wr1d[j] * refel.wr1d[k];
+                        refel.g[ind,:] = [refel.g1d[i]; refel.g1d[j]; refel.g1d[k]];
+                        refel.wg[ind] = refel.wg1d[i] * refel.wg1d[j] * refel.wg1d[k];
+                    end
+                end
             end
+            
+            ### surface quads ################
+            # First get the face2local maps
+            tol = 1e-8;
+            hf1(x) = abs(x[1] + 1) < tol;
+            hf2(x) = abs(x[2] + 1) < tol;
+            hf3(x) = abs(x[3] + 1) < tol;
+            hf4(x) = abs(x[1] - 1) < tol;
+            hf5(x) = abs(x[2] - 1) < tol;
+            hf6(x) = abs(x[3] - 1) < tol;
+            refel.face2local = [get_face2local_map(refel.r, hf1),
+                                get_face2local_map(refel.r, hf2),
+                                get_face2local_map(refel.r, hf3),
+                                get_face2local_map(refel.r, hf4),
+                                get_face2local_map(refel.r, hf5),
+                                get_face2local_map(refel.r, hf6)];
+            
+            tmp = zeros(3,0);
+            refel.surf_r = [tmp, tmp, tmp, tmp, tmp, tmp];
+            refel.surf_g = [tmp, tmp, tmp, tmp, tmp, tmp];
+            
+            for fi=1:6
+                refel.surf_r[fi] = refel.r[refel.face2local[fi], :];
+                refel.surf_g[fi] = refel.g[refel.face2local[fi], :];
+            end
+            
+            # The weights are a little more tricky
+            fwr = zeros(refel.Nfp[1]);
+            fwg = zeros(refel.Nfp[1]);
+            n1d = length(refel.r1d);
+            for j=1:n1d
+                for i=1:n1d
+                    k = (j-1)*n1d + i;
+                    fwr[k] = refel.wr1d[i] * refel.wr1d[j];
+                    fwg[k] = refel.wg1d[i] * refel.wg1d[j];
+                end
+            end
+            refel.surf_wr = [fwr, fwr, fwr, fwr];
+            refel.surf_wg = [fwg, fwg, fwg, fwg];
         end
-        refel.surf_wr = [fwr, fwr, fwr, fwr];
-        refel.surf_wg = [fwg, fwg, fwg, fwg];
         
     else
-        # Not ready
+        # Not ready for 4D
     end
 end
 

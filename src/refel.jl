@@ -9,6 +9,7 @@
 include("jacobi_polynomial.jl");
 include("refel_nodes.jl");
 include("refel_triangle.jl");
+include("refel_tet.jl");
 
 mutable struct Refel
     dim::Int                # Dimension
@@ -219,9 +220,9 @@ function build_refel(dimension, order, nfaces, nodetype)
         refel = build_triangle_refel(refel);
         
     elseif (dimension == 3 && nfaces == 4) # tet
-        #refel = build_tetrahedron_refel(refel);
+        refel = build_tetrahedron_refel(refel);
         
-    else # line, quad, hex or ??
+    else # line, quad, hex
         # Vandermonde matrix and grad,inv
         # Values of basis functions and derivs at points
         refel.V = zeros(order+1, order+1);

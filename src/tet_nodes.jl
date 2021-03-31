@@ -1,8 +1,7 @@
 #=
-Find nodes for triangular elements.
-Use the book.
+Find nodes for tet elements.
 =#
-#include("tetrahedron_quadrature_table.jl");
+include("tet_quadrature_table.jl");
 
 # Build global nodes for a triangular element with refel and vertices v
 function tetrahedron_element_nodes(refel, v)
@@ -63,11 +62,12 @@ function tetrahedron_equilateral_nodes(N)
     for n=1:(N+1)
         for m=1:(N+2-n)
             for q=1:(N+3-n-m)
-            L1[sk] = (n-1)/N;
-            L2[sk] = (m-1)/N;
-            L3[sk] = (q-1)/N - 2 + (m-1)/N + (n-1)/N;
-            L4[sk] = (q-1)/N;
-            sk = sk+1;
+                L1[sk] = (n-1)/N;
+                L2[sk] = (m-1)/N;
+                L3[sk] = (q-1)/N - 2 + (m-1)/N + (n-1)/N;
+                L4[sk] = (q-1)/N;
+                sk = sk+1;
+            end
         end
     end
     

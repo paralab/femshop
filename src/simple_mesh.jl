@@ -499,6 +499,9 @@ function simple_quad_mesh(nxy, bn, interval)
     
     grid = Grid(x, bdry, bdryfc, bdrynorm, bids, loc2glb, glbvertex, f2glb, fvtx2glb);
     
+    ### This will eventually be used to make the grid. TODO: face maps?
+    #(refel, grid) = grid_from_mesh_2d_quad(mesh);
+    
     return (mesh, refel, grid);
 end
 
@@ -569,7 +572,7 @@ function simple_hex_mesh(nxyz, bn, interval)
     for k=1:nz
         for j=1:ny
             for i=1:nx
-                ni = i + (j-1)*nx;
+                ni = i + (j-1)*nx + (k-1)*nx*nx;
                 xv[1, ni] = interval[1] + (i-1)*hx;
                 xv[2, ni] = interval[3] + (j-1)*hy;
                 xv[3, ni] = interval[5] + (k-1)*hz;
@@ -577,7 +580,8 @@ function simple_hex_mesh(nxyz, bn, interval)
         end
     end
     
-    # Elements are ordered the same way
+    # Elements are ordered lexicographically
+    # Elemental vertices are ordered according to GMSH order
     nextface = 1;
     for k=1:(nz-1)
         for j=1:(ny-1)
@@ -586,12 +590,12 @@ function simple_hex_mesh(nxyz, bn, interval)
                 
                 el[1,ei] = i + (j-1)*nx + (k-1)*nx*nx;
                 el[2,ei] = i + (j-1)*nx + (k-1)*nx*nx + 1;
-                el[3,ei] = i + (j)*nx + (k-1)*nx*nx;
-                el[4,ei] = i + (j)*nx + (k-1)*nx*nx + 1;
+                el[3,ei] = i + (j)*nx + (k-1)*nx*nx + 1; #GMSH
+                el[4,ei] = i + (j)*nx + (k-1)*nx*nx; #GMSH
                 el[5,ei] = i + (j-1)*nx + (k)*nx*nx;
                 el[6,ei] = i + (j-1)*nx + (k)*nx*nx + 1;
-                el[7,ei] = i + (j)*nx + (k)*nx*nx;
-                el[8,ei] = i + (j)*nx + (k)*nx*nx + 1;
+                el[7,ei] = i + (j)*nx + (k)*nx*nx + 1; #GMSH
+                el[8,ei] = i + (j)*nx + (k)*nx*nx; #GMSH
                 
                 # face2node, face2element, element2face, normals
                 if i==1
@@ -621,10 +625,10 @@ function simple_hex_mesh(nxyz, bn, interval)
                 f6 = nextface; # back
                 nextface = nextface+1;
                 
-                f2n[:,f1] = el[[1,3,5,7],ei];
-                f2n[:,f2] = el[[2,4,6,8],ei];
+                f2n[:,f1] = el[[1,4,5,8],ei]; # modified to match GMSH
+                f2n[:,f2] = el[[2,3,6,7],ei];
                 f2n[:,f3] = el[[1,2,5,6],ei];
-                f2n[:,f4] = el[[3,4,7,8],ei];
+                f2n[:,f4] = el[[4,3,7,8],ei];
                 f2n[:,f5] = el[[1,2,3,4],ei];
                 f2n[:,f6] = el[[5,6,7,8],ei];
                 
