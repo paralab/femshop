@@ -156,6 +156,11 @@ function generate_code_layer_julia_surface(symex, var, lorr)
     end
     
     # If derivatives are needed, prepare the appropriate matrices
+    if lorr == RHS
+        use_full_deriv_mat = true
+    else
+        use_full_deriv_mat = false
+    end
     if need_derivative
         if config.dimension == 1
             push!(code.args, :(RQ1_1 = refel.surf_Qr[frefelind[1]] .* vol_J1.rx[1]));
@@ -163,13 +168,13 @@ function generate_code_layer_julia_surface(symex, var, lorr)
             push!(code.args, :(TRQ1_1 = RQ1_1'));
             push!(code.args, :(TRQ2_1 = RQ2_1'));
         elseif config.dimension == 2
-            push!(code.args, :((RQ1_1,RQ1_2,RD1_1,RD1_2) = build_face_deriv_matrix(refel, frefelind[1], vol_J1)));
-            push!(code.args, :((RQ2_1,RQ2_2,RD2_1,RD2_2) = build_face_deriv_matrix(refel, frefelind[2], vol_J2)));
+            push!(code.args, :((RQ1_1,RQ1_2,RD1_1,RD1_2) = build_face_deriv_matrix(refel, frefelind[1], vol_J1, $use_full_deriv_mat)));
+            push!(code.args, :((RQ2_1,RQ2_2,RD2_1,RD2_2) = build_face_deriv_matrix(refel, frefelind[2], vol_J2, $use_full_deriv_mat)));
             push!(code.args, :((TRQ1_1,TRQ1_2) = (RQ1_1',RQ1_2')));
             push!(code.args, :((TRQ2_1,TRQ2_2) = (RQ2_1',RQ2_2')));
         elseif config.dimension == 3
-            push!(code.args, :((RQ1_1,RQ1_2,RQ1_3,RD1_1,RD1_2,RD1_3) = build_face_deriv_matrix(refel, frefelind[1], vol_J1)));
-            push!(code.args, :((RQ2_1,RQ2_2,RQ2_3,RD2_1,RD2_2,RD2_3) = build_face_deriv_matrix(refel, frefelind[2], vol_J2)));
+            push!(code.args, :((RQ1_1,RQ1_2,RQ1_3,RD1_1,RD1_2,RD1_3) = build_face_deriv_matrix(refel, frefelind[1], vol_J1, $use_full_deriv_mat)));
+            push!(code.args, :((RQ2_1,RQ2_2,RQ2_3,RD2_1,RD2_2,RD2_3) = build_face_deriv_matrix(refel, frefelind[2], vol_J2, $use_full_deriv_mat)));
             push!(code.args, :((TRQ1_1,TRQ1_2,TRQ1_3) = (RQ1_1',RQ1_2',RQ1_3')));
             push!(code.args, :((TRQ2_1,TRQ2_2,TRQ2_3) = (RQ2_1',RQ2_2',RQ2_3')));
         end
@@ -251,23 +256,42 @@ function generate_code_layer_julia_surface(symex, var, lorr)
                     #push!(code.args, Expr(:(=), tmpc, tmpn));
                 elseif ctype == 2
                     # genfunction coefficients -> coef_n_i = coef.value[i].func(cargs)
-                    tmpv = :(a[coefi]);
-                    tmpv.args[1] = tmpc1;
-                    tmpn = :(Femshop.genfunctions[$cval]); # Femshop.genfunctions[cval]
-                    tmpb = :(a.func());
-                    tmpb.args[1].args[1]= tmpn;
-                    append!(tmpb.args, cargs);
-                    push!(code.args, Expr(:(=), tmpc1, :(zeros(refel.Nfp[frefelind[1]])))); # allocate coef_n
-                    push!(code.args, Expr(:(=), tmpc2, :(zeros(refel.Nfp[frefelind[1]]))));
+                    if lorr == LHS
+                        push!(code.args, Expr(:(=), tmpc1, :(zeros(refel.Nfp[frefelind[1]])))); # allocate coef_n
+                        push!(code.args, Expr(:(=), tmpc2, :(zeros(refel.Nfp[frefelind[1]]))));
+                        tmpv1 = :(a[coefi]);
+                        tmpv2 = :(a[coefi]);
+                        
+                    else
+                        push!(code.args, Expr(:(=), tmpc1, :(zeros(refel.Np)))); # allocate coef_n
+                        push!(code.args, Expr(:(=), tmpc2, :(zeros(refel.Np))));
+                        tmpv1 = :(a[refel.face2local[frefelind[1]][coefi]]);
+                        tmpv2 = :(a[refel.face2local[frefelind[2]][coefi]]);
+                    end
+                    
+                    tmpv1.args[1] = tmpc1;
+                    tmpn1 = :(Femshop.genfunctions[$cval]); # Femshop.genfunctions[cval]
+                    tmpb1 = :(a.func());
+                    tmpb1.args[1].args[1]= tmpn1;
+                    append!(tmpb1.args, cargs);
+                    
+                    
+                    tmpv2.args[1] = tmpc2;
+                    tmpn2 = :(Femshop.genfunctions[$cval]); # Femshop.genfunctions[cval]
+                    tmpb2 = :(a.func());
+                    tmpb2.args[1].args[1]= tmpn2;
+                    append!(tmpb2.args, cargs);
+                    
                     #push!(code.args, Expr(:(=), tmpc, tmpc1));
-                    push!(cloopin.args, Expr(:(=), tmpv, tmpb)); # add it to the loop
+                    push!(cloopin.args, Expr(:(=), tmpv1, tmpb1)); # add it to the loop
+                    push!(cloopin.args, Expr(:(=), tmpv2, tmpb2)); # add it to the loop
                     
                 elseif ctype == 3
-                    tag = string(needed_coef[i]);
-                    tmps1 = "coef_DGSIDE1"*tag*"_"*string(needed_coef_ind[i]);
-                    tmps2 = "coef_DGSIDE2"*tag*"_"*string(needed_coef_ind[i]);
-                    tmpc1 = Symbol(tmps1);
-                    tmpc2 = Symbol(tmps2);
+                    # tag = string(needed_coef[i]);
+                    # tmps1 = "coef_DGSIDE1"*tag*"_"*string(needed_coef_ind[i]);
+                    # tmps2 = "coef_DGSIDE2"*tag*"_"*string(needed_coef_ind[i]);
+                    # tmpc1 = Symbol(tmps1);
+                    # tmpc2 = Symbol(tmps2);
                     # variable values -> coef_n = variable.values
                     if variables[cval].type == SCALAR
                         tmpb1 = :(copy(Femshop.variables[$cval].values[loc2glb[1]]));
@@ -322,6 +346,8 @@ function generate_code_layer_julia_surface(symex, var, lorr)
                 #tmps = "coef_"*tag*"_"*string(needed_coef_ind[i]);
                 tmps1 = "coef_DGSIDE1"*tag*"_"*string(needed_coef_ind[i]);
                 tmps2 = "coef_DGSIDE2"*tag*"_"*string(needed_coef_ind[i]);
+                # tmps1 = "coef_"*tag*"_"*string(needed_coef_ind[i]);
+                # tmps2 = "coef_"*tag*"_"*string(needed_coef_ind[i]);
                 #tmpc = Symbol(tmps);
                 tmpc1 = Symbol(tmps1);
                 tmpc2 = Symbol(tmps2);
@@ -329,8 +355,8 @@ function generate_code_layer_julia_surface(symex, var, lorr)
                 if length(needed_coef_deriv[i][3]) > 0 && !(typeof(needed_coef[i]) <: Number || needed_coef[i] === :dt)
                     
                     
-                    dmat1 = Symbol("RDL"*needed_coef_deriv[i][3]);
-                    dmat2 = Symbol("RDR"*needed_coef_deriv[i][3]);
+                    dmat1 = Symbol("RD1_"*needed_coef_deriv[i][3]);
+                    dmat2 = Symbol("RD2_"*needed_coef_deriv[i][3]);
                     tmpb1= :(length($tmpc1) == 1 ? 0 : $dmat1 * $tmpc1);
                     tmpb2= :(length($tmpc2) == 1 ? 0 : $dmat2 * $tmpc2);
                     
@@ -378,6 +404,11 @@ function generate_code_layer_julia_surface(symex, var, lorr)
         
     end# needed_coef loop
     
+    # push!(code.args, :(println("Dcoef: " * string(size(coef_DGSIDE1D1u_1)))));
+    # push!(code.args, :(println("coef: " * string(size(coef_DGSIDE10_1)))));
+    # push!(code.args, :(println("wgdj: " * string(size(face_wgdetj)))));
+    # push!(code.args, :(println("Q: " * string(size(refel.surf_Q[frefelind[2]])))));
+    
     # finally add the code expression
     # For multiple dofs per node it will be like:
     # [A11  A12  A13 ...] where the indices are from test_ind and trial_ind (vector components)
@@ -398,6 +429,8 @@ function generate_code_layer_julia_surface(symex, var, lorr)
     else
         dofsper = length(var.symvar.vals);
     end
+    
+    #push!(code.args, :(println("after: " * string(size(coef_DGSIDE1D1u_1)))));
     
     #if dofsper > 1
         if lorr == RHS
@@ -942,19 +975,39 @@ function process_surface_term_julia(sterm, var, lorr, offset_ind=0)
                 # Check for derivative mods
                 if typeof(v) == Symbol && !(v ===:dt)
                     if length(mods) > 0
+                        # print("process coef: ")
+                        # println(string(v) * " : " * string(mods))
                         # Could be Dn for derivative, DGJUMP for jump, DGAVE for ave or versions with NORMDOTGRAD
-                        if occursin("DGSIDE1", mods[1])
-                            # {{n.grad(u)}}
-                            push!(needed_coef_deriv, [v, mods[1], ""]);
-                        elseif occursin("DGSIDE2", mods[1])
-                            # {{n.grad(u)}}
-                            push!(needed_coef_deriv, [v, mods[1], ""]);
-                        elseif occursin("D", mods[1])
-                            need_derivative = true;
-                            need_derivative_for_coefficient = false;
-                            
-                            push!(needed_coef_deriv, [v, mods[1], mods[1][2]]);
+                        if length(mods) > 1
+                            if occursin("DGSIDE", mods[2]) && occursin("D", mods[1])
+                                need_derivative = true;
+                                need_derivative_for_coefficient = false;
+                                push!(needed_coef_deriv, [v, mods[1], mods[1][2]]);
+                            else
+                                println("found strange mods: " * string(v) * " : " * string(mods))
+                            end
+                        else
+                            if occursin("DGSIDE", mods[1])
+                                push!(needed_coef_deriv, [v, "", ""]);
+                            elseif occursin("D", mods[1])
+                                need_derivative = true;
+                                need_derivative_for_coefficient = false;
+                                push!(needed_coef_deriv, [v, mods[1], mods[1][2]]);
+                            end
                         end
+                        
+                        # if occursin("DGSIDE1", mods[1])
+                        #     # {{n.grad(u)}}
+                        #     push!(needed_coef_deriv, [v, mods[1], ""]);
+                        # elseif occursin("DGSIDE2", mods[1])
+                        #     # {{n.grad(u)}}
+                        #     push!(needed_coef_deriv, [v, mods[1], ""]);
+                        # elseif occursin("D", mods[1]) Here is the issueeeeeeeeeeeeeeeeeeeeeeee
+                        #     need_derivative = true;
+                        #     need_derivative_for_coefficient = false;
+                            
+                        #     push!(needed_coef_deriv, [v, mods[1], mods[1][2]]);
+                        # end
                         
                     else
                         push!(needed_coef_deriv, [v, "", ""]);
@@ -1129,7 +1182,11 @@ function process_surface_term_julia(sterm, var, lorr, offset_ind=0)
             
             if neg
                 negex = :(-a);
-                negex.args[2] = copy(terms[tind]);
+                if typeof(terms[tind]) <: Expr
+                    negex.args[2] = copy(terms[tind]);
+                else
+                    negex.args[2] = terms[tind];
+                end
                 terms[tind] = negex;
             end
         end

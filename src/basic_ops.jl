@@ -69,7 +69,7 @@ function sym_surface_op(ex)
 end
 
 function sym_ave_op(var)
-    prefix = "DGAVERAGE_";
+    #prefix = "DGAVERAGE_";
     side1 = "DGSIDE1_";
     side2 = "DGSIDE2_";
     if typeof(var) <: Array
@@ -86,7 +86,7 @@ function sym_ave_op(var)
 end
 
 function sym_jump_op(var)
-    prefix = "DGJUMP_";
+    #prefix = "DGJUMP_";
     side1 = "DGSIDE1_";
     side2 = "DGSIDE2_";
     norm1 = sym_normal_op(1);
@@ -96,54 +96,57 @@ function sym_jump_op(var)
         if length(var) == 1
             result = sym_jump_op(var[1]);
         else
-            # not ready
-            println("error in jump operator");
-            return var;
+            # matrix rows for vec components, cols for normal components
+            result = sym_jump_op(var[1]);
+            for i=2:length(var)
+                result = hcat(result, sym_jump_op(var[i]));
+            end
+            permutedims(result)
         end
         
     elseif typeof(var) == Basic
         result = symbols(side2*string(var)) .* norm2 .+ symbols(side1*string(var)) .*norm1;
     elseif typeof(var) <: Number
-        result = Basic(0);
+        result = Basic(0) .* norm1;
     end
     
     return result;
 end
 
-function sym_ave_normdotgrad_op(var)
-    prefix = "DGAVENORMDOTGRAD_";
-    if typeof(var) <: Array
-        result = copy(var);
-        for i=1:length(result)
-            result[i] = sym_ave_normdotgrad_op(var[i]);
-        end
-    elseif typeof(var) == Basic
-        result = symbols(prefix*string(var));
-    elseif typeof(var) <: Number
-        result = Basic(0);
-    end
-    return result;
-end
+# function sym_ave_normdotgrad_op(var)
+#     prefix = "DGAVENORMDOTGRAD_";
+#     if typeof(var) <: Array
+#         result = copy(var);
+#         for i=1:length(result)
+#             result[i] = sym_ave_normdotgrad_op(var[i]);
+#         end
+#     elseif typeof(var) == Basic
+#         result = symbols(prefix*string(var));
+#     elseif typeof(var) <: Number
+#         result = Basic(0);
+#     end
+#     return result;
+# end
 
-function sym_jump_normdotgrad_op(var)
-    prefix = "DGJUMPNORMDOTGRAD_";
-    if typeof(var) <: Array
-        result = copy(var);
-        for i=1:length(result)
-            result[i] = sym_jump_normdotgrad_op(var[i]);
-        end
-    elseif typeof(var) == Basic
-        result = symbols(prefix*string(var));
-    elseif typeof(var) <: Number
-        result = Basic(0);
-    end
-    return result;
-end
+# function sym_jump_normdotgrad_op(var)
+#     prefix = "DGJUMPNORMDOTGRAD_";
+#     if typeof(var) <: Array
+#         result = copy(var);
+#         for i=1:length(result)
+#             result[i] = sym_jump_normdotgrad_op(var[i]);
+#         end
+#     elseif typeof(var) == Basic
+#         result = symbols(prefix*string(var));
+#     elseif typeof(var) <: Number
+#         result = Basic(0);
+#     end
+#     return result;
+# end
 
 function sym_normal_op()
-    _DGNORMAL_1 = symbols("_DGNORMAL_1");
-    _DGNORMAL_2 = symbols("_DGNORMAL_2");
-    _DGNORMAL_3 = symbols("_DGNORMAL_3");
+    _DGNORMAL_1 = symbols("_DGNORMAL1_1");
+    _DGNORMAL_2 = symbols("_DGNORMAL1_2");
+    _DGNORMAL_3 = symbols("_DGNORMAL1_3");
     d = config.dimension;
     if d==1
         return [_DGNORMAL_1];
@@ -350,10 +353,10 @@ function sym_laplacian_op(u)
 end
 
 # Load them into the global arrays
-op_names = [:dot, :inner, :cross, :transpose, :surface, :ave, :jump, :ave_normdotgrad, :jump_normdotgrad, :normal, 
+op_names = [:dot, :inner, :cross, :transpose, :surface, :ave, :jump, :normal, 
             :Dt, :deriv, :grad, :div, :curl, :laplacian];
 _handles = [sym_dot_op, sym_inner_op, sym_cross_op, sym_transpose_op, sym_surface_op, sym_ave_op, sym_jump_op, 
-            sym_ave_normdotgrad_op, sym_jump_normdotgrad_op, sym_normal_op, sym_Dt_op, sym_deriv_op, sym_grad_op, 
+            sym_normal_op, sym_Dt_op, sym_deriv_op, sym_grad_op, 
             sym_div_op, sym_curl_op, sym_laplacian_op];
 for i=1:length(op_names)
     push!(ops, SymOperator(op_names[i], _handles[i]));

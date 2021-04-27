@@ -63,23 +63,51 @@ function geometric_factors(refel, pts)
         end
         
     else
-        (xr, xs, xt) = tensor_grad3(refel.Dg, pts[1,:][:]);
-        (yr, ys, yt) = tensor_grad3(refel.Dg, pts[2,:][:]);
-        (zr, zs, zt) = tensor_grad3(refel.Dg, pts[3,:][:]);
-        J = xr.*(ys.*zt-zs.*yt) - yr.*(xs.*zt-zs.*xt) + zr.*(xs.*yt-ys.*xt);
-        
-        rx =  (ys.*zt - zs.*yt)./J;
-        ry = -(xs.*zt - zs.*xt)./J;
-        rz =  (xs.*yt - ys.*xt)./J;
-        
-        sx = -(yr.*zt - zr.*yt)./J;
-        sy =  (xr.*zt - zr.*xt)./J;
-        sz = -(xr.*yt - yr.*xt)./J;
-        
-        tx =  (yr.*zs - zr.*ys)./J;
-        ty = -(xr.*zs - zr.*xs)./J;
-        tz =  (xr.*ys - yr.*xs)./J;
-        D = Jacobian(rx,ry,rz,sx,sy,sz,tx,ty,tz);
+        if refel.Nfaces == 4 # tetrahedron
+            xr = refel.Ddr*pts[1,:];
+            xs = refel.Dds*pts[1,:];
+            xt = refel.Ddt*pts[1,:];
+            yr = refel.Ddr*pts[2,:];
+            ys = refel.Dds*pts[2,:];
+            yt = refel.Ddt*pts[2,:];
+            zr = refel.Ddr*pts[3,:];
+            zs = refel.Dds*pts[3,:];
+            zt = refel.Ddt*pts[3,:];
+            J = xr.*(ys.*zt-zs.*yt) - yr.*(xs.*zt-zs.*xt) + zr.*(xs.*yt-ys.*xt);
+            J = J[1]; # assume constant detJ
+            
+            rx =  (ys.*zt - zs.*yt)./J;
+            ry = -(xs.*zt - zs.*xt)./J;
+            rz =  (xs.*yt - ys.*xt)./J;
+            
+            sx = -(yr.*zt - zr.*yt)./J;
+            sy =  (xr.*zt - zr.*xt)./J;
+            sz = -(xr.*yt - yr.*xt)./J;
+            
+            tx =  (yr.*zs - zr.*ys)./J;
+            ty = -(xr.*zs - zr.*xs)./J;
+            tz =  (xr.*ys - yr.*xs)./J;
+            D = Jacobian(rx,ry,rz,sx,sy,sz,tx,ty,tz);
+            
+        else # hexahedron
+            (xr, xs, xt) = tensor_grad3(refel.Dg, pts[1,:][:]);
+            (yr, ys, yt) = tensor_grad3(refel.Dg, pts[2,:][:]);
+            (zr, zs, zt) = tensor_grad3(refel.Dg, pts[3,:][:]);
+            J = xr.*(ys.*zt-zs.*yt) - yr.*(xs.*zt-zs.*xt) + zr.*(xs.*yt-ys.*xt);
+            
+            rx =  (ys.*zt - zs.*yt)./J;
+            ry = -(xs.*zt - zs.*xt)./J;
+            rz =  (xs.*yt - ys.*xt)./J;
+            
+            sx = -(yr.*zt - zr.*yt)./J;
+            sy =  (xr.*zt - zr.*xt)./J;
+            sz = -(xr.*yt - yr.*xt)./J;
+            
+            tx =  (yr.*zs - zr.*ys)./J;
+            ty = -(xr.*zs - zr.*xs)./J;
+            tz =  (xr.*ys - yr.*xs)./J;
+            D = Jacobian(rx,ry,rz,sx,sy,sz,tx,ty,tz);
+        end
     end
     
     return (J,D);
@@ -174,27 +202,44 @@ function build_deriv_matrix(refel, J)
 end
 
 # Build the regular deriv matrices, then extract the relevant face parts
-function build_face_deriv_matrix(refel, face, J)
+function build_face_deriv_matrix(refel, face, J, full = false)
     if refel.dim == 1
         RQ1 = J.rx[1]*refel.surf_Qr[face];
-        RD1 = J.rx[1]*refel.surf_Ddr[face];
+        if full
+            RD1 = J.rx[1]*refel.Ddr;
+        else
+            RD1 = J.rx[1]*refel.surf_Ddr[face];
+        end
         
         return (RQ1,RD1);
         
     elseif refel.dim == 2
         RQ1 = J.rx[1]*refel.surf_Qr[face] + J.sx[1]*refel.surf_Qs[face];
         RQ2 = J.ry[1]*refel.surf_Qr[face] + J.sy[1]*refel.surf_Qs[face];
-        RD1 = 0;
-        RD2 = 0; #TODO derivative matrices for faces
+        if full
+            RD1 = J.rx[1]*refel.Ddr + J.sx[1]*refel.Dds;
+            RD2 = J.ry[1]*refel.Ddr + J.sy[1]*refel.Dds;
+        else
+            RD1 = J.rx[1]*refel.surf_Ddr[face] + J.sx[1]*refel.surf_Dds[face];
+            RD2 = J.ry[1]*refel.surf_Ddr[face] + J.sy[1]*refel.surf_Dds[face];
+        end
+        
         return (RQ1, RQ2, RD1, RD2);
         
     elseif refel.dim == 3
         RQ1 = J.rx[1]*refel.surf_Qr[face] + J.sx[1]*refel.surf_Qs[face] + J.tx[1]*refel.surf_Qt[face];
         RQ2 = J.ry[1]*refel.surf_Qr[face] + J.sy[1]*refel.surf_Qs[face] + J.ty[1]*refel.surf_Qt[face];
         RQ3 = J.ry[1]*refel.surf_Qr[face] + J.sy[1]*refel.surf_Qs[face] + J.tz[1]*refel.surf_Qt[face];
-        RD1 = 0;
-        RD2 = 0; #TODO derivative matrices for faces
-        RD3 = 0;
+        if full
+            RD1 = J.rx[1]*refel.Ddr + J.sx[1]*refel.Dds + J.tx[1]*refel.Ddt;
+            RD2 = J.ry[1]*refel.Ddr + J.sy[1]*refel.Dds + J.ty[1]*refel.Ddt;
+            RD3 = J.ry[1]*refel.Ddr + J.sy[1]*refel.Dds + J.tz[1]*refel.Ddt;
+        else
+            RD1 = J.rx[1]*refel.surf_Ddr[face] + J.sx[1]*refel.surf_Dds[face] + J.tx[1]*refel.surf_Ddt[face];
+            RD2 = J.ry[1]*refel.surf_Ddr[face] + J.sy[1]*refel.surf_Dds[face] + J.ty[1]*refel.surf_Ddt[face];
+            RD3 = J.ry[1]*refel.surf_Ddr[face] + J.sy[1]*refel.surf_Dds[face] + J.tz[1]*refel.surf_Ddt[face];
+        end
+        
         return (RQ1, RQ2, RQ3, RD1, RD2, RD3);
     end
 end

@@ -118,7 +118,7 @@ function linear_solve(var, bilinear, linear, stepper=nothing)
     else
         assemble_t = @elapsed((A, b) = assemble(var, bilinear, linear));
         # uncomment to look at A
-        #global Amat = A;
+        global Amat = A;
         
         sol_t = @elapsed(sol = A\b);
         

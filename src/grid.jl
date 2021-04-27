@@ -19,6 +19,8 @@ struct Grid
     #facenormals::Array{Array{Float64,2},1}    # normal vector for each face
 end
 
+etypetonv = [2, 3, 4, 4, 8, 6, 5, 2, 3, 4, 4, 8, 6, 5, 1, 4, 8, 6, 5]; # number of vertices for each type
+etypetodim= [1, 2, 2, 3, 3, 3, 3, 1, 2, 2, 3, 3, 3, 3, 1, 2, 2, 3, 3]; # dimension of each type
 etypetonf = [2, 3, 4, 4, 6, 5, 5, 2, 3, 4, 4, 6, 5, 5, 1, 4, 6, 5, 5]; # number of faces for element types
 
 # Build a grid from a mesh
@@ -451,11 +453,12 @@ function grid_from_mesh_3d(mesh)
     tmpallnodes = zeros(3, mesh.nel*refel.Np);
     for ei=1:nel
         # Find this element's nodes
-        e_vert = mesh.nodes[1:3, mesh.elements[1:8, ei]];
+        n_vert = etypetonv[mesh.etypes[ei]];
+        e_vert = mesh.nodes[:, mesh.elements[1:n_vert, ei]];
         if nvtx == 8
             (e_x, e_y, e_z) = hex_refel_to_xyz(refel.r[:,1], refel.r[:,2], refel.r[:,3], e_vert);
         else
-            (e_x, e_y, e_z) = tet_refel_to_xyz(refel.r[:,1], refel.r[:,2], refel.r[:,3], e_vert);
+            (e_x, e_y, e_z) = tetrahedron_refel_to_xyz(refel.r[:,1], refel.r[:,2], refel.r[:,3], e_vert);
         end
         
         # Add them to the tmp global nodes
@@ -468,9 +471,8 @@ function grid_from_mesh_3d(mesh)
     end
     
     # Go back and remove duplicate nodes. Adjust loc2glb.
-    to_remove = [];
     remove_count = 0;
-    tol = 1e-9;
+    tol = 1e-6;
     found = false;
     next_ind = Np+1;
     allnodes = zeros(size(tmpallnodes));
@@ -482,7 +484,6 @@ function grid_from_mesh_3d(mesh)
                 for nj=1:Np
                     if is_same_node(tmpallnodes[:,loc2glb[ni,ei]], allnodes[:,loc2glb[nj,ej]], tol)
                         # duplicates: keep the ej one, remove ei
-                        push!(to_remove, loc2glb[ni,ei]);
                         loc2glb[ni,ei] = loc2glb[nj,ej];
                         remove_count += 1;
                         found = true;
@@ -503,6 +504,10 @@ function grid_from_mesh_3d(mesh)
     N = next_ind-1;
     allnodes = allnodes[:,1:N];
     
+    # println("grid nodes before removing duplicates: "*string(mesh.nel*refel.Np))
+    # println("grid nodes after removing duplicates:  "*string(N))
+    # println("mesh nodes: "*string(size(mesh.nodes,2)))
+    
     # face to global
     for ei=1:nel
         for fi=1:nfaces
@@ -511,14 +516,31 @@ function grid_from_mesh_3d(mesh)
         end
     end
     
+    # #sanity check
+    # println("check first element:")
+    # println("loc2glb: " * string(loc2glb[:,1]))
+    # println("f2glb[1]: " * string(f2glb[:,1]))
+    # println("f2glb[2]: " * string(f2glb[:,2]))
+    # println("f2glb[3]: " * string(f2glb[:,3]))
+    # println("f2glb[4]: " * string(f2glb[:,4]))
+    # println("allnodes: " * string(allnodes[:,loc2glb[:,1]]))
+    # println("mesh.nodes: " * string(mesh.nodes[:, mesh.elements[1:4,1]]))
+    # println("refel.r: " * string(refel.r))
+    # (should_x, should_y, should_z) = tetrahedron_refel_to_xyz(refel.r[:,1], refel.r[:,2], refel.r[:,3], mesh.nodes[:, mesh.elements[1:4,1]]);
+    # println("allnodes should be: ")
+    # println(should_x)
+    # println(should_y)
+    # println(should_z)
+    
     # vertices and boundary
     for ei=1:nel
         mfids = mesh.element2face[:,ei];
         normals = mesh.normals[:,mfids];
+        n_vert = etypetonv[mesh.etypes[ei]];
         
         # vertices
         for ni=1:Np
-            for vi=1:8
+            for vi=1:n_vert
                 if is_same_node(mesh.nodes[:, mesh.elements[vi,ei]], allnodes[:,loc2glb[ni,ei]], tol)
                     glbvertex[vi, ei] = loc2glb[ni,ei];
                 end
@@ -530,7 +552,10 @@ function grid_from_mesh_3d(mesh)
         g2mfids = zeros(Int, nfaces);
         meshfaces = mesh.element2face[:,ei];
         for gfi=1:nfaces
+            #println("grid face: " * string(allnodes[:, f2glb[:,gfids[gfi]]]'));
             for mfi=1:nfaces
+                #println("mesh face: " * string(mesh.nodes[:,mesh.face2vertex[:,meshfaces[mfi]]]'));
+                
                 if is_same_plane(mesh.nodes[:,mesh.face2vertex[:,meshfaces[mfi]]], allnodes[:, f2glb[:,gfids[gfi]]], tol)
                     g2mfids[gfi] = mfi;
                 end
@@ -651,9 +676,19 @@ function hex_refel_to_xyz(r, s, t, v)
 end
 
 function tetrahedron_refel_to_xyz(r, s, t, v)
-    x = 0.5 .* (-(r.+s.+t) .* 2/3*v[1,1] .+ (1 .+r) .* v[1,2] .+ (1 .+s) .* v[1,3] .+ (1 .+t) .* v[1,4]);
-    y = 0.5 .* (-(r.+s.+t) .* 2/3*v[2,1] .+ (1 .+r) .* v[2,2] .+ (1 .+s) .* v[2,3] .+ (1 .+t) .* v[2,4]);
-    z = 0.5 .* (-(r.+s.+t) .* 2/3*v[3,1] .+ (1 .+r) .* v[3,2] .+ (1 .+s) .* v[3,3] .+ (1 .+t) .* v[3,4]);
+    d = v[:,1];
+    A = [v[:,2].-d v[:,3].-d v[:,4].-d];
+    
+    np = length(r);
+    mv = zeros(3,np);
+    for i=1:np
+        tmp = [(r[i]+1)/2, (s[i]+1)/2, (t[i]+1)/2];
+        mv[:,i] = A*tmp + d;
+    end
+    
+    x = mv[1,:]
+    y = mv[2,:]
+    z = mv[3,:]
     
     return (x, y, z);
 end

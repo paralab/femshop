@@ -247,7 +247,9 @@ end
 
 # Replaces variable, coefficient and operator symbols in the expression
 function replace_symbols(ex)
-    if typeof(ex) == Symbol
+    if typeof(ex) <: Number
+        return Basic(ex);
+    elseif typeof(ex) == Symbol
         # variable?
         for v in variables
             if ex === v.symbol
@@ -257,6 +259,10 @@ function replace_symbols(ex)
         # coefficient?
         for c in coefficients
             if ex === c.symbol
+                # constant coefficients are entered as numbers
+                if c.type == SCALAR && typeof(c.value[1]) <: Number
+                    return Basic(c.value[1]);
+                end
                 return c.symvar.vals;
             end
         end

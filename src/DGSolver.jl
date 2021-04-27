@@ -29,6 +29,7 @@ include("cg_boundary.jl"); # Can we use the CG versions here?
 include("nonlinear.jl");
 include("cg_matrixfree.jl");
 include("face_data.jl");
+#include("dg_utils.jl");
 #include("desired.jl");
 
 function init_dgsolver()

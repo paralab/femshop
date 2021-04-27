@@ -44,6 +44,7 @@ include("variables.jl");
 include("coefficient.jl");
 include("parameter.jl");
 include("geometric_factors.jl");
+include("dg_utils.jl");
 include("time_steppers.jl");
 
 # Femshop submodules

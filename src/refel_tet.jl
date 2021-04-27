@@ -17,10 +17,10 @@ function build_tetrahedron_refel(refel)
     refel.Q = refel.Vg*refel.invV;
     refel.Qr = DVgr*refel.invV;
     refel.Qs = DVgs*refel.invV;
-    refel.Qt = DVgs*refel.invV;
+    refel.Qt = DVgt*refel.invV;
     refel.Ddr = refel.Dr*refel.invV;
     refel.Dds = refel.Ds*refel.invV;
-    refel.Ddt = refel.Ds*refel.invV;
+    refel.Ddt = refel.Dt*refel.invV;
     
     return refel;
 end
@@ -31,6 +31,7 @@ function tetrahedron_vandermonds(refel, r)
     V = zeros(Nrp, Np);
     gradVr = zeros(Nrp, Np);
     gradVs = zeros(Nrp, Np);
+    gradVt = zeros(Nrp, Np);
     
     # Transfer (r,s,t) to (a,b,c) coordinates
     a = zeros(Nrp); 
@@ -41,7 +42,7 @@ function tetrahedron_vandermonds(refel, r)
         else
             a[ni] = -1;
         end
-        if tr[ni,3] != 1
+        if r[ni,3] != 1
             b[ni] = 2*(1+r[ni,2])/(1-r[ni,3])-1;
         else
             b[ni] = -1;
@@ -54,10 +55,10 @@ function tetrahedron_vandermonds(refel, r)
     for i=0:refel.N
         h1 = jacobi_polynomial(a,0,0,i);
         dfa = grad_jacobi_polynomial(a, 0, 0, i);
-        for j=0:refel.N - i
+        for j=0:(refel.N - i)
             h2 = jacobi_polynomial(b,2*i+1,0,j);
             dgb = grad_jacobi_polynomial(b, 2*i+1,0, j);
-            for k=0:refel.N - i - j
+            for k=0:(refel.N - i - j)
                 h3 = jacobi_polynomial(c,2*(i+j)+2,0,k);
                 dhc = grad_jacobi_polynomial(b, 2*(i+j)+2,0, k);
                 

@@ -44,15 +44,17 @@ macro makeFunctions(ex)
         nfuns = 0;
         args = "x=0,y=0,z=0,t=0";
         if typeof($ex) <: Array
+            ### If it's an array, it can't be mixed type! At least for now.
+            # There's a problem with nfuns disappearing in the loop.
             if typeof($ex[1]) <: Number
                 nfuns = 0;
             else
                 for i=1:length($ex)
                     if typeof($ex[i]) == String
-                        @makeFunction(args, $ex[i]);
-                        nfuns = nfuns + 1;                  #removed global
+                        tmp = @makeFunction(args, $ex[i]);
                     end
                 end
+                nfuns = length($ex)
             end
         else
             if typeof($ex) == String

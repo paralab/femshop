@@ -156,7 +156,6 @@ function insert_sparse_rows(A, SI, SJ, SV)
     (M,N) = size(A);
     
     # Zero existing elements in SI rows
-    sort!(rows);
     for k in 1:length(I)
         if is_in_rows(I[k], SI)
             V[k] = 0;
