@@ -66,7 +66,6 @@ function refel_nodes!(refel, nodetype)
         if refel.Nfaces == 3 # triangles
             triangle_refel_nodes!(refel);
         else # quads
-            # for now assume rectangular quads
             if nodetype == UNIFORM
                 refel.r1d = Array(-1:(2/(refel.Np-1)):1);
                 refel.wr1d = ones(length(refel.r1d)) ./ length(refel.r1d);
@@ -91,7 +90,7 @@ function refel_nodes!(refel, nodetype)
                     refel.wr1d = w;
                 end
             end
-            # Then find Gauss points
+            # Then find Gauss quadrature points
             (g,w) = jacobi_gauss_quad(0,0,refel.N);
             refel.g1d = g;
             refel.wg1d = w;

@@ -472,7 +472,7 @@ function grid_from_mesh_3d(mesh)
     
     # Go back and remove duplicate nodes. Adjust loc2glb.
     remove_count = 0;
-    tol = 1e-6;
+    tol = 1e-10;
     found = false;
     next_ind = Np+1;
     allnodes = zeros(size(tmpallnodes));

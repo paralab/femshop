@@ -26,11 +26,13 @@ function tetrahedron_refel_nodes!(refel)
     xyzw = tetrahedron_quadrature_nodes_weights(refel.N+1);
     refel.g = xyzw[:,1:3];
     refel.wg = xyzw[:,4];
-    tol = 1e-8;
+    
+    # face node maps
+    tol = 1e-2;
     tf1(x) = abs(x[1] + 1) < tol;
     tf2(x) = abs(x[2] + 1) < tol;
     tf3(x) = abs(x[3] + 1) < tol;
-    tf4(x) = abs(x[1] + x[2] + x[3]) < tol;
+    tf4(x) = abs(x[1] + x[2] + x[3] + 1) < tol;
     refel.face2local = [get_face2local_map(refel.r, tf1),
                         get_face2local_map(refel.r, tf2),
                         get_face2local_map(refel.r, tf3),
@@ -64,7 +66,8 @@ function tetrahedron_equilateral_nodes(N)
             for q=1:(N+3-n-m)
                 L1[sk] = (n-1)/N;
                 L2[sk] = (m-1)/N;
-                L3[sk] = (q-1)/N - 2 + (m-1)/N + (n-1)/N;
+                #L3[sk] = (q-1)/N - 2 + (m-1)/N + (n-1)/N;
+                L3[sk] = 1 - (q+m+n-3)/N;
                 L4[sk] = (q-1)/N;
                 sk = sk+1;
             end
@@ -119,6 +122,7 @@ function tetrahedron_equilateral_nodes(N)
         blend = Lb.*Lc.*Ld;   # compute volume blending
       
         denom = (Lb .+ .5 .* La).*(Lc .+ .5 .* La).*(Ld .+ .5 .* La);   # modify linear blend
+        tol = 1e-6
         for ids=1:Np
             if denom[ids] > tol
                 blend[ids] = (1 .+ (alpha.*La[ids]).^2).*blend[ids]./denom[ids];
@@ -126,10 +130,9 @@ function tetrahedron_equilateral_nodes(N)
         end
         
         # compute warp & blend
-        shift = shift .+ (blend.*warp1) .* t1[face,:] .+ (blend.*warp2).*t2[face,:];
+        shift = shift .+ (blend.*warp1) * t1[face,:]' .+ (blend.*warp2) * t2[face,:]';
         
         # fix face warp 
-        ids = find();
         for ids=1:Np
             numtrue = 0;
             if Lb[ids]>tol
@@ -244,9 +247,19 @@ end
 # From (r,s,t) coordinates in reference tetrahedron to (x,y,z) in tetrahedron with vertices v
 # v is a 3x4 array [x1 x2 x3 x4; y1 y2 y3 y4; z1 z2 z3 z4]
 function tetrahedron_refel_to_xyz(r, s, t, v)
-    x = 0.5 .* (-(r.+s.+t) .* 2/3*v[1,1] .+ (1 .+r) .* v[1,2] .+ (1 .+s) .* v[1,3] .+ (1 .+t) .* v[1,4]);
-    y = 0.5 .* (-(r.+s.+t) .* 2/3*v[2,1] .+ (1 .+r) .* v[2,2] .+ (1 .+s) .* v[2,3] .+ (1 .+t) .* v[2,4]);
-    z = 0.5 .* (-(r.+s.+t) .* 2/3*v[3,1] .+ (1 .+r) .* v[3,2] .+ (1 .+s) .* v[3,3] .+ (1 .+t) .* v[3,4]);
+    d = v[:,1];
+    A = [v[:,2].-d v[:,3].-d v[:,4].-d];
+    
+    np = length(r);
+    mv = zeros(3,np);
+    for i=1:np
+        tmp = [(r[i]+1)/2, (s[i]+1)/2, (t[i]+1)/2];
+        mv[:,i] = A*tmp + d;
+    end
+    
+    x = mv[1,:]
+    y = mv[2,:]
+    z = mv[3,:]
     
     return (x, y, z);
 end

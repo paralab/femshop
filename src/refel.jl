@@ -15,6 +15,7 @@ mutable struct Refel
     dim::Int                # Dimension
     N::Int                  # Order of polynomials
     Np::Int                 # Number of nodes
+    Nqp::Int                # Number of quadrature points
     Nfaces::Int             # Number of faces
     Nfp::Array{Int,1}       # Number of nodes for each face
     
@@ -95,6 +96,7 @@ mutable struct Refel
         dim,
         order,
         nnodes,
+        -1,
         nfaces,
         nfp,
         [],[],
@@ -120,6 +122,7 @@ end
 import Base.copy
 function copy(ref::Refel)
     newref = Refel(ref.dim, ref.N, ref.Np, ref.Nfaces, ref.Nfp);
+    newref.Nqp = ref.Nqp;
     newref.r1d = copy(ref.r1d);
     newref.r = copy(ref.r);
     newref.wr1d = copy(ref.wr1d);
@@ -193,6 +196,7 @@ function build_refel(dimension, order, nfaces, nodetype)
     
     # Get nodes on the reference element
     refel_nodes!(refel, nodetype);
+    refel.Nqp = length(refel.wg);
     
     #  0D refels
     if dimension == 0

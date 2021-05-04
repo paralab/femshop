@@ -1,5 +1,5 @@
 # Geometric factors
-export geometric_factors, geometric_factors_face, Jacobian, build_deriv_matrix, build_face_deriv_matrix
+export geometric_factors, geometric_factors_face, Jacobian, build_deriv_matrix, build_face_deriv_matrix, get_quadrature_point_coords
 
 include("tensor_ops.jl");
 
@@ -187,8 +187,8 @@ function build_deriv_matrix(refel, J)
         RD1 = zeros(size(refel.Q));
         RD2 = zeros(size(refel.Q));
         RD3 = zeros(size(refel.Q));
-        for i=1:length(J.rx)
-            for j=1:length(J.rx)
+        for i=1:size(RQ1,1)
+            for j=1:size(RQ1,2)
                 RQ1[i,j] = J.rx[i]*refel.Qr[i,j] + J.sx[i]*refel.Qs[i,j] + J.tx[i]*refel.Qt[i,j];
                 RQ2[i,j] = J.ry[i]*refel.Qr[i,j] + J.sy[i]*refel.Qs[i,j] + J.ty[i]*refel.Qt[i,j];
                 RQ3[i,j] = J.rz[i]*refel.Qr[i,j] + J.sz[i]*refel.Qs[i,j] + J.tz[i]*refel.Qt[i,j];

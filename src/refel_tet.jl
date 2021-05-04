@@ -36,7 +36,7 @@ function tetrahedron_vandermonds(refel, r)
     # Transfer (r,s,t) to (a,b,c) coordinates
     a = zeros(Nrp); 
     b = zeros(Nrp);
-    for ni=1:Np  
+    for ni=1:Nrp  
         if r[ni,2]+r[ni,3] != 0
             a[ni] = 2*(1+r[ni,1])/(-r[ni,2]-r[ni,3])-1;
         else
