@@ -22,9 +22,10 @@ init_femshop("unstruct2dtest");
 
 @boundary(u, 1, DIRICHLET, 0)
 
-@coefficient(f, "-(x+1)*200*pi*pi*sin(10*pi*x)*sin(10*pi*y) + 10*pi*cos(10*pi*x)*sin(10*pi*y)")
+@coefficient(f, "(-10-(x+1)*200*pi*pi)*sin(10*pi*x)*sin(10*pi*y) + 10*pi*cos(10*pi*x)*sin(10*pi*y)")
 @coefficient(k, "x+1")
-@weakForm(u, "-k*dot(grad(u), grad(v)) - f*v")
+@coefficient(C, 10)
+@weakForm(u, "k*dot(grad(u), grad(v)) + C*u*v+ f*v")
 
 solve(u);
 

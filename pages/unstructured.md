@@ -7,10 +7,11 @@ title: Unstructured meshes
 <img src="images/umeshes.png" alt="umeshes" width="400">
 
 The Julia script: <a href="https://github.com/paralab/femshop/blob/master/femshop/examples/example-unstructured2d.jl">example-unstructured2d.jl</a>
+<br><a href="https://github.com/paralab/femshop/blob/master/femshop/examples/example-unstructured3d.jl">example-unstructured3d.jl</a>
 
 Unstructured 2D meshes made of irregular triangles or quads are used in example-unstructured2d.jl to solve a steady state reaction diffusion equation. This demonstrates how to import .MSH files and the unstructured mesh capabilities in 2D. 
 
-3D unstructured hexahedra and tetrahedra are used in ... TODO
+3D unstructured hexahedra and tetrahedra are also used for a similar equation in example-unstuctured3d.jl.
 
 The following description is for the 2D case. Begin by importing and using the Femshop module. Then initialize. The name here is only used when generating code files.
 ```
@@ -32,14 +33,15 @@ Define the variable, test function, and other symbols.
 ```
 @variable(u)                # same as @variable(u, SCALAR)
 @testSymbol(v)              # sets the symbol for a SCALAR test function
-@coefficient(f, "-(x+1)*200*pi*pi*sin(10*pi*x)*sin(10*pi*y) + 10*pi*cos(10*pi*x)*sin(10*pi*y)")
+@coefficient(f, "(-10-(x+1)*200*pi*pi)*sin(10*pi*x)*sin(10*pi*y) + 10*pi*cos(10*pi*x)*sin(10*pi*y)")
 @coefficient(k, "x+1")
+@coefficient(C, 10)
 ```
 Convert the PDE
-<div align="center"><img src="https://render.githubusercontent.com/render/math?math=\nabla\cdot%20(K\nabla%20u)=f(x)"> </div>
+<div align="center"><img src="https://render.githubusercontent.com/render/math?math=\nabla\cdot%20(K\nabla%20u)-Cu=f(x)"> </div>
 <div align="center"><img src="https://render.githubusercontent.com/render/math?math=u(0)=u(1)=0"> </div>
 into the weak form
-<div align="center"><img src="https://render.githubusercontent.com/render/math?math=-K(\nabla%20u,\nabla%20v)=(f,v)"> </div>
+<div align="center"><img src="https://render.githubusercontent.com/render/math?math=-K(\nabla%20u,\nabla%20v)-Cuv=(f,v)"> </div>
 
 The boundary condition is specified.
 ```
@@ -47,7 +49,7 @@ The boundary condition is specified.
 ```
 Then write the weak form expression in the residual form and solve for u.
 ```
-@weakForm(u, "-k*dot(grad(u), grad(v)) - f*v")
+@weakForm(u, "k*dot(grad(u), grad(v)) + C*u*v+ f*v")
 solve(u);
 ```
 End things with `@finalize()` to finish up any generated files and the log.
