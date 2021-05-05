@@ -31,7 +31,7 @@ The heat equation demonstrates support for time dependent problems.
 </p>
 
 <h3>Navier Stokes</h3>
-<p> <img src="images/NS.png" alt="NS" width="200">
+<p> <img src="images/NS.png" alt="NS" width="150">
 This 2D lid-driven NS problem demonstrates some of the nonlinear capabilities and the use of parameter entities.
 <br>Page: <a href="https://paralab.github.io/femshop/pages/NS.html">NS page</a>
 <br><a href="https://github.com/paralab/femshop/blob/master/src/examples/example-NS.jl">example-NS.jl</a>
@@ -40,7 +40,7 @@ This 2D lid-driven NS problem demonstrates some of the nonlinear capabilities an
 <h3>Unstructured Meshes</h3>
 <p><img src="images/umeshes.png" alt="unstructured" width="200">
 Unstructured meshes in 2D and 3D made of triangles, quadrilaterals, hexahedra and tetrahedra are imported from .MSH files and demonstrated on some simple problems.
-<br>Page: <a href="https://paralab.github.io/femshop/pages/unstructured.html">NS page</a>
+<br>Page: <a href="https://paralab.github.io/femshop/pages/unstructured.html">Unstructured Meshes page</a>
 <br><a href="https://github.com/paralab/femshop/blob/master/src/examples/example-unstructured2d.jl">example-unstructured2d.jl</a>
 <br><a href="https://github.com/paralab/femshop/blob/master/src/examples/example-unstructured3d.jl">example-unstructured3d.jl</a>
 </p>
