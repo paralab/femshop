@@ -94,7 +94,9 @@ end
 # Compute scaled warp function at order N based on rout interpolation nodes
 function triangle_warpfactor(N, rout)
     # Compute LGL and equidistant node distribution
-    (LGLr, w) = jacobi_gauss_quad(0,0,N);
+    #(LGLr, w) = jacobi_gauss_quad(0,0,N);
+    (LGLr, w) = jacobi_LGL_quad(N);
+    
     h = 2/N;
     req = -1:h:1;
     

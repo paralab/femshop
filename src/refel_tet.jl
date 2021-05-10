@@ -87,7 +87,6 @@ function tetrahedron_vandermonds(refel, r)
                 
                 # t-derivative
                 dmodedt = 0.5 .* (1 .+ a) .* dmodedr .+ 0.5 .* (1 .+ b) .* tmp;
-                #tmp = h3 .* (0.5 .* (1 .- c)).^(i+j);
                 tmp = dhc .* (0.5 .* (1 .- c)).^(i+j);
                 if i+j>0
                     tmp = tmp .- (0.5*(i+j)) .* h3 .* (0.5 .* (1 .- c)).^(i+j-1); 

@@ -74,7 +74,7 @@ function geometric_factors(refel, pts)
             zs = refel.Dds*pts[3,:];
             zt = refel.Ddt*pts[3,:];
             J = xr.*(ys.*zt-zs.*yt) - yr.*(xs.*zt-zs.*xt) + zr.*(xs.*yt-ys.*xt);
-            J = J[1]; # assume constant detJ
+            #J = J[1]; # assume constant detJ
             
             rx =  (ys.*zt - zs.*yt)./J;
             ry = -(xs.*zt - zs.*xt)./J;
@@ -90,9 +90,12 @@ function geometric_factors(refel, pts)
             D = Jacobian(rx,ry,rz,sx,sy,sz,tx,ty,tz);
             
         else # hexahedron
-            (xr, xs, xt) = tensor_grad3(refel.Dg, pts[1,:][:]);
-            (yr, ys, yt) = tensor_grad3(refel.Dg, pts[2,:][:]);
-            (zr, zs, zt) = tensor_grad3(refel.Dg, pts[3,:][:]);
+            # (xr, xs, xt) = tensor_grad3(refel.Dg, pts[1,:][:]);
+            # (yr, ys, yt) = tensor_grad3(refel.Dg, pts[2,:][:]);
+            # (zr, zs, zt) = tensor_grad3(refel.Dg, pts[3,:][:]);
+            (xr, xs, xt) = tensor_grad3(refel.Dr, pts[1,:][:]);
+            (yr, ys, yt) = tensor_grad3(refel.Dr, pts[2,:][:]);
+            (zr, zs, zt) = tensor_grad3(refel.Dr, pts[3,:][:]);
             J = xr.*(ys.*zt-zs.*yt) - yr.*(xs.*zt-zs.*xt) + zr.*(xs.*yt-ys.*xt);
             
             rx =  (ys.*zt - zs.*yt)./J;

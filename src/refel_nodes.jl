@@ -31,16 +31,17 @@ function refel_nodes!(refel, nodetype)
                 refel.r1d = [-1; 1];
                 refel.wr1d = [1; 1];
             else
-                (r,w) = jacobi_gauss_quad(1,1,refel.N-2);
-                refel.r1d = [-1; r ; 1];
+                # (r,w) = jacobi_gauss_quad(1,1,refel.N-2);
+                # refel.r1d = [-1; r ; 1];
                 
-                # compute the weights
-                w = jacobi_polynomial(refel.r1d, 0, 0, refel.N)
-                adgammaN = (2*refel.N + 1) / (refel.N * (refel.N + 1))
-                w = w.*w
-                w = adgammaN./w
+                # # compute the weights
+                # w = jacobi_polynomial(refel.r1d, 0, 0, refel.N)
+                # adgammaN = (2*refel.N + 1) / (refel.N * (refel.N + 1))
+                # w = w.*w
+                # w = adgammaN./w
                 
-                refel.wr1d = w;
+                # refel.wr1d = w;
+                (refel.r1d, refel.wr1d) = jacobi_LGL_quad(refel.N);
             end
         end
         # Then find Gauss points

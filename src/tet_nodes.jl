@@ -13,10 +13,11 @@ function tetrahedron_refel_nodes!(refel)
     (eqx, eqy, eqz) = tetrahedron_equilateral_nodes(refel.N);
     (r, s, t) = tetrahedron_equilateral_to_rst(eqx,eqy,eqz);
     
+    # Adjust things within 1e-15 of the -1 boundaries to be exactly -1
+    tet_snap_to_bdry!(r, s, t, 1e-15);
+    
     refel.r = zeros(refel.Np,3);
     refel.wr = zeros(refel.Np);
-    #refel.g = zeros(refel.Np,2);
-    #refel.wg = zeros(refel.Np);
     
     refel.r[:,1] = r;
     refel.r[:,2] = s;
@@ -64,11 +65,10 @@ function tetrahedron_equilateral_nodes(N)
     for n=1:(N+1)
         for m=1:(N+2-n)
             for q=1:(N+3-n-m)
-                L1[sk] = (n-1)/N;
-                L2[sk] = (m-1)/N;
-                #L3[sk] = (q-1)/N - 2 + (m-1)/N + (n-1)/N;
-                L3[sk] = 1 - (q+m+n-3)/N;
-                L4[sk] = (q-1)/N;
+                L1[sk] = (n-1)/N; # (1 + (-1 + (n-1)*2/N))/2
+                L2[sk] = (m-1)/N; # (1 + (-1 + (m-1)*2/N))/2
+                L3[sk] = 1 - (q+m+n-3)/N; # -(1 + -1 + (q-1)*2/N + -1 + (m-1)*2/N + -1 + (n-1)*2/N)/2
+                L4[sk] = (q-1)/N; # (1 + (-1 + (q-1)*2/N))/2
                 sk = sk+1;
             end
         end
@@ -122,7 +122,7 @@ function tetrahedron_equilateral_nodes(N)
         blend = Lb.*Lc.*Ld;   # compute volume blending
       
         denom = (Lb .+ .5 .* La).*(Lc .+ .5 .* La).*(Ld .+ .5 .* La);   # modify linear blend
-        tol = 1e-6
+        tol = 1e-10
         for ids=1:Np
             if denom[ids] > tol
                 blend[ids] = (1 .+ (alpha.*La[ids]).^2).*blend[ids]./denom[ids];
@@ -158,7 +158,7 @@ end
 # Compute scaled warp function at order N based on rout interpolation nodes
 function tetrahedron_warpfactor(N, Np, alpha, L1, L2, L3)
     # Compute LGL and equidistant node distribution
-    (LGLr, w) = jacobi_gauss_quad(0,0,N);
+    (LGLr, w) = jacobi_LGL_quad(N);
     
     # 2) compute blending function at each node for each edge
     blend1 = L2.*L3; 
@@ -216,7 +216,7 @@ function tetrahedron_warpfactor(N, Np, alpha, L1, L2, L3)
         # 5) evaluate shift in equilateral triangle
         # dx[wi] = 1*warp1[wi] + cos(2*pi/3)*warp2[wi] + cos(4*pi/3)*warp3[wi];
         # dy[wi] = 0*warp1[wi] + sin(2*pi/3)*warp2[wi] + sin(4*pi/3)*warp3[wi];
-        dx[wi] = warp1[wi] - 0.5*warp2[wi] + 0.5*warp3[wi];
+        dx[wi] = warp1[wi] - 0.5*warp2[wi] - 0.5*warp3[wi];
         dy[wi] = 0.8660254037844387*warp2[wi] - 0.8660254037844387*warp3[wi];
     end
     
@@ -276,4 +276,29 @@ function get_face2local_map(r, compare)
     end
     
     return map[1:nf];
+end
+
+function tet_snap_to_bdry!(r, s, t, tol)
+    n = length(r);
+    for i=1:n
+        if abs(r[i]+1) < tol
+            r[i] = -1;
+        end
+        if abs(s[i]+1) < tol
+            s[i] = -1;
+        end
+        if abs(t[i]+1) < tol
+            t[i] = -1;
+        end
+        
+        if abs(r[i]) < tol
+            r[i] = 0;
+        end
+        if abs(s[i]) < tol
+            s[i] = 0;
+        end
+        if abs(t[i]) < tol
+            t[i] = 0;
+        end
+    end
 end

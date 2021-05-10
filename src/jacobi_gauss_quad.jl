@@ -40,3 +40,22 @@ function jacobi_gauss_quad(alpha::Int, beta::Int, N::Int)
     w = w[:];
     return (E.values,w);
 end
+
+function jacobi_LGL_quad(N::Int)
+    if N == 1
+        lgl = [-1; 1];
+        w = [1; 1];
+    else
+        # compute the points
+        (r,w) = jacobi_gauss_quad(1,1,N-2);
+        lgl = [-1; r ; 1];
+        
+        # compute the weights
+        w = jacobi_polynomial(lgl, 0, 0, N);
+        adgammaN = (2*N + 1) / (N * (N + 1));
+        w = w.*w;
+        w = adgammaN./w;
+    end
+    
+    return (lgl, w);
+end
