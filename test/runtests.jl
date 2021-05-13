@@ -5,7 +5,7 @@ using Test
 
     @useLog("poisson1dlog")
     @domain(1)                      # dimension
-    @functionSpace(LEGENDRE, 4)     # basis function, order
+    @functionSpace(LEGENDRE, 3)     # basis function, order
     
     @mesh(LINEMESH, 20)             # build uniform LINEMESH. 2nd arg=# of elements, (optional)3rd arg=# of BIDs
     
@@ -30,8 +30,9 @@ using Test
         global maxerr;
         maxerr = max(err,maxerr);
     end
+    println(maxerr)
     
-    @test maxerr < 0.001
-
+    @test maxerr < 0.01
+    
     # Write your tests here.
 end
