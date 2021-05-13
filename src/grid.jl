@@ -34,7 +34,11 @@ function grid_from_mesh(mesh)
     nfaces = etypetonf[mesh.etypes[1]];;
     totalfaces = nfaces*mesh.nel;
     nel = mesh.nel;
-    facenvtx = etypetonv[etypetoftype[mesh.etypes[1]]]; # Assumes one element type
+    if dim == 1
+        facenvtx = 1
+    else
+        facenvtx = etypetonv[etypetoftype[mesh.etypes[1]]]; # Assumes one element type
+    end
     nvtx = etypetonv[mesh.etypes[1]]; # Assumes one element type
     
     refel = build_refel(dim, ord, nfaces, config.elemental_nodes);

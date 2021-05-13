@@ -59,7 +59,7 @@ function simple_line_mesh(nx, bn, interval)
     
     mesh = MeshData(Nv, xv, ind, nel, el, etypes, numvert, invind, f2n, f2e, e2f, normals, bdryID); # MeshData struct
     
-    (refel, grid) = grid_from_mesh_1d(mesh);
+    (refel, grid) = grid_from_mesh(mesh);
     
     if bn == 2
         add_boundary_ID_to_grid(2, x -> x >= interval[2], grid);
