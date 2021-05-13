@@ -332,7 +332,7 @@ function assemble(var, bilinear, linear, t=0.0, dt=0.0)
                         append!(dirichlet_rows, tmprows);
                     elseif prob.bc_type[var.index, bid] == NEUMANN
                         #(A, b) = neumann_bc(A, b, prob.bc_func[var.index, bid][d], grid_data.bdry[bid], bid, t, dofind, dofs_per_node);
-                        (tmprows, tmpIs, tmpJs, tmpVs, b) = neumann_bc(A, b, prob.bc_func[var.index, bid][compo], grid_data.bdry[bid], bid, t, dofind, dofs_per_node);
+                        (tmprows, tmpIs, tmpJs, tmpVs, b) = neumann_bc(A, b, prob.bc_func[var.index, bid][d], grid_data.bdry[bid], bid, t, dofind, dofs_per_node);
                         append!(neumann_rows, tmprows);
                         append!(neumann_Is, tmpIs);
                         append!(neumann_Js, tmpJs);

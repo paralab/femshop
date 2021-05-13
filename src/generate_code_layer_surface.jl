@@ -225,9 +225,9 @@ function generate_code_layer_julia_surface(symex, var, lorr)
         cloopin = Expr(:block);
         cargs = [:(fnodes[coefi]); 0; 0; :time];
         if config.dimension == 2
-            cargs = [:(fnodes[coefi,1]); :(fnodes[coefi,2]); 0; :time];
+            cargs = [:(fnodes[1,coefi]); :(fnodes[2,coefi]); 0; :time];
         elseif config.dimension == 3
-            cargs = [:(fnodes[coefi,1]); :(fnodes[coefi,2]); :(fnodes[coefi,3]); :time];
+            cargs = [:(fnodes[1,coefi]); :(fnodes[2,coefi]); :(fnodes[3,coefi]); :time];
         end
         
         for i=1:length(needed_coef)

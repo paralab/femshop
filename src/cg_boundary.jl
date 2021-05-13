@@ -254,35 +254,20 @@ function neumann_bc(A, b, val, bdryind, bid, t=0, dofind = 1, totaldofs = 1)
     
     bfc = grid_data.bdryface[bid];
     
-     # Stiffness and mass are precomputed for uniform grid meshes
-     if config.mesh_type == UNIFORM_GRID && config.geometry == SQUARE
+    # This can be precomputed for uniform grid meshes
+    if config.mesh_type == UNIFORM_GRID && config.geometry == SQUARE
         precomputed = true;
         glb = grid_data.loc2glb[:,1];
         xe = grid_data.allnodes[:,glb[:]];
         (detJ, J) = geometric_factors(refel, xe);
         if config.dimension == 1
-            # R1matrix = diagm(J.rx);
-            # D1matrix = refel.Dr;
-            R1D1 = diagm(J.rx) * refel.Dr;
+            R1D1 = diagm(J.rx) * refel.Dr; #R1matrix * D1matrix;
             
         elseif config.dimension == 2
-            # R1matrix = [diagm(J.rx) diagm(J.sx) diagm(J.tx)];
-            # D1matrix = [refel.Ddr ; refel.Dds ; refel.Ddt];
-            # R2matrix = [diagm(J.ry) diagm(J.sy) diagm(J.ty)];
-            # D2matrix = [refel.Ddr ; refel.Dds ; refel.Ddt];
-            # R3matrix = [diagm(J.rz) diagm(J.sz) diagm(J.tz)];
-            # D3matrix = [refel.Ddr ; refel.Dds ; refel.Ddt];
-            R1D1 = [diagm(J.rx) diagm(J.sx) diagm(J.tx)] * [refel.Ddr ; refel.Dds ; refel.Ddt]; #R1matrix * D1matrix;
-            R2D2 = [diagm(J.ry) diagm(J.sy) diagm(J.ty)] * [refel.Ddr ; refel.Dds ; refel.Ddt]; #R2matrix * D2matrix;
-            R3D3 = [diagm(J.rz) diagm(J.sz) diagm(J.tz)] * [refel.Ddr ; refel.Dds ; refel.Ddt]; #R3matrix * D3matrix;
+            R1D1 = [diagm(J.rx) diagm(J.sx)] * [refel.Ddr ; refel.Dds]; #R1matrix * D1matrix;
+            R2D2 = [diagm(J.ry) diagm(J.sy)] * [refel.Ddr ; refel.Dds]; #R2matrix * D2matrix;
             
         elseif config.dimension == 3
-            # R1matrix = [diagm(J.rx) diagm(J.sx) diagm(J.tx)];
-            # D1matrix = [refel.Ddr ; refel.Dds ; refel.Ddt];
-            # R2matrix = [diagm(J.ry) diagm(J.sy) diagm(J.ty)];
-            # D2matrix = [refel.Ddr ; refel.Dds ; refel.Ddt];
-            # R3matrix = [diagm(J.rz) diagm(J.sz) diagm(J.tz)];
-            # D3matrix = [refel.Ddr ; refel.Dds ; refel.Ddt];
             R1D1 = [diagm(J.rx) diagm(J.sx) diagm(J.tx)] * [refel.Ddr ; refel.Dds ; refel.Ddt]; #R1matrix * D1matrix;
             R2D2 = [diagm(J.ry) diagm(J.sy) diagm(J.ty)] * [refel.Ddr ; refel.Dds ; refel.Ddt]; #R2matrix * D2matrix;
             R3D3 = [diagm(J.rz) diagm(J.sz) diagm(J.tz)] * [refel.Ddr ; refel.Dds ; refel.Ddt]; #R3matrix * D3matrix;
@@ -293,9 +278,12 @@ function neumann_bc(A, b, val, bdryind, bid, t=0, dofind = 1, totaldofs = 1)
     
     for fi = 1:length(bfc)
         # find the relevant element
-        e = mesh_data.face2element[1,bfc[fi]]>0 ? mesh_data.face2element[1,bfc[fi]] : mesh_data.face2element[2,bfc[fi]];
+        e = grid_data.face2element[1,bfc[fi]] # >0 ? grid_data.face2element[1,bfc[fi]] : grid_data.face2element[2,bfc[fi]];
         glb = grid_data.loc2glb[:,e];       # global indices of this element's nodes
         xe = grid_data.allnodes[:,glb[:]];  # coordinates of this element's nodes
+        
+        # Local indices for the nodes on the face
+        flocal = get_face_local_index(grid_data.face2glb[:,bfc[fi]], glb);
         
         # offset for multi dof
         if totaldofs > 1
@@ -308,25 +296,13 @@ function neumann_bc(A, b, val, bdryind, bid, t=0, dofind = 1, totaldofs = 1)
         if !precomputed
             (detJ, J) = geometric_factors(refel, xe);
             if config.dimension == 1
-                # R1matrix = diagm(J.rx);
-                # D1matrix = refel.Dr;
-                R1D1 = diagm(J.rx) * refel.Dr;
+                R1D1 = diagm(J.rx) * refel.Dr; #R1matrix * D1matrix;
                 
             elseif config.dimension == 2
-                # R1matrix = [diagm(J.rx) diagm(J.sx)];
-                # D1matrix = [refel.Ddr ; refel.Dds];
-                # R2matrix = [diagm(J.ry) diagm(J.sy)];
-                # D2matrix = [refel.Ddr ; refel.Dds];
                 R1D1 = [diagm(J.rx) diagm(J.sx)] * [refel.Ddr ; refel.Dds]; #R1matrix * D1matrix;
                 R2D2 = [diagm(J.ry) diagm(J.sy)] * [refel.Ddr ; refel.Dds]; #R2matrix * D2matrix;
                 
             elseif config.dimension == 3
-                # R1matrix = [diagm(J.rx) diagm(J.sx) diagm(J.tx)];
-                # D1matrix = [refel.Ddr ; refel.Dds ; refel.Ddt];
-                # R2matrix = [diagm(J.ry) diagm(J.sy) diagm(J.ty)];
-                # D2matrix = [refel.Ddr ; refel.Dds ; refel.Ddt];
-                # R3matrix = [diagm(J.rz) diagm(J.sz) diagm(J.tz)];
-                # D3matrix = [refel.Ddr ; refel.Dds ; refel.Ddt];
                 R1D1 = [diagm(J.rx) diagm(J.sx) diagm(J.tx)] * [refel.Ddr ; refel.Dds ; refel.Ddt]; #R1matrix * D1matrix;
                 R2D2 = [diagm(J.ry) diagm(J.sy) diagm(J.ty)] * [refel.Ddr ; refel.Dds ; refel.Ddt]; #R2matrix * D2matrix;
                 R3D3 = [diagm(J.rz) diagm(J.sz) diagm(J.tz)] * [refel.Ddr ; refel.Dds ; refel.Ddt]; #R3matrix * D3matrix;
@@ -334,46 +310,37 @@ function neumann_bc(A, b, val, bdryind, bid, t=0, dofind = 1, totaldofs = 1)
         end
         
         # Add to S matrix
-        Imat = zeros(Int,length(sglb),length(sglb));
+        Imat = zeros(Int,length(flocal),length(sglb));
         Jmat = zeros(Int,size(Imat));
         for i=1:length(sglb)
-            Imat[:,i] = sglb[:];
-            Jmat[:,i] = fill(sglb[i], length(sglb));
+            Imat[:,i] = sglb[flocal];
+            Jmat[:,i] = fill(sglb[i], length(flocal));
         end
         append!(S_I, Imat[:]);
         append!(S_J, Jmat[:]);
         if config.dimension == 1
-            #S1[sglb,sglb] = R1matrix*D1matrix;
-            append!(S1_V, R1D1[:]);
+            append!(S1_V, R1D1[flocal,:][:]);
             
         elseif config.dimension == 2
-            # S1[sglb,sglb] = R1matrix*D1matrix;
-            # S2[sglb,sglb] = R2matrix*D2matrix;
-            append!(S1_V, R1D1[:]);
-            append!(S2_V, R2D2[:]);
+            append!(S1_V, R1D1[flocal,:][:]);
+            append!(S2_V, R2D2[flocal,:][:]);
             
         elseif config.dimension == 3
-            # S1[sglb,sglb] = R1matrix*D1matrix;
-            # S2[sglb,sglb] = R2matrix*D2matrix;
-            # S3[sglb,sglb] = R3matrix*D3matrix;
-            append!(S1_V, R1D1[:]);
-            append!(S2_V, R2D2[:]);
-            append!(S3_V, R3D3[:]);
+            append!(S1_V, R1D1[flocal,:][:]);
+            append!(S2_V, R2D2[flocal,:][:]);
+            append!(S3_V, R3D3[flocal,:][:]);
         end
     end
     
     # Add the right components of S1,S2,S3 according to normal vector
-    S_V = zeros(length(S1_V));
+    #S_V = zeros(length(S1_V));
     for i=1:length(bdry)
         norm = grid_data.bdrynorm[bid][:,i];
         if config.dimension == 1
-            # S[bdry[i],:] = norm[1] .* S1[bdry[i],:];
             S_V = norm[1] .* S1_V;
         elseif config.dimension == 2
-            # S[bdry[i],:] = norm[1] .* S1[bdry[i],:] + norm[2] .* S2[bdry[i],:];
             S_V = norm[1] .* S1_V + norm[2] .* S2_V;
         elseif config.dimension == 3
-            # S[bdry[i],:] = norm[1] .* S1[bdry[i],:] + norm[2] .* S2[bdry[i],:] + norm[3] .* S3[bdry[i],:];
             S_V = norm[1] .* S1_V + norm[2] .* S2_V + norm[3] .* S3_V;
         end
     end
@@ -388,4 +355,19 @@ end
 
 function neumann_bc_rhs_only(b, val, bdryind, bid, t=0, dofind = 1, totaldofs = 1)
     return dirichlet_bc_rhs_only(b, val, bdryind, t, dofind, totaldofs); # how convenient
+end
+
+# Returns the local indices for a face given the face and element global indices
+function get_face_local_index(f2glb, e2glb)
+    ind = zeros(Int, length(f2glb));
+    for fi=1:length(f2glb)
+        for ei=1:length(e2glb)
+            if f2glb[fi] == e2glb[ei]
+                ind[fi] = ei;
+                break;
+            end
+        end
+    end
+    
+    return ind;
 end

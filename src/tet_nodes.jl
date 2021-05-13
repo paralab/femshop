@@ -13,7 +13,7 @@ function tetrahedron_refel_nodes!(refel)
     (eqx, eqy, eqz) = tetrahedron_equilateral_nodes(refel.N);
     (r, s, t) = tetrahedron_equilateral_to_rst(eqx,eqy,eqz);
     
-    # Adjust things within 1e-15 of the -1 boundaries to be exactly -1
+    # Adjust things within 1e-15 of the -1 boundaries to be exactly -1 and close to 0 to be 0
     tet_snap_to_bdry!(r, s, t, 1e-15);
     
     refel.r = zeros(refel.Np,3);
@@ -29,7 +29,7 @@ function tetrahedron_refel_nodes!(refel)
     refel.wg = xyzw[:,4];
     
     # face node maps
-    tol = 1e-2;
+    tol = 1e-12;
     tf1(x) = abs(x[1] + 1) < tol;
     tf2(x) = abs(x[2] + 1) < tol;
     tf3(x) = abs(x[3] + 1) < tol;
@@ -116,7 +116,6 @@ function tetrahedron_equilateral_nodes(N)
         end
       
         # compute warp tangential to face
-        #[warp1 warp2] = WarpShiftFace3D(N, alpha, alpha, La, Lb, Lc, Ld); 
         (warp1, warp2) = tetrahedron_warpfactor(N, Np, alpha, Lb, Lc, Ld); 
         
         blend = Lb.*Lc.*Ld;   # compute volume blending

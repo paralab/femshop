@@ -186,75 +186,160 @@ function output_mesh(file, format)
 end
 
 function add_boundary_ID(bid, on_bdry)
-    # Find if this bid exists. If so, just add points to it, removing from others.
-    ind = indexin([bid], grid_data.bids)[1];
-    nbids = length(grid_data.bids);
-    if ind === nothing
-        # This is a new bid, add to bids, bdry, bdryface, bdrynorm
-        ind = nbids + 1;
-        nbids += 1;
-        push!(grid_data.bids, bid);
-        push!(grid_data.bdry, zeros(Int, 0));
-        push!(grid_data.bdryface, zeros(Int, 0));
-        push!(grid_data.bdrynorm, zeros(config.dimension, 0));
-    end
+    add_boundary_ID_to_grid(bid, on_bdry, grid_data);
     
-    # Search all other bids for nodes and faces on this segment. Remove them there and add them here.
-    # First find indices and count them. Then move.
-    move_nodes = Array{Array{Int,1},1}(undef,nbids);
-    node_count = zeros(Int, nbids);
-    move_faces = Array{Array{Int,1},1}(undef,nbids);
-    face_count = zeros(Int, nbids);
-    for i=1:nbids
-        bi = grid_data.bids[i];
-        move_nodes[i] = [];
-        move_faces[i] = [];
-        if bi != bid
-            # First the nodes
-            for j=1:length(grid_data.bdry[i])
-                nj = grid_data.bdry[i][j];
-                if config.dimension == 1
-                    if on_bdry(grid_data.allnodes[1, nj])
-                        push!(move_nodes[i], nj);
-                        node_count[i] += 1;
-                    end
-                elseif config.dimension == 2
-                    if on_bdry(grid_data.allnodes[1, nj], grid_data.allnodes[2, nj])
-                        push!(move_nodes[i], nj);
-                        node_count[i] += 1;
-                    end
-                elseif config.dimension == 3
-                    if on_bdry(grid_data.allnodes[1, nj], grid_data.allnodes[2, nj], grid_data.allnodes[3, nj])
-                        push!(move_nodes[i], nj);
-                        node_count[i] += 1;
-                    end
-                end
-            end
-            # Then the faces
-            for j=1:length(grid_data.bdryface[i])
-                fj = grid_data.bdryface[i][j];
-                # TODO
+    # # Find if this bid exists. If so, just add points to it, removing from others.
+    # ind = indexin([bid], grid.bids)[1];
+    # nbids = length(grid.bids);
+    # if ind === nothing
+    #     # This is a new bid, add to bids, bdry, bdryface, bdrynorm
+    #     ind = nbids + 1;
+    #     nbids += 1;
+    #     push!(grid.bids, bid);
+    #     push!(grid.bdry, zeros(Int, 0));
+    #     push!(grid.bdryface, zeros(Int, 0));
+    #     push!(grid.bdrynorm, zeros(config.dimension, 0));
+    #     push!(grid.bdryfacenorm, zeros(config.dimension, 0));
+    # end
+    
+    # # Search all other bids for nodes and faces on this segment. Remove them there and add them here.
+    # # First find indices and count them. Then move.
+    # move_nodes = Array{Array{Int,1},1}(undef,nbids);
+    # node_count = zeros(Int, nbids);
+    # move_faces = Array{Array{Int,1},1}(undef,nbids);
+    # face_count = zeros(Int, nbids);
+    # for i=1:nbids
+    #     bi = grid.bids[i];
+    #     move_nodes[i] = [];
+    #     move_faces[i] = [];
+    #     if bi != bid
+    #         # First the nodes
+    #         for j=1:length(grid.bdry[i])
+    #             nj = grid.bdry[i][j];
+    #             if config.dimension == 1
+    #                 if on_bdry(grid.allnodes[1, nj])
+    #                     push!(move_nodes[i], nj);
+    #                     node_count[i] += 1;
+    #                 end
+    #             elseif config.dimension == 2
+    #                 if on_bdry(grid.allnodes[1, nj], grid.allnodes[2, nj])
+    #                     push!(move_nodes[i], nj);
+    #                     node_count[i] += 1;
+    #                 end
+    #             elseif config.dimension == 3
+    #                 if on_bdry(grid.allnodes[1, nj], grid.allnodes[2, nj], grid.allnodes[3, nj])
+    #                     push!(move_nodes[i], nj);
+    #                     node_count[i] += 1;
+    #                 end
+    #             end
+    #         end
+    #         # Then the faces
+    #         for j=1:length(grid.bdryface[i])
+    #             fj = grid.bdryface[i][j];
+    #             nfp = size(grid.face2glb,1)
+    #             isbdryface = true
+    #             for ni=1:nfp
+    #                 fx = grid.allnodes[:,grid.face2glb[ni,fj]];
+    #                 if config.dimension == 1
+    #                     if !on_bdry(fx[1])
+    #                         isbdryface = false;
+    #                     end
+    #                 elseif config.dimension == 2
+    #                     if !on_bdry(fx[1], fx[2])
+    #                         isbdryface = false;
+    #                     end
+    #                 elseif config.dimension == 3
+    #                     if !on_bdry(fx[1],fx[2],fx[3])
+    #                         isbdryface = false;
+    #                     end
+    #                 end
+    #                 if !isbdryface
+    #                     break;
+    #                 end
+    #             end
                 
-            end
-        end
-    end # find indices
+    #             if isbdryface
+    #                 push!(move_faces[i], fj);
+    #                 face_count[i] += 1;
+    #             end
+    #         end
+    #     end
+    # end # find indices
     
-    # Move things from other bids to this one
-    for i=1:nbids
-        if i != ind
-            # Add to this bid
-            append!(grid_data.bdry[ind], move_nodes[i]);
-            append!(grid_data.bdryface[ind], move_faces[i]);
-            grid_data.bdrynorm[ind] = hcat(grid_data.bdrynorm[ind], grid_data.bdrynorm[i][:,move_faces[i]]);
+    # # Move things from other bids to this one
+    # for i=1:nbids
+    #     if i != ind
+    #         # Add to this bid
+    #         append!(grid.bdry[ind], move_nodes[i]);
+    #         append!(grid.bdryface[ind], move_faces[i]);
+    #         grid.bdrynorm[ind] = hcat(grid.bdrynorm[ind], grid.bdrynorm[i][:,indexin(move_nodes[i], grid.bdry[i])]);
+    #         grid.bdryfacenorm[ind] = hcat(grid.bdryfacenorm[ind], grid.bdryfacenorm[i][:,indexin(move_faces[i], grid.bdryface[i])]);
             
-            # Remove things from other bids
-            deleteat!(grid_data.bdry[i], indexin(move_nodes[i], grid_data.bdry[i]));
-            deleteat!(grid_data.bdryface[i], indexin(move_faces[i], grid_data.bdryface[i]));
-            #TODO bdrynorm
-        end
-    end
+    #         # Make sure all of the norms correspond to the face on this bdry
+    #         startnodeind = length(grid.bdry[ind]) - length(move_nodes[i]);
+    #         startfaceind = length(grid.bdryface[ind]) - length(move_faces[i]);
+    #         for ni=1:length(move_nodes[i])
+    #             for fi=1:length(move_faces[i])
+    #                 # Does this node lie on this face?
+    #                 facenodeindex = indexin(move_nodes[i][ni], grid.face2glb[:,move_faces[i][fi]]);
+    #                 if length(facenodeindex) > 0
+    #                     grid.bdrynorm[ind][:,startnodeind + ni] = grid.bdryfacenorm[ind][:,startfaceind + fi];
+    #                     break;
+    #                 end
+    #             end
+    #         end
+            
+    #         # Remove things from other bids
+    #         # Remove bdrynorm and bdryfacenorm
+    #         numremove = length(move_nodes[i]);
+    #         if numremove > 0
+    #             newbdrynorm = zeros(config.dimension, size(grid.bdrynorm[i],2) - numremove);
+    #             nextind = 1;
+    #             for j=1:length(grid.bdry[i])
+    #                 keepit = true;
+    #                 for k=1:numremove
+    #                     if grid.bdry[i][j] == move_nodes[i][k]
+    #                         keepit = false;
+    #                         break;
+    #                     end
+    #                 end
+    #                 if keepit
+    #                     newbdrynorm[:,nextind] = grid.bdrynorm[i][:,j];
+    #                     nextind += 1;
+    #                 end
+    #             end
+    #             grid.bdrynorm[i] = newbdrynorm;
+                
+    #             # now for bdryfacenorm
+    #             numremove = length(move_faces[i])
+    #             newbdryfacenorm = zeros(config.dimension, size(grid.bdryfacenorm[i],2) - numremove);
+    #             nextind = 1;
+    #             for j=1:length(grid.bdryface[i])
+    #                 keepit = true;
+    #                 for k=1:numremove
+    #                     if grid.bdryface[i][j] == move_faces[i][k]
+    #                         keepit = false;
+    #                         break;
+    #                     end
+    #                 end
+    #                 if keepit
+    #                     newbdryfacenorm[:,nextind] = grid.bdryfacenorm[i][:,j];
+    #                     nextind += 1;
+    #                 end
+    #             end
+    #             grid.bdryfacenorm[i] = newbdryfacenorm;
+    #         end
+            
+    #         # Remove nodes
+    #         deleteat!(grid.bdry[i], indexin(move_nodes[i], grid.bdry[i]));
+            
+    #         # Remove bdryface
+    #         deleteat!(grid.bdryface[i], indexin(move_faces[i], grid.bdryface[i]));
+            
+    #     end
+    # end
     
-    println("Added bdry, but bdryface and bdrynorm are not ready. See add_boundary_ID in Femshop.jl");
+    # log_entry("Added boundary ID: "*string(bid)*" including "*string(node_count)*" nodes, "*string(face_count)*" faces.");
     
 end
 
