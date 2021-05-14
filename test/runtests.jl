@@ -32,7 +32,7 @@ using Test
     end
     println(maxerr)
     
-    @test maxerr < 0.01
+    @test (maxerr < 0.01)
     
     # Write your tests here.
 end
