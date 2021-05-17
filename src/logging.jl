@@ -15,7 +15,7 @@ function set_log_level(lev)
 end
 
 function printerr(msg)
-    log_entry("Error: "*msg);
+    log_entry("Error: "*msg, 0);
     println("Error: "*msg);
 end
 
@@ -27,7 +27,7 @@ function init_log(name, dir, level=2)
     println(file, "######################################");
     println(file, "# Femshop Log for: "*project_name);
     println(file, "######################################");
-    println(file, "(log_level = "*string(log_level)*")");
+    println(file, "(verbosity = "*string(log_level)*")");
     close(file)
 end
 

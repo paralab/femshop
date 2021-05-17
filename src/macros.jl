@@ -152,7 +152,7 @@ macro customOperator(s, handle)
     return esc(quote
         $s = Symbol($symb);
         Femshop.add_custom_op($s, $handle);
-        log_entry("Added custom operator: "*string($s));
+        log_entry("Added custom operator: "*string($s), 2);
     end)
 end
 
@@ -160,12 +160,13 @@ end
 macro customOperatorFile(file)
     return esc(quote
         Femshop.add_custom_op_file($file);
-        log_entry("Added custom operators from file: "*string($file));
+        log_entry("Added custom operators from file: "*string($file), 2);
     end)
 end
 
 # ============= end config , begin prob ==============
 
+# This one-argument version should only be used for importing from a file
 macro mesh(m)
     return esc(quote
         if $m == LINEMESH || $m == QUADMESH || $m == HEXMESH
@@ -180,6 +181,7 @@ macro mesh(m)
         
     end)
 end
+# More than one argument is for generating a simple mesh.
 macro mesh(m,N) return esc(quote @mesh($m,$N,1,[0,1]); end) end
 macro mesh(m,N,bids) return esc(quote @mesh($m,$N,$bids,[0,1]); end) end
 macro mesh(m, N, bids, interval)
@@ -200,6 +202,7 @@ macro mesh(m, N, bids, interval)
     end)
 end
 
+# Write the mesh to a MSH file
 macro outputMesh(file) return esc(:(@outputMesh($file, MSH_V2))); end
 macro outputMesh(file, format)
     return esc(quote

@@ -19,7 +19,7 @@ struct DG_Grid
     faceRefelInd::Array{Int,2}      # Index for face matching the one used by refel for each side
 end
 
-function cg_grid_to_dg_grid(cggrid, mesh)
+function cg_grid_to_dg_grid(cggrid, mesh, refel)
     dim = size(cggrid.allnodes, 1);
     nel = size(cggrid.loc2glb, 2);
     np = size(cggrid.loc2glb, 1);
@@ -112,8 +112,11 @@ function cg_grid_to_dg_grid(cggrid, mesh)
             end
         end
         
-        dgfaceRefelInd[1,fi] = which_face(dgface2glb[:,1,fi], dgloc2glb[:,e1], dim, nfp);
-        dgfaceRefelInd[2,fi] = which_face(dgface2glb[:,2,fi], dgloc2glb[:,e2], dim, nfp);
+        # dgfaceRefelInd[1,fi] = which_face(dgface2glb[:,1,fi], dgloc2glb[:,e1], dim, nfp);
+        # dgfaceRefelInd[2,fi] = which_face(dgface2glb[:,2,fi], dgloc2glb[:,e2], dim, nfp);
+        
+        dgfaceRefelInd[1,fi] = which_refel_face(dgface2glb[:,1,fi], dgnodes, refel, dgloc2glb[:,e1]);
+        dgfaceRefelInd[2,fi] = which_refel_face(dgface2glb[:,2,fi], dgnodes, refel, dgloc2glb[:,e2]);
         
     end
     
@@ -224,4 +227,29 @@ function which_face(f2g, l2g, dim, nfp)
     end
     
     return ind;
+end
+
+function which_refel_face(f2glb, dgnodes, ref, elem)
+    # Check f2glb against the face2local in refel
+    dgfnodes = dgnodes[:,f2glb];
+    for fi=1:ref.Nfaces
+        refnodes = dgnodes[:, elem[ref.face2local[fi]]];
+        
+        if is_same_dg_face(dgfnodes, refnodes, ref.dim)
+            return fi;
+        end
+    end
+    
+    printerr("Couldn't match face when building DG grid (see which_refel_face() in dg_grid.jl)");
+end
+
+function is_same_dg_face(f1, f2, dim)
+    tol = 1e-12;
+    if dim == 1 # one point
+        return is_same_node(f1, f2, tol);
+    elseif dim == 2 # same line(two same points)
+        return is_same_line(f1, f2, tol);
+    elseif dim == 3 # same plane(three same points)
+        return is_same_plane(f1, f2, tol);
+    end
 end

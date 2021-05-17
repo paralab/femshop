@@ -1,6 +1,5 @@
 #=
 The main module for Femshop.
-We can reorganize things and make submodules as desired.
 =#
 module Femshop
 
@@ -22,7 +21,7 @@ export Coefficient, add_coefficient
 export Parameter, add_parameter
 
 ### Module's global variables ###
-# config
+# configuration, output files, etc.
 config = nothing;
 prob = nothing;
 project_name = "unnamedProject";
@@ -37,10 +36,10 @@ use_log = false;
 log_file = "";
 log_line_index = 1;
 #mesh
-mesh_data = nothing;
-grid_data = nothing;
-refel = nothing;
-elemental_order = [];
+mesh_data = nothing;    # The basic element information as read from a MSH file or generated here.
+grid_data = nothing;    # The full collection of nodes(including internal nodes) and other mesh info in the actual DOF ordering.
+refel = nothing;        # Reference element (will eventually be an array of refels)
+elemental_order = [];   # Determines the order of the elemental loops
 #problem variables
 var_count = 0;
 variables = [];
@@ -67,12 +66,15 @@ use_cachesim = false;
 #handles for custom code gen functions
 custom_gen_funcs = [];
 
+###############################################################
 include("femshop_includes.jl");
 include("macros.jl"); # included here after globals are defined
+###############################################################
 
 config = Femshop_config(); # These need to be initialized here
 prob = Femshop_prob();
 
+# This has already been initialized on loading, so this is more of a reset function
 function init_femshop(name="unnamedProject")
     global config = Femshop_config();
     global prob = Femshop_prob();
@@ -106,6 +108,7 @@ function init_femshop(name="unnamedProject")
     global use_cachesim = false;
 end
 
+# Sets the code generation target
 function set_language(lang, dirpath, name; framework=0, head="")
     global language = lang;
     global gen_framework = framework;
@@ -114,6 +117,10 @@ function set_language(lang, dirpath, name; framework=0, head="")
     global gen_files = CodeGenerator.init_codegenerator(lang, framework, dirpath, name, head);
 end
 
+# Setting a custom target requires three functions
+# 1. basic language elements 
+# 2. symbolic layer to code layer generator
+# 3. code file writer
 function set_custom_gen_target(lang_elements, code_layer, file_maker, dirpath, name; head="")
     global language = -1;
     global gen_framework = CUSTOM_GEN_TARGET;
@@ -123,235 +130,92 @@ function set_custom_gen_target(lang_elements, code_layer, file_maker, dirpath, n
     global gen_files = CodeGenerator.init_codegenerator(language, gen_framework, dirpath, name, head);
 end
 
+# Specific to Dendro. This should go into the Dendro code gen module eventually.
 function dendro(;max_depth=6, wavelet_tol=0.1, partition_tol=0.3, solve_tol=1e-6, max_iters=100)
     global dendro_params = (max_depth, wavelet_tol, partition_tol, solve_tol, max_iters);
 end
 
+# This may be removed. Sets the solver to the DG or CG solver module. But does it ever get used?
 function set_solver(s)
     global solver = s;
 end
 
+# Sets the time stepper
 function set_stepper(type, cfl)
     global time_stepper = Stepper(type, cfl);
     global config.stepper = type;
-    log_entry("Set time stepper to "*type);
+    log_entry("Set time stepper to "*type, 1);
 end
 
+# Time steps can be chosen automatically or specified. This is for manual specifying.
 function set_specified_steps(dt, steps)
     global specified_dt = dt;
     global specified_Nsteps = steps;
     global use_specified_steps = true;
     prob.time_dependent = true;
     prob.end_time = dt*steps;
-    log_entry("Set time stepper values to dt="*string(dt)*", Nsteps="*string(steps));
+    log_entry("Set time stepper values to dt="*string(dt)*", Nsteps="*string(steps), 1);
 end
 
+# Uses matrix free iterative solver with the given max iterations and error tolerance.
 function set_matrix_free(max, tol)
     config.linalg_matrixfree = true;
     config.linalg_matfree_max = max;
     config.linalg_matfree_tol = tol;
 end
 
+# Adds a mesh and builds the full grid and reference elements.
+# Actually, the mesh object passed here could be either just a MeshData struct,
+# or a tuple of MeshData, Refel and Grid already built.
 function add_mesh(mesh)
     if typeof(mesh) <: Tuple
         global mesh_data = mesh[1];
         global refel = mesh[2];
         global grid_data = mesh[3];
-        if config.solver_type == DG
-            global grid_data = cg_grid_to_dg_grid(grid_data, mesh_data);
-        end
         
-        log_entry("Added mesh with "*string(mesh_data.nx)*" vertices and "*string(mesh_data.nel)*" elements.");
-        log_entry("Full grid has "*string(size(grid_data.allnodes,2))*" nodes.");
     else
         global mesh_data = mesh;
         global refel;
         global grid_data;
         (refel, grid_data) = grid_from_mesh(mesh_data);
         
-        log_entry("Added mesh with "*string(mesh_data.nx)*" vertices and "*string(mesh_data.nel)*" elements.");
-        log_entry("Full grid has "*string(size(grid_data.allnodes,2))*" nodes.");
-        
     end
-    # set elemental loop ordering
+    log_entry("Added mesh with "*string(mesh_data.nx)*" vertices and "*string(mesh_data.nel)*" elements.", 1);
+    
+    # If using DG, need to change the cg grid into a dg grid
+    if config.solver_type == DG
+        log_entry("Changing to a DG grid. (CG grid had "*string(size(grid_data.allnodes,2))*" nodes.)", 2);
+        global grid_data = cg_grid_to_dg_grid(grid_data, mesh_data, refel);
+    end
+    
+    log_entry("Full grid has "*string(size(grid_data.allnodes,2))*" nodes.", 2);
+    
+    # Set elemental loop ordering to match the order from mesh for now.
     global elemental_order = 1:mesh_data.nel;
-
-    # log_entry("Added mesh with "*string(mesh_data.nx)*" vertices and "*string(mesh_data.nel)*" elements.");
-    # log_entry("Full grid has "*string(size(grid_data.allnodes,2))*" nodes.");
 end
 
+# Write the mesh to a MSH file
 function output_mesh(file, format)
     write_mesh(file, format, mesh_data);
-    log_entry("Wrote mesh data to file.");
+    log_entry("Wrote mesh data to file.", 1);
 end
 
+# Maybe remove. This is in grid.jl
 function add_boundary_ID(bid, on_bdry)
     add_boundary_ID_to_grid(bid, on_bdry, grid_data);
-    
-    # # Find if this bid exists. If so, just add points to it, removing from others.
-    # ind = indexin([bid], grid.bids)[1];
-    # nbids = length(grid.bids);
-    # if ind === nothing
-    #     # This is a new bid, add to bids, bdry, bdryface, bdrynorm
-    #     ind = nbids + 1;
-    #     nbids += 1;
-    #     push!(grid.bids, bid);
-    #     push!(grid.bdry, zeros(Int, 0));
-    #     push!(grid.bdryface, zeros(Int, 0));
-    #     push!(grid.bdrynorm, zeros(config.dimension, 0));
-    #     push!(grid.bdryfacenorm, zeros(config.dimension, 0));
-    # end
-    
-    # # Search all other bids for nodes and faces on this segment. Remove them there and add them here.
-    # # First find indices and count them. Then move.
-    # move_nodes = Array{Array{Int,1},1}(undef,nbids);
-    # node_count = zeros(Int, nbids);
-    # move_faces = Array{Array{Int,1},1}(undef,nbids);
-    # face_count = zeros(Int, nbids);
-    # for i=1:nbids
-    #     bi = grid.bids[i];
-    #     move_nodes[i] = [];
-    #     move_faces[i] = [];
-    #     if bi != bid
-    #         # First the nodes
-    #         for j=1:length(grid.bdry[i])
-    #             nj = grid.bdry[i][j];
-    #             if config.dimension == 1
-    #                 if on_bdry(grid.allnodes[1, nj])
-    #                     push!(move_nodes[i], nj);
-    #                     node_count[i] += 1;
-    #                 end
-    #             elseif config.dimension == 2
-    #                 if on_bdry(grid.allnodes[1, nj], grid.allnodes[2, nj])
-    #                     push!(move_nodes[i], nj);
-    #                     node_count[i] += 1;
-    #                 end
-    #             elseif config.dimension == 3
-    #                 if on_bdry(grid.allnodes[1, nj], grid.allnodes[2, nj], grid.allnodes[3, nj])
-    #                     push!(move_nodes[i], nj);
-    #                     node_count[i] += 1;
-    #                 end
-    #             end
-    #         end
-    #         # Then the faces
-    #         for j=1:length(grid.bdryface[i])
-    #             fj = grid.bdryface[i][j];
-    #             nfp = size(grid.face2glb,1)
-    #             isbdryface = true
-    #             for ni=1:nfp
-    #                 fx = grid.allnodes[:,grid.face2glb[ni,fj]];
-    #                 if config.dimension == 1
-    #                     if !on_bdry(fx[1])
-    #                         isbdryface = false;
-    #                     end
-    #                 elseif config.dimension == 2
-    #                     if !on_bdry(fx[1], fx[2])
-    #                         isbdryface = false;
-    #                     end
-    #                 elseif config.dimension == 3
-    #                     if !on_bdry(fx[1],fx[2],fx[3])
-    #                         isbdryface = false;
-    #                     end
-    #                 end
-    #                 if !isbdryface
-    #                     break;
-    #                 end
-    #             end
-                
-    #             if isbdryface
-    #                 push!(move_faces[i], fj);
-    #                 face_count[i] += 1;
-    #             end
-    #         end
-    #     end
-    # end # find indices
-    
-    # # Move things from other bids to this one
-    # for i=1:nbids
-    #     if i != ind
-    #         # Add to this bid
-    #         append!(grid.bdry[ind], move_nodes[i]);
-    #         append!(grid.bdryface[ind], move_faces[i]);
-    #         grid.bdrynorm[ind] = hcat(grid.bdrynorm[ind], grid.bdrynorm[i][:,indexin(move_nodes[i], grid.bdry[i])]);
-    #         grid.bdryfacenorm[ind] = hcat(grid.bdryfacenorm[ind], grid.bdryfacenorm[i][:,indexin(move_faces[i], grid.bdryface[i])]);
-            
-    #         # Make sure all of the norms correspond to the face on this bdry
-    #         startnodeind = length(grid.bdry[ind]) - length(move_nodes[i]);
-    #         startfaceind = length(grid.bdryface[ind]) - length(move_faces[i]);
-    #         for ni=1:length(move_nodes[i])
-    #             for fi=1:length(move_faces[i])
-    #                 # Does this node lie on this face?
-    #                 facenodeindex = indexin(move_nodes[i][ni], grid.face2glb[:,move_faces[i][fi]]);
-    #                 if length(facenodeindex) > 0
-    #                     grid.bdrynorm[ind][:,startnodeind + ni] = grid.bdryfacenorm[ind][:,startfaceind + fi];
-    #                     break;
-    #                 end
-    #             end
-    #         end
-            
-    #         # Remove things from other bids
-    #         # Remove bdrynorm and bdryfacenorm
-    #         numremove = length(move_nodes[i]);
-    #         if numremove > 0
-    #             newbdrynorm = zeros(config.dimension, size(grid.bdrynorm[i],2) - numremove);
-    #             nextind = 1;
-    #             for j=1:length(grid.bdry[i])
-    #                 keepit = true;
-    #                 for k=1:numremove
-    #                     if grid.bdry[i][j] == move_nodes[i][k]
-    #                         keepit = false;
-    #                         break;
-    #                     end
-    #                 end
-    #                 if keepit
-    #                     newbdrynorm[:,nextind] = grid.bdrynorm[i][:,j];
-    #                     nextind += 1;
-    #                 end
-    #             end
-    #             grid.bdrynorm[i] = newbdrynorm;
-                
-    #             # now for bdryfacenorm
-    #             numremove = length(move_faces[i])
-    #             newbdryfacenorm = zeros(config.dimension, size(grid.bdryfacenorm[i],2) - numremove);
-    #             nextind = 1;
-    #             for j=1:length(grid.bdryface[i])
-    #                 keepit = true;
-    #                 for k=1:numremove
-    #                     if grid.bdryface[i][j] == move_faces[i][k]
-    #                         keepit = false;
-    #                         break;
-    #                     end
-    #                 end
-    #                 if keepit
-    #                     newbdryfacenorm[:,nextind] = grid.bdryfacenorm[i][:,j];
-    #                     nextind += 1;
-    #                 end
-    #             end
-    #             grid.bdryfacenorm[i] = newbdryfacenorm;
-    #         end
-            
-    #         # Remove nodes
-    #         deleteat!(grid.bdry[i], indexin(move_nodes[i], grid.bdry[i]));
-            
-    #         # Remove bdryface
-    #         deleteat!(grid.bdryface[i], indexin(move_faces[i], grid.bdryface[i]));
-            
-    #     end
-    # end
-    
-    # log_entry("Added boundary ID: "*string(bid)*" including "*string(node_count)*" nodes, "*string(face_count)*" faces.");
-    
 end
 
+# Defines a test function symbol by creating a special coefficient object.
 function add_test_function(v, type)
     varind = length(test_functions) + 1;
     # make SymType
     symvar = sym_var(string(v), type, config.dimension);
 
     push!(test_functions, Femshop.Coefficient(v, symvar, varind, type, []););
-    log_entry("Set test function symbol: "*string(v)*" of type: "*type);
+    log_entry("Set test function symbol: "*string(v)*" of type: "*type, 2);
 end
 
+# Adds a variable and allocates everything associated with it.
 function add_variable(var)
     global var_count += 1;
     if language == JULIA || language == 0
@@ -378,9 +242,10 @@ function add_variable(var)
     global face_linears = [face_linears; nothing];
     global face_bilinears = [face_bilinears; nothing];
 
-    log_entry("Added variable: "*string(var.symbol)*" of type: "*var.type);
+    log_entry("Added variable: "*string(var.symbol)*" of type: "*var.type, 2);
 end
 
+# Adds a coefficient with either constant value or some generated function of (x,y,z,t)
 function add_coefficient(c, type, val, nfuns)
     global coefficients;
     vals = [];
@@ -411,21 +276,22 @@ function add_coefficient(c, type, val, nfuns)
     index = length(coefficients);
     push!(coefficients, Coefficient(c, symvar, index, type, vals));
 
-    log_entry("Added coefficient "*string(c)*" : "*string(val));
+    log_entry("Added coefficient "*string(c)*" : "*string(val), 2);
 
     return coefficients[end];
 end
 
+# Adds a parameter entity.
 function add_parameter(p, type, val)
-    
     index = length(parameters);
     push!(parameters, Parameter(p, index, type, val));
 
-    log_entry("Added parameter "*string(p)*" : "*string(val));
+    log_entry("Added parameter "*string(p)*" : "*string(val), 2);
 
     return parameters[end];
 end
 
+# Needed to insert parameter expressions into the weak form expressions.
 function swap_parameter_xyzt(ex)
     if typeof(ex) == Symbol
         if ex === :x
@@ -445,6 +311,7 @@ function swap_parameter_xyzt(ex)
     return ex;
 end
 
+# Sets initial condition for the given variable, but does not initialize.
 function add_initial_condition(varindex, ex, nfuns)
     global prob;
     while length(prob.initial) < varindex
@@ -470,10 +337,11 @@ function add_initial_condition(varindex, ex, nfuns)
         end
     end
 
-    log_entry("Initial condition for "*string(variables[varindex].symbol)*" : "*string(prob.initial[varindex]));
+    log_entry("Initial condition for "*string(variables[varindex].symbol)*" : "*string(prob.initial[varindex]), 2);
     # hold off on initializing till solve or generate is determined.
 end
 
+# Sets boundary condition for a variable and BID.
 function add_boundary_condition(var, bid, type, ex, nfuns)
     global prob;
     # make sure the arrays are big enough
@@ -513,9 +381,11 @@ function add_boundary_condition(var, bid, type, ex, nfuns)
     prob.bc_type[var.index, bid] = type;
     prob.bid[var.index, bid] = bid;
 
-    log_entry("Boundary condition: var="*string(var.symbol)*" bid="*string(bid)*" type="*type*" val="*string(ex));
+    log_entry("Boundary condition: var="*string(var.symbol)*" bid="*string(bid)*" type="*type*" val="*string(ex), 2);
 end
 
+# A reference point is a single point with a defined value.
+# It's treated like a Dirichlet boundary with one boundary node.
 function add_reference_point(var, pos, val)
     global prob;
     # make sure the array is big enough
@@ -559,9 +429,10 @@ function add_reference_point(var, pos, val)
     prob.ref_point[var.index, 2] = ind;
     prob.ref_point[var.index, 3] = val;
     
-    log_entry("Reference point: var="*string(var.symbol)*" position="*string(pos)*" value="*string(val));
+    log_entry("Reference point: var="*string(var.symbol)*" position="*string(pos)*" value="*string(val), 2);
 end
 
+# Sets the RHS(linear) function for the given variable(s).
 function set_rhs(var, code="")
     global linears;
     if language == 0 || language == JULIA
@@ -584,6 +455,7 @@ function set_rhs(var, code="")
     end
 end
 
+# Sets the LHS(bilinear) function for the given variable(s).
 function set_lhs(var, code="")
     global bilinears;
     if language == 0 || language == JULIA
@@ -606,6 +478,7 @@ function set_lhs(var, code="")
     end
 end
 
+# Sets the surface RHS(linear) function for the given variable(s).
 function set_rhs_surface(var, code="")
     global face_linears;
     if language == 0 || language == JULIA
@@ -628,6 +501,7 @@ function set_rhs_surface(var, code="")
     end
 end
 
+# Sets the surface LHS(bilinear) function for the given variable(s).
 function set_lhs_surface(var, code="")
     global face_bilinears;
     if language == 0 || language == JULIA
@@ -650,6 +524,7 @@ function set_lhs_surface(var, code="")
     end
 end
 
+# When using cachesim, this will be used to simulate the solve.
 function cachesim_solve(var, nlvar=nothing; nonlinear=false)
     if !(gen_files === nothing && (language == JULIA || language == 0))
         printerr("Cachesim solve is only ready for Julia direct solve");
@@ -670,10 +545,11 @@ function cachesim_solve(var, nlvar=nothing; nonlinear=false)
         rhs = linears[varind];
         
         t = @elapsed(result = CGSolver.linear_solve_cachesim(var, lhs, rhs));
-        log_entry("Generated cachesim ouput for "*varnames*".(took "*string(t)*" seconds)");
+        log_entry("Generated cachesim ouput for "*varnames*".(took "*string(t)*" seconds)", 1);
     end
 end
 
+# This will either solve the problem or generate the code for an external target.
 function solve(var, nlvar=nothing; nonlinear=false)
     if use_cachesim
         printerr("Use cachesim_solve(var) for generating cachesim output. Try again.");
@@ -690,13 +566,7 @@ function solve(var, nlvar=nothing; nonlinear=false)
         else
             generate_all_files(bilinears[1], linears[1]);
         end
-        # generate_prob();
-        # generate_mesh();
-        # generate_genfunction();
-        # generate_bilinear(bilinears[1]);
-        # generate_linear(linears[1]);
-        # #generate_stepper();
-        # generate_output();
+        
     else
         if typeof(var) <: Array
             varnames = "["*string(var[1].symbol);
@@ -724,7 +594,7 @@ function solve(var, nlvar=nothing; nonlinear=false)
                 end
                 if (nonlinear)
                     if time_stepper.type == EULER_EXPLICIT || time_stepper.type == LSRK4
-                        println("Warning: Use implicit stepper for nonlinear problem. Aborting.");
+                        printerr("Warning: Use implicit stepper for nonlinear problem. Aborting.");
                         return;
                     end
                 	t = @elapsed(result = CGSolver.nonlinear_solve(var, nlvar, lhs, rhs, time_stepper));
@@ -762,7 +632,7 @@ function solve(var, nlvar=nothing; nonlinear=false)
                 end
             end
             
-            log_entry("Solved for "*varnames*".(took "*string(t)*" seconds)");
+            log_entry("Solved for "*varnames*".(took "*string(t)*" seconds)", 1);
             
         elseif config.solver_type == DG
             init_dgsolver();
@@ -814,7 +684,7 @@ function solve(var, nlvar=nothing; nonlinear=false)
                 end
             end
             
-            log_entry("Solved for "*varnames*".(took "*string(t)*" seconds)");
+            log_entry("Solved for "*varnames*".(took "*string(t)*" seconds)", 1);
         end
     end
 
@@ -834,53 +704,53 @@ function finalize()
 end
 
 function cachesim(use)
-    log_entry("Using cachesim - Only cachesim output will be generated.");
+    log_entry("Using cachesim - Only cachesim output will be generated.", 1);
     global use_cachesim = use;
 end
 
 function morton_nodes(griddim)
     t = @elapsed(global grid_data = reorder_grid_recursive(grid_data, griddim, MORTON_ORDERING));
-    log_entry("Reordered nodes to Morton. Took "*string(t)*" sec.");
+    log_entry("Reordered nodes to Morton. Took "*string(t)*" sec.", 2);
 end
 
 function morton_elements(griddim)
     global elemental_order = get_recursive_order(MORTON_ORDERING, config.dimension, griddim);
-    log_entry("Reordered elements to Morton.");
+    log_entry("Reordered elements to Morton.", 2);
 end
 
 function hilbert_nodes(griddim)
     t = @elapsed(global grid_data = reorder_grid_recursive(grid_data, griddim, HILBERT_ORDERING));
-    log_entry("Reordered nodes to Hilbert. Took "*string(t)*" sec.");
+    log_entry("Reordered nodes to Hilbert. Took "*string(t)*" sec.", 2);
 end
 
 function hilbert_elements(griddim)
     global elemental_order = get_recursive_order(HILBERT_ORDERING, config.dimension, griddim);
-    log_entry("Reordered elements to Hilbert.");
+    log_entry("Reordered elements to Hilbert.", 2);
 end
 
 function tiled_nodes(griddim, tiledim)
     t = @elapsed(global grid_data = reorder_grid_tiled(grid_data, griddim, tiledim));
-    log_entry("Reordered nodes to tiled. Took "*string(t)*" sec.");
+    log_entry("Reordered nodes to tiled. Took "*string(t)*" sec.", 2);
 end
 
 function tiled_elements(griddim, tiledim)
     global elemental_order = get_tiled_order(config.dimension, griddim, tiledim, true);
-    log_entry("Reordered elements to tiled("*string(tiledim)*").");
+    log_entry("Reordered elements to tiled("*string(tiledim)*").", 2);
 end
 
 function ef_nodes()
     t = @elapsed(global grid_data = reorder_grid_element_first(grid_data, config.basis_order_min, elemental_order));
-    log_entry("Reordered nodes to EF. Took "*string(t)*" sec.");
+    log_entry("Reordered nodes to EF. Took "*string(t)*" sec.", 2);
 end
 
 function random_nodes(seed = 17)
     t = @elapsed(global grid_data = reorder_grid_random(grid_data, seed));
-    log_entry("Reordered nodes to random. Took "*string(t)*" sec.");
+    log_entry("Reordered nodes to random. Took "*string(t)*" sec.", 2);
 end
 
 function random_elements(seed = 17)
     global elemental_order = random_order(mesh_data.nel, seed);
-    log_entry("Reordered elements to random.");
+    log_entry("Reordered elements to random.", 2);
 end
 
 end # module
