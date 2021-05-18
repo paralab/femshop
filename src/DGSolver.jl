@@ -196,6 +196,13 @@ function nonlinear_solve(var, nlvar, bilinear, linear, stepper=nothing)
     end
 end
 
+# ########################
+# # tmp for testing
+function the_desired(args)
+    
+end
+# #########################
+
 # assembles the A and b in Au=b
 function assemble(var, bilinear, linear, face_bilinear, face_linear, t=0.0, dt=0.0)
     Np = refel.Np;
@@ -309,12 +316,17 @@ function assemble(var, bilinear, linear, face_bilinear, face_linear, t=0.0, dt=0
             frefelind = [grid_data.faceRefelInd[1,fid], grid_data.faceRefelInd[2,fid]]; # refel based index of face in both elements
             
             face2glb = grid_data.face2glb[:,:,fid]; # local to global for face
+            if frefelind[2] > 0 # not a boundary face
+                flocal = [refel.face2local[frefelind[1]], refel.face2local[frefelind[2]]]; # local indices of face in both elements
+            else # a boundary face
+                face2glb[:,2] = face2glb[:,1]; # same global index for inside and out
+                frefelind[2] = frefelind[1];
+                flocal = [refel.face2local[frefelind[1]], refel.face2local[frefelind[1]]]; # local indices of face in both elements
+            end
             
             facenodes = grid_data.allnodes[:,face2glb[:,1]]; # coordinates of this face's nodes for evaluating coefficient functions
             
-            flocal = [refel.face2local[frefelind[1]], refel.face2local[frefelind[2]]]; # local indices of face in both elements
-            
-            normal = grid_data.facenorm[:,fid]; # normal vector
+            normal = grid_data.facenormals[:,fid]; # normal vector
             
             faceBID = mesh_data.bdryID[fid]; # BID of face (0 for interior)
             
@@ -343,7 +355,7 @@ function assemble(var, bilinear, linear, face_bilinear, face_linear, t=0.0, dt=0
             
             if dofs_per_node == 1
                 linchunk = face_linear.func(rhsargs);  # get the elemental linear part
-                #linchunk = temporary_rhs_func(rhsargs);
+                #linchunk = the_desired(rhsargs);
                 linchunk[1] = linchunk[1][flocal[1]];
                 linchunk[2] = linchunk[2][flocal[2]];
                 if faceBID == 0
@@ -621,12 +633,17 @@ function assemble_rhs_only(var, linear, face_linear, t=0.0, dt=0.0)
             frefelind = [grid_data.faceRefelInd[1,fid], grid_data.faceRefelInd[2,fid]]; # refel based index of face in both elements
             
             face2glb = grid_data.face2glb[:,:,fid]; # local to global for face
+            if frefelind[2] > 0 # not a boundary face
+                flocal = [refel.face2local[frefelind[1]], refel.face2local[frefelind[2]]]; # local indices of face in both elements
+            else # a boundary face
+                face2glb[:,2] = face2glb[:,1]; # same global index for inside and out
+                frefelind[2] = frefelind[1];
+                flocal = [refel.face2local[frefelind[1]], refel.face2local[frefelind[1]]]; # local indices of face in both elements
+            end
             
             facenodes = grid_data.allnodes[:,face2glb[:,1]]; # coordinates of this face's nodes for evaluating coefficient functions
             
-            flocal = [refel.face2local[frefelind[1]], refel.face2local[frefelind[2]]]; # local indices of face in both elements
-            
-            normal = grid_data.facenorm[:,fid]; # normal vector
+            normal = grid_data.facenormals[:,fid]; # normal vector
             
             faceBID = mesh_data.bdryID[fid]; # BID of face (0 for interior)
             
@@ -650,11 +667,11 @@ function assemble_rhs_only(var, linear, face_linear, t=0.0, dt=0.0)
             face_wgdetj = refel.surf_wg[1] .* fdetJ;
             
             rhsargs = (var, refel, loc2glb, fid, frefelind, facenodes, face2glb, normal, faceBID, fdetJ, fJ, vol_J1, vol_J2, face_wgdetj, RHS, t, dt);
-            lhsargs = (var, refel, loc2glb, fid, frefelind, facenodes, face2glb, normal, faceBID, fdetJ, fJ, vol_J1, vol_J2, face_wgdetj, LHS, t, dt);
+            #lhsargs = (var, refel, loc2glb, fid, frefelind, facenodes, face2glb, normal, faceBID, fdetJ, fJ, vol_J1, vol_J2, face_wgdetj, LHS, t, dt);
             
             if dofs_per_node == 1
                 linchunk = face_linear.func(rhsargs);  # get the elemental linear part
-                #linchunk = temporary_rhs_func(rhsargs);
+                #linchunk = the_desired(rhsargs);
                 linchunk[1] = linchunk[1][flocal[1]];
                 linchunk[2] = linchunk[2][flocal[2]];
                 if faceBID == 0

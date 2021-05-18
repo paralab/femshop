@@ -30,7 +30,6 @@ include("mesh_data.jl");
 include("mesh_read.jl");
 include("mesh_write.jl")
 include("grid.jl");
-include("dg_grid.jl");
 include("simple_mesh.jl");
 include("recursive_ordering.jl");
 include("tiled_ordering.jl");

@@ -283,7 +283,8 @@ function neumann_bc(A, b, val, bdryind, bid, t=0, dofind = 1, totaldofs = 1)
         xe = grid_data.allnodes[:,glb[:]];  # coordinates of this element's nodes
         
         # Local indices for the nodes on the face
-        flocal = get_face_local_index(grid_data.face2glb[:,bfc[fi]], glb);
+        #flocal = get_face_local_index(grid_data.face2glb[:,1,bfc[fi]], glb);
+        flocal = refel.face2local[grid_data.faceRefelInd[1,bfc[fi]]];
         
         # offset for multi dof
         if totaldofs > 1
@@ -357,17 +358,17 @@ function neumann_bc_rhs_only(b, val, bdryind, bid, t=0, dofind = 1, totaldofs = 
     return dirichlet_bc_rhs_only(b, val, bdryind, t, dofind, totaldofs); # how convenient
 end
 
-# Returns the local indices for a face given the face and element global indices
-function get_face_local_index(f2glb, e2glb)
-    ind = zeros(Int, length(f2glb));
-    for fi=1:length(f2glb)
-        for ei=1:length(e2glb)
-            if f2glb[fi] == e2glb[ei]
-                ind[fi] = ei;
-                break;
-            end
-        end
-    end
+# # Returns the local indices for a face given the face and element global indices
+# function get_face_local_index(f2glb, e2glb)
+#     ind = zeros(Int, length(f2glb));
+#     for fi=1:length(f2glb)
+#         for ei=1:length(e2glb)
+#             if f2glb[fi] == e2glb[ei]
+#                 ind[fi] = ei;
+#                 break;
+#             end
+#         end
+#     end
     
-    return ind;
-end
+#     return ind;
+# end
