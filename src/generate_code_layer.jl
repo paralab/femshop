@@ -857,20 +857,20 @@ function process_known_expr_julia(ex)
     
     # Work recursively through the expression
     if typeof(ex) <: Number
-        return (ex, need_derivative, needed_coef, needed_coef_ind, needed_coef_deriv);
+        return (ex, need_derivative, needed_coef, needed_coef_name, needed_coef_ind, needed_coef_deriv);
         
     elseif typeof(ex) == Symbol
         # turn arithmetic ops into dotted versions
         if ex === :+ || ex === :.+
-            return (:.+ , false, [], [], []);
+            return (:.+ , false, [], [], [], []);
         elseif ex === :- || ex === :.-
-            return (:.- , false, [], [], []);
+            return (:.- , false, [], [], [], []);
         elseif ex === :* || ex === :.*
-            return (:.* , false, [], [], []);
+            return (:.* , false, [], [], [], []);
         elseif ex === :/ || ex === :./
-            return (:./ , false, [], [], []);
+            return (:./ , false, [], [], [], []);
         elseif ex === :^ || ex === :.^
-            return (:.^ , false, [], [], []);
+            return (:.^ , false, [], [], [], []);
         end
         
         (index, v, mods) = extract_symbols(ex);

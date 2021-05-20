@@ -6,12 +6,13 @@ module Femshop
 # Public macros and functions
 export @generateFor, @domain, @mesh, @solver, @stepper, @setSteps, @functionSpace, @trialFunction, @matrixFree,
         @testFunction, @nodes, @order, @boundary, @addBoundaryID, @referencePoint, @variable, @coefficient, @parameter, @testSymbol, @initial,
-        @timeInterval, @weakForm, @LHS, @RHS, @customOperator, @customOperatorFile,
+        @timeInterval, @weakForm, @LHS, @RHS, @exportRHS, @exportLHS, @exportCode, @importRHS, @importLHS, @importCode,
+        @customOperator, @customOperatorFile,
         @outputMesh, @useLog, @finalize
 export init_femshop, set_language, set_custom_gen_target, dendro, set_solver, set_stepper, set_specified_steps, set_matrix_free, reformat_for_stepper, 
         add_mesh, output_mesh, add_boundary_ID, add_test_function, 
         add_initial_condition, add_boundary_condition, add_reference_point, set_rhs, set_lhs, set_lhs_surface, set_rhs_surface, solve, 
-        finalize, cachesim, cachesim_solve, 
+        finalize, cachesim, cachesim_solve, export_code_layer, import_code_layer,
         morton_nodes, hilbert_nodes, tiled_nodes, morton_elements, hilbert_elements, tiled_elements, ef_nodes, random_nodes, random_elements
 export build_cache_level, build_cache, build_cache_auto
 export sp_parse
@@ -521,6 +522,126 @@ function set_lhs_surface(var, code="")
         else
             face_bilinears[var.index] = code;
         end
+    end
+end
+
+# Import and export code layer functions
+function export_code_layer(filename, LorR)
+    # For now, only do this for Julia code because others are already output in code files.
+    if language == JULIA || language == 0
+        file = open(filename*".jl", "w");
+        println(file, "#=\nGenerated "*LorR*" functions for "*project_name*"\n=#\n");
+        if LorR == LHS
+            codevol = bilinears;
+            codesurf = face_bilinears;
+        else
+            codevol = linears;
+            codesurf = face_linears;
+        end
+        for i=1:length(variables)
+            var = string(variables[i].symbol);
+            if !(codevol[i] === nothing)
+                func_name = LorR*"_volume_function_for_"*var;
+                println(file, "function "*func_name*"(args)");
+                println(file, codevol[i].str);
+                println(file, "end #"*func_name*"\n");
+            else
+                println(file, "# No "*LorR*" volume set for "*var*"\n");
+            end
+            
+            if !(codesurf[i] === nothing)
+                func_name = LorR*"_surface_function_for_"*var;
+                println(file, "function "*func_name*"(args)");
+                println(file, codesurf[i].str);
+                println(file, "end #"*func_name*"\n");
+            else
+                println(file, "# No "*LorR*" surface set for "*var*"\n");
+            end
+        end
+        close(file);
+        
+    else
+        # Should we export for other targets?
+    end
+end
+
+function import_code_layer(filename, LorR)
+    # For now, only do this for Julia code because others are already output in code files.
+    if language == JULIA || language == 0
+        file = open(filename*".jl", "r");
+        lines = readlines(file, keep=true);
+        if LorR == LHS
+            codevol = bilinears;
+            codesurf = face_bilinears;
+        else
+            codevol = linears;
+            codesurf = face_linears;
+        end
+        
+        # Loop over variables and check to see if a matching function is present.
+        for i=1:length(variables)
+            # Scan the file for a pattern like
+            #   function LHS_volume_function_for_u
+            #       ...
+            #   end #LHS_volume_function_for_u
+            #
+            # Set LHS/RHS, volume/surface, and the variable name
+            var = string(variables[i].symbol);
+            vfunc_name = LorR*"_volume_function_for_"*var;
+            vfunc_string = "";
+            sfunc_name = LorR*"_surface_function_for_"*var;
+            sfunc_string = "";
+            for st=1:length(lines)
+                if occursin("function "*vfunc_name, lines[st])
+                    # s is the start of the function
+                    for en=(st+1):length(lines)
+                        if occursin("end #"*vfunc_name, lines[en])
+                            # en is the end of the function
+                            st = en; # update st
+                            break;
+                        else
+                            vfunc_string *= lines[en];
+                        end
+                    end
+                elseif occursin("function "*sfunc_name, lines[st])
+                    # s is the start of the function
+                    for en=(st+1):length(lines)
+                        if occursin("end #"*sfunc_name, lines[en])
+                            # en is the end of the function
+                            st = en; # update st
+                            break;
+                        else
+                            sfunc_string *= lines[en];
+                        end
+                    end
+                end
+            end # lines loop
+            
+            # Generate the functions and set them in the right places
+            if vfunc_string == ""
+                println("Warning: While importing, no "*LorR*" volume function was found for "*var);
+            else
+                @makeFunction("args", string(vfunc_string));
+                if LorR == LHS
+                    set_lhs(variables[i]);
+                else
+                    set_rhs(variables[i]);
+                end
+            end
+            if sfunc_string == ""
+                println("Warning: While importing, no "*LorR*" surface function was found for "*var);
+            else
+                @makeFunction("args", string(sfunc_string));
+                if LorR == LHS
+                    set_lhs(variables[i]);
+                else
+                    set_rhs(variables[i]);
+                end
+            end
+            
+        end # vars loop
+    else
+        # TODO non-julia
     end
 end
 

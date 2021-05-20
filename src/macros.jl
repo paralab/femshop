@@ -462,6 +462,45 @@ macro weakForm(var, ex)
     end)
 end
 
+# Import and export the code layer functions to allow manual changes
+macro exportCode(file)
+    lhsfile = string(file) * ".lhs"
+    rhsfile = string(file) * ".rhs"
+    return esc(quote
+        export_code_layer($lhsfile, LHS);
+        export_code_layer($rhsfile, RHS);
+    end)
+end
+macro exportLHS(file)
+    return esc(quote
+    export_code_layer($file, LHS);
+    end)
+end
+macro exportRHS(file)
+    return esc(quote
+    export_code_layer($file, RHS);
+    end)
+end
+
+macro importCode(file)
+    lhsfile = string(file) * ".lhs"
+    rhsfile = string(file) * ".rhs"
+    return esc(quote
+        import_code_layer($lhsfile, LHS);
+        import_code_layer($rhsfile, RHS);
+    end)
+end
+macro importLHS(file)
+    return esc(quote
+    import_code_layer($file, LHS);
+    end)
+end
+macro importRHS(file)
+    return esc(quote
+    import_code_layer($file, RHS);
+    end)
+end
+
 macro finalize()
     return esc(:(Femshop.finalize()));
 end

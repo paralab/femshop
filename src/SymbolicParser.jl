@@ -261,7 +261,7 @@ function replace_symbols(ex)
             if ex === c.symbol
                 # constant coefficients are entered as numbers
                 if c.type == SCALAR && typeof(c.value[1]) <: Number
-                    return Basic(c.value[1]);
+                    return [Basic(c.value[1])];
                 end
                 return c.symvar.vals;
             end

@@ -334,8 +334,8 @@ function assemble(var, bilinear, linear, face_bilinear, face_linear, t=0.0, dt=0
             #fdetJ = [1];
             #fJ = [1];
             
-            e1 = mesh_data.face2element[1,fid]; # element on side 1
-            e2 = mesh_data.face2element[2,fid]; # and 2
+            e1 = grid_data.face2element[1,fid]; # element on side 1
+            e2 = grid_data.face2element[2,fid]; # and 2
             if e1==0 # boundary
                 e1=e2;
             end
@@ -361,7 +361,7 @@ function assemble(var, bilinear, linear, face_bilinear, face_linear, t=0.0, dt=0
                 if faceBID == 0
                     b[face2glb[:,1]] .+= linchunk[1];
                     b[face2glb[:,2]] .+= linchunk[2];
-                elseif mesh_data.face2element[1,fid] == 0
+                elseif grid_data.face2element[1,fid] == 0
                     b[face2glb[:,2]] .+= linchunk[2];
                 else
                     b[face2glb[:,1]] .+= linchunk[1];
@@ -651,8 +651,8 @@ function assemble_rhs_only(var, linear, face_linear, t=0.0, dt=0.0)
             #fdetJ = [1];
             #fJ = [1];
             
-            e1 = mesh_data.face2element[1,fid]; # element on side 1
-            e2 = mesh_data.face2element[2,fid]; # and 2
+            e1 = grid_data.face2element[1,fid]; # element on side 1
+            e2 = grid_data.face2element[2,fid]; # and 2
             if e1==0 # boundary
                 e1=e2;
             end
@@ -677,7 +677,7 @@ function assemble_rhs_only(var, linear, face_linear, t=0.0, dt=0.0)
                 if faceBID == 0
                     b[face2glb[:,1]] .+= linchunk[1];
                     b[face2glb[:,2]] .+= linchunk[2];
-                elseif mesh_data.face2element[1,fid] == 0
+                elseif grid_data.face2element[1,fid] == 0
                     b[face2glb[:,2]] .+= linchunk[2];
                 else
                     b[face2glb[:,1]] .+= linchunk[1];
