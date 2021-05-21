@@ -633,9 +633,9 @@ function import_code_layer(filename, LorR)
             else
                 @makeFunction("args", string(sfunc_string));
                 if LorR == LHS
-                    set_lhs(variables[i]);
+                    set_lhs_surface(variables[i]);
                 else
-                    set_rhs(variables[i]);
+                    set_rhs_surface(variables[i]);
                 end
             end
             

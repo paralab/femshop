@@ -444,11 +444,11 @@ function generate_code_layer_julia_surface(symex, var, lorr)
         end
     #end
     
-    # remove any :EMPTY terms
+    # remove any :EMPTY, nothing, or zero terms
     newterms = [[], [], [], []];
     for i=1:length(terms[1])
         for tind=1:4
-            if !(terms[tind][i] === nothing || terms[tind][i] === :EMPTY)
+            if !(terms[tind][i] === nothing || terms[tind][i] === :EMPTY || terms[tind][i] == 0)
                 push!(newterms[tind], terms[tind][i]);
             end
         end
@@ -669,6 +669,8 @@ function generate_code_layer_julia_surface(symex, var, lorr)
                                 sti = :($ti*refel.Np + 1);
                                 eni = :(($ti + 1)*refel.Np);
                                 
+                                println("There may be a problem. If so, see around line 672 in generate_cole_layer_surface.jl")
+                                # may need the 2 and 3 parts.. TODO
                                 push!(code.args, Expr(:(+=), :(element_vector_s1[$sti:$eni]), submatrices[ci]));
                                 if termind == 1
                                     push!(code.args, Expr(:(+=), :(element_vectorL[$sti:$eni]), submatrices[ci]));
@@ -707,8 +709,12 @@ function generate_code_layer_julia_surface(symex, var, lorr)
                     if termind == 1
                         push!(code.args, Expr(:(=), :(element_vectorL), terms[1][1]));
                         result[1] = :element_vectorL;
+                    elseif termind == 2
+                        push!(code.args, Expr(:(.+=), :(element_vectorL), terms[2][1]));
+                    elseif termind == 3
+                        push!(code.args, Expr(:(=), :(element_vectorR), terms[3][1]));
                     elseif termind == 4
-                        push!(code.args, Expr(:(=), :(element_vectorR), terms[4][1]));
+                        push!(code.args, Expr(:(.+=), :(element_vectorR), terms[4][1]));
                         result[4] = :element_vectorR;
                     end
                     
@@ -770,6 +776,11 @@ function process_surface_term_julia(sterm, var, lorr, offset_ind=0)
     weight_parts = [:face_wgdetj,:face_wgdetj,:face_wgdetj,:face_wgdetj];
     test_component = 0;
     trial_component = 0;
+    
+    # If DG sides are present in this term, jump or average were used
+    # 0=no side specified, 1=side1, 2=side2
+    test_sides = 0;
+    trial_sides = 0;
     
     # extract each of the factors.
     factors = separate_factors(terms[1]);
@@ -851,8 +862,10 @@ function process_surface_term_julia(sterm, var, lorr, offset_ind=0)
             if is_test_func(v)
                 test_component = index; # the vector index
                 if length(mods) > 0
-                    # Could be Dn for derivative, DGJUMP for jump, DGAVE for ave or versions with NORMDOTGRAD
+                    # Could be Dn for derivative, DGSIDEn for DG sides
                     if occursin("DGSIDE1", mods[1]) || (length(mods)>1 && occursin("DGSIDE1", mods[2]))
+                        tmp = test_sides;
+                        test_sides = 1;
                         if length(mods)>1 && occursin("D", mods[1])
                             # TODO more than one derivative mod
                             need_derivative = true;
@@ -869,6 +882,8 @@ function process_surface_term_julia(sterm, var, lorr, offset_ind=0)
                         end
                         
                     elseif occursin("DGSIDE2", mods[1]) || (length(mods)>1 && occursin("DGSIDE2", mods[2]))
+                        tmp = test_sides;
+                        test_sides = 2;
                         if length(mods)>1 && occursin("D", mods[1])
                             # TODO more than one derivative mod
                             need_derivative = true;
@@ -893,7 +908,7 @@ function process_surface_term_julia(sterm, var, lorr, offset_ind=0)
                         test_parts[4] = Symbol("TRQ2_"*mods[1][2]);
                     end
                 else
-                    # no mods
+                    # no mods, 
                     test_parts[1] = :(refel.surf_Q[frefelind[1]]');
                     test_parts[2] = :(refel.surf_Q[frefelind[1]]');
                     test_parts[3] = :(refel.surf_Q[frefelind[2]]');
@@ -919,6 +934,8 @@ function process_surface_term_julia(sterm, var, lorr, offset_ind=0)
                 if length(mods) > 0
                     # Could be Dn for derivative, DGJUMP for jump, DGAVE for ave or versions with NORMDOTGRAD
                     if occursin("DGSIDE1", mods[1]) || (length(mods)>1 && occursin("DGSIDE1", mods[2]))
+                        tmp = trial_sides;
+                        trial_sides = 1;
                         if length(mods)>1 && occursin("D", mods[1])
                             # TODO more than one derivative mod
                             need_derivative = true;
@@ -936,6 +953,8 @@ function process_surface_term_julia(sterm, var, lorr, offset_ind=0)
                         end
                         
                     elseif occursin("DGSIDE2", mods[1]) || (length(mods)>1 && occursin("DGSIDE2", mods[2]))
+                        tmp = trial_sides;
+                        trial_sides = 2;
                         if length(mods)>1 && occursin("D", mods[1])
                             # TODO more than one derivative mod
                             need_derivative = true;
@@ -956,19 +975,19 @@ function process_surface_term_julia(sterm, var, lorr, offset_ind=0)
                         # TODO more than one derivative mod
                         need_derivative = true;
                         trial_parts[1] = Symbol("RQ1_"*mods[1][2]);
-                        trial_parts[2] = :EMPTY;
-                        trial_parts[3] = :EMPTY;
+                        trial_parts[2] = Symbol("RQ2_"*mods[1][2]); # empty?
+                        trial_parts[3] = Symbol("RQ1_"*mods[1][2]); # empty?
                         trial_parts[4] = Symbol("RQ2_"*mods[1][2]);
                     end
                 else
                     # no mods
                     trial_parts[1] = :(refel.surf_Q[frefelind[1]]);
-                    trial_parts[2] = :EMPTY;
-                    trial_parts[3] = :EMPTY;
+                    trial_parts[2] = :(refel.surf_Q[frefelind[2]]); # empty?
+                    trial_parts[3] = :(refel.surf_Q[frefelind[1]]); # empty?
                     trial_parts[4] = :(refel.surf_Q[frefelind[2]]);
                 end
                 
-            else # coefficients
+            else # coefficients or RHS variables
                 if length(index) == 1
                     ind = index[1];
                 end
@@ -977,9 +996,15 @@ function process_surface_term_julia(sterm, var, lorr, offset_ind=0)
                     if length(mods) > 0
                         # print("process coef: ")
                         # println(string(v) * " : " * string(mods))
-                        # Could be Dn for derivative, DGJUMP for jump, DGAVE for ave or versions with NORMDOTGRAD
+                        # Could be Dn for derivative, DGSIDEn for DG side
                         if length(mods) > 1
                             if occursin("DGSIDE", mods[2]) && occursin("D", mods[1])
+                                thisside = 1;
+                                if occursin("DGSIDE2", mods[2])
+                                    thisside = 2;
+                                end
+                                tmp = trial_sides;
+                                trial_sides = thisside;
                                 need_derivative = true;
                                 need_derivative_for_coefficient = false;
                                 push!(needed_coef_deriv, [v, mods[1], mods[1][2]]);
@@ -988,6 +1013,12 @@ function process_surface_term_julia(sterm, var, lorr, offset_ind=0)
                             end
                         else
                             if occursin("DGSIDE", mods[1])
+                                thisside = 1;
+                                if occursin("DGSIDE2", mods[1])
+                                    thisside = 2;
+                                end
+                                tmp = trial_sides;
+                                trial_sides = thisside;
                                 push!(needed_coef_deriv, [v, "", ""]);
                             elseif occursin("D", mods[1])
                                 need_derivative = true;
@@ -1058,14 +1089,14 @@ function process_surface_term_julia(sterm, var, lorr, offset_ind=0)
                     ind = coef_inds[j];
                     tmp1 = :(normal[$ind]);
                     tmp2 = :(normal[$ind]);
-                    tmp3 = :(normal[$ind]);
-                    tmp4 = :(normal[$ind]);
+                    tmp3 = :(-normal[$ind]);
+                    tmp4 = :(-normal[$ind]);
                 elseif tmp1 === :DGNORMAL2
                     ind = coef_inds[j];
                     tmp1 = :(-normal[$ind]);
                     tmp2 = :(-normal[$ind]);
-                    tmp3 = :(-normal[$ind]);
-                    tmp4 = :(-normal[$ind]);
+                    tmp3 = :(normal[$ind]);
+                    tmp4 = :(normal[$ind]);
                 else
                     #derivatives of coefficients
                     tag = coef_derivs[j][2] * tag;
@@ -1159,6 +1190,33 @@ function process_surface_term_julia(sterm, var, lorr, offset_ind=0)
         elseif test_parts[tind] === :EMPTY || trial_parts[tind] === :EMPTY
             # This term will be zero, so just make it EMPTY
             terms[tind] = :EMPTY;
+            
+            #########################################################################
+            ### These eliminate some of the submatrices depending on which DG sides
+            ### Could be u*v, u1*v, u2*v, u*v1, u*v2
+            ### Other combos should already be accounted for.
+        elseif (tind == 2 || tind == 3) && test_sides == 0 && trial_sides == 0
+            # Both test and trial are one sided(no jump or avearage)
+            # Set part 2 and 3 to empty
+            terms[tind] = :EMPTY;
+        elseif (tind == 2 || tind == 4) && test_sides == 0 && trial_sides == 1
+            # Both test and trial are one sided(no jump or avearage)
+            # Set part 2 and 3 to empty
+            terms[tind] = :EMPTY;
+        elseif (tind == 1 || tind == 3) && test_sides == 0 && trial_sides == 2
+            # Both test and trial are one sided(no jump or avearage)
+            # Set part 2 and 3 to empty
+            terms[tind] = :EMPTY;
+        elseif (tind == 3 || tind == 4) && test_sides == 1 && trial_sides == 0
+            # Both test and trial are one sided(no jump or avearage)
+            # Set part 2 and 3 to empty
+            terms[tind] = :EMPTY;
+        elseif (tind == 1 || tind == 2) && test_sides == 2 && trial_sides == 0
+            # Both test and trial are one sided(no jump or avearage)
+            # Set part 2 and 3 to empty
+            terms[tind] = :EMPTY;
+            #########################################################################
+            
         else
             terms[tind] = test_parts[tind];
             tp = test_parts[tind];
@@ -1191,6 +1249,13 @@ function process_surface_term_julia(sterm, var, lorr, offset_ind=0)
             end
         end
     end
+    
+    # println("term: "*string(sterm));
+    # println("test side "*string(test_sides));
+    # println("trial side "*string(trial_sides));
+    # println("terms: ");
+    # display(terms)
+    
     
     return (terms, need_derivative, needed_coef, needed_coef_ind, needed_coef_deriv, test_component, trial_component);
 end

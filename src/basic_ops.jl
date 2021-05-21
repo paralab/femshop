@@ -105,6 +105,7 @@ function sym_jump_op(var)
         end
         
     elseif typeof(var) == Basic
+        # Note: norm is a vector
         result = symbols(side2*string(var)) .* norm2 .+ symbols(side1*string(var)) .*norm1;
     elseif typeof(var) <: Number
         result = Basic(0) .* norm1;

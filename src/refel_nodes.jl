@@ -9,13 +9,13 @@ function refel_nodes!(refel, nodetype)
     if refel.dim == 0
         # 0D is a point so some of this doesn't make sense
         refel.r1d = [0];
-        refel.wr1d = [2];
+        refel.wr1d = [1];
         refel.g1d = [0];
-        refel.wg1d = [2];
+        refel.wg1d = [1];
         refel.r = [0];
-        refel.wr = [2];
+        refel.wr = [1];
         refel.g = [0];
-        refel.wg = [2];
+        refel.wg = [1];
         
     elseif refel.dim == 1
         # 1D has line segments
@@ -58,9 +58,9 @@ function refel_nodes!(refel, nodetype)
         # surface is just points
         refel.face2local = [[1], [refel.Np]];
         refel.surf_r = [[-1], [1]];
-        refel.surf_wr = [[2], [2]];
+        refel.surf_wr = [[1], [1]];
         refel.surf_g = [[-1], [1]];
-        refel.surf_wg = [[2], [2]];
+        refel.surf_wg = [[1], [1]];
         
     elseif refel.dim == 2
         # 2D has triangles and quads

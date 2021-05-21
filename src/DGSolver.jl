@@ -93,6 +93,9 @@ function linear_solve(var, bilinear, linear, face_bilinear, face_linear, stepper
         t = 0;
         sol = [];
         start_t = Base.Libc.time();
+        last2update = 0;
+        last10update = 0;
+        print("Time stepping progress(%): 0");
         for i=1:stepper.Nsteps
             stupidjulia=sol;
             if stepper.stages > 1
@@ -114,7 +117,19 @@ function linear_solve(var, bilinear, linear, face_bilinear, face_linear, stepper
             #println("b(bdry): "*string(b[1])*", "*string(b[end]));
             
             t += stepper.dt;
+            
+            progressPercent = Int(floor(i*100.0/stepper.Nsteps));
+            if progressPercent - last2update >= 2
+                last2update = progressPercent;
+                if progressPercent - last10update >= 10
+                    print(progressPercent);
+                    last10update = progressPercent;
+                else
+                    print(".");
+                end
+            end
         end
+        println("");
         end_t = Base.Libc.time();
 
         log_entry("Solve took "*string(end_t-start_t)*" seconds");

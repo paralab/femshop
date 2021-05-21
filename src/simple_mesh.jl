@@ -51,11 +51,11 @@ function simple_line_mesh(nx, bn, interval)
     bdryID[1] = 1;
     f2e[:,1] = [1,0];
     normals[1] = -1;
-    if bn == 2
-        bdryID[Nv] = 2; # for two BIDs
-    else
-        bdryID[Nv] = 1; # for one BID
-    end
+    # if bn == 2
+    #     bdryID[Nv] = 2; # for two BIDs
+    # else
+    #     bdryID[Nv] = 1; # for one BID
+    # end
     
     mesh = MeshData(Nv, xv, ind, nel, el, etypes, numvert, invind, f2n, f2e, e2f, normals, bdryID); # MeshData struct
     
@@ -102,19 +102,21 @@ function simple_quad_mesh(nxy, bn, interval)
     normals = ones(2,Nf);       # normals of faces
     bdryID = zeros(Int, Nf);    # BID of faces (0=interior)
     
-    if bn == 4
-        bids = [1,2,3,4]; # x=0, x=1, y=0, y=1
-        allbids = [1,2,3,4];
-    elseif bn == 3
-        bids = [1,2,3]; # x=0 , x=1, y=0,1
-        allbids = [1,2,3,3];
-    elseif bn == 2
-        bids = [1,2]; # x=0,1 , y=0,1
-        allbids = [1,1,2,2];
-    else
-        bids = [1]; # everywhere
-        allbids = [1,1,1,1];
-    end
+    # if bn == 4
+    #     bids = [1,2,3,4]; # x=0, x=1, y=0, y=1
+    #     allbids = [1,2,3,4];
+    # elseif bn == 3
+    #     bids = [1,2,3]; # x=0 , x=1, y=0,1
+    #     allbids = [1,2,3,3];
+    # elseif bn == 2
+    #     bids = [1,2]; # x=0,1 , y=0,1
+    #     allbids = [1,1,2,2];
+    # else
+    #     bids = [1]; # everywhere
+    #     allbids = [1,1,1,1];
+    # end
+    bids = [1]; # everywhere
+    allbids = [1,1,1,1];
     
     scalex = interval[2]-interval[1];
     hx = scalex/(nx-1);         # uniformly divided
@@ -256,25 +258,28 @@ function simple_hex_mesh(nxyz, bn, interval)
     normals = ones(3,Nf);       # normals of faces
     bdryID = zeros(Int, Nf);    # BID of faces (0=interior)
     
-    if bn == 6
-        bids = [1,2,3,4,5,6]; # all separate
-        allbids = [1,2,3,4,5,6];
-    elseif bn == 5
-        bids = [1,2,3,4,5]; # combine z
-        allbids = [1,2,3,4,5,5];
-    elseif bn == 4
-        bids = [1,2,3,4]; # combine y and z
-        allbids = [1,2,3,3,4,4];
-    elseif bn == 3
-        bids = [1,2,3]; # combine x,y,z
-        allbids = [1,1,2,2,3,3];
-    elseif bn == 2
-        bids = [1,2]; # x=0, other
-        allbids = [1,2,2,2,2,2];
-    else
-        bids = [1]; # everywhere
-        allbids = [1,1,1,1,1,1];
-    end
+    # if bn == 6
+    #     bids = [1,2,3,4,5,6]; # all separate
+    #     allbids = [1,2,3,4,5,6];
+    # elseif bn == 5
+    #     bids = [1,2,3,4,5]; # combine z
+    #     allbids = [1,2,3,4,5,5];
+    # elseif bn == 4
+    #     bids = [1,2,3,4]; # combine y and z
+    #     allbids = [1,2,3,3,4,4];
+    # elseif bn == 3
+    #     bids = [1,2,3]; # combine x,y,z
+    #     allbids = [1,1,2,2,3,3];
+    # elseif bn == 2
+    #     bids = [1,2]; # x=0, other
+    #     allbids = [1,2,2,2,2,2];
+    # else
+    #     bids = [1]; # everywhere
+    #     allbids = [1,1,1,1,1,1];
+    # end
+    
+    bids = [1]; # everywhere
+    allbids = [1,1,1,1,1,1];
     
     scalex = interval[2]-interval[1];
     hx = scalex/(nx-1);         # uniformly divided

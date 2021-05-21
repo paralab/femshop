@@ -248,7 +248,7 @@ end
 # Replaces variable, coefficient and operator symbols in the expression
 function replace_symbols(ex)
     if typeof(ex) <: Number
-        return Basic(ex);
+        return [Basic(ex)];
     elseif typeof(ex) == Symbol
         # variable?
         for v in variables

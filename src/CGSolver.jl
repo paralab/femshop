@@ -84,6 +84,9 @@ function linear_solve(var, bilinear, linear, stepper=nothing)
         t = 0;
         sol = [];
         start_t = Base.Libc.time();
+        last2update = 0;
+        last10update = 0;
+        print("Time stepping progress(%): 0");
         for i=1:stepper.Nsteps
             if stepper.stages > 1
                 resu = zeros(size(b));
@@ -102,7 +105,19 @@ function linear_solve(var, bilinear, linear, stepper=nothing)
             end
             
             t += stepper.dt;
+            
+            progressPercent = Int(floor(i*100.0/stepper.Nsteps));
+            if progressPercent - last2update >= 2
+                last2update = progressPercent;
+                if progressPercent - last10update >= 10
+                    print(progressPercent);
+                    last10update = progressPercent;
+                else
+                    print(".");
+                end
+            end
         end
+        println("");
         end_t = Base.Libc.time();
 
         log_entry("Solve took "*string(end_t-start_t)*" seconds");
