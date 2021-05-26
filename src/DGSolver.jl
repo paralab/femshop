@@ -29,8 +29,6 @@ include("cg_boundary.jl"); # Can we use the CG versions here?
 include("nonlinear.jl");
 include("cg_matrixfree.jl");
 include("face_data.jl");
-#include("dg_utils.jl");
-#include("desired.jl");
 
 function init_dgsolver()
     dim = config.dimension;
@@ -83,33 +81,102 @@ function linear_solve(var, bilinear, linear, face_bilinear, face_linear, stepper
         #return solve_matrix_free_asym(var, bilinear, linear, stepper);
     end
     if prob.time_dependent && !(stepper === nothing)
-        #TODO time dependent coefficients
-        assemble_t = @elapsed((A, b) = assemble(var, bilinear, linear, face_bilinear, face_linear, 0, stepper.dt));
-        global Amat = A;
-        global bvec = b;
-        log_entry("Assembly took "*string(assemble_t)*" seconds");
+        # Shall we save geometric factors to reuse each time step?
+        save_geometric_factors = true;
+        
+        if save_geometric_factors
+            assemble_t = @elapsed((A, b, wdetJ, J) = assemble(var, bilinear, linear, face_bilinear, face_linear, 0, stepper.dt; keep_geometric_factors=true));
+            saved_GF = (wdetJ, J);
+        else
+            assemble_t = @elapsed((A, b) = assemble(var, bilinear, linear, face_bilinear, face_linear, 0, stepper.dt));
+            saved_GF = nothing;
+        end
+        # global Amat = A;
+        # global bvec = b;
+        log_entry("Initial assembly took "*string(assemble_t)*" seconds");
 
         log_entry("Beginning "*string(stepper.Nsteps)*" time steps.");
         t = 0;
         sol = [];
         start_t = Base.Libc.time();
+        assemble_t = 0;
+        linsolve_t = 0;
         last2update = 0;
         last10update = 0;
         print("Time stepping progress(%): 0");
         for i=1:stepper.Nsteps
             stupidjulia=sol;
             if stepper.stages > 1
-                resu = zeros(size(b));
-                for rki=1:stepper.stages
-                    rktime = t + stepper.c[rki]*stepper.dt;
-                    b = assemble_rhs_only(var, linear, face_linear, rktime, stepper.dt);
-                    sol = A\b;
-                    resu = stepper.a[rki].*resu + sol;
-                    place_sol_in_vars(var, stepper.b[rki].*resu, stepper);
+                # LSRK4 is a special case, low storage
+                if stepper.type == LSRK4
+                    # Low storage RK4: 
+                    # p0 = u
+                    #   ki = ai*k(i-1) + dt*f(p(i-1), t+ci*dt)
+                    #   pi = p(i-1) + bi*ki
+                    # u = p5
+                    
+                    # store the original values, x, in a temp vector, so they aren't lost.
+                    tmppi = get_var_vals(var);
+                    tmpki = zeros(size(b));
+                    for rki=1:stepper.stages
+                        rktime = t + stepper.c[rki]*stepper.dt;
+                        # p(i-1) is currently in u
+                        assemble_t += @elapsed(b = assemble(var, nothing, linear, nothing, face_linear, rktime, stepper.dt; rhs_only = true, saved_geometric_factors = saved_GF));
+                        
+                        linsolve_t += @elapsed(sol = A\b);
+                        if rki == 1 # because a1 == 0
+                            tmpki = stepper.dt .* sol;
+                        else
+                            tmpki = stepper.a[rki].*tmpki + stepper.dt .* sol;
+                        end
+                        tmppi = tmppi + stepper.b[rki].*tmpki
+                        
+                        # Need to apply boundary conditions now to tmppi
+                        tmppi = apply_boundary_conditions_rhs_only(var, tmppi, rktime);
+                        
+                        place_sol_in_vars(var, tmppi, stepper);
+                    end
+                    
+                else
+                    # Explicit multi-stage methods: 
+                    # x = x + dt*sum(bi*ki)
+                    # ki = rhs(t+ci*dt, x+dt*sum(aij*kj)))   j < i
+                    
+                    # will hold the final result
+                    result = get_var_vals(var);
+                    # will be placed in var.values for each stage
+                    tmpvals = result;
+                    # Storage for each stage
+                    tmpki = zeros(length(b), stepper.stages);
+                    for stage=1:stepper.stages
+                        stime = t + stepper.c[stage]*stepper.dt;
+                        
+                        assemble_t += @elapsed(b = assemble(var, nothing, linear, nothing, face_linear, stime, stepper.dt; rhs_only = true, saved_geometric_factors = saved_GF));
+                        
+                        linsolve_t += @elapsed(tmpki[:,stage] = A\b);
+                        
+                        tmpvals = result;
+                        for j=1:(stage-1)
+                            if stepper.a[stage, j] > 0
+                                tmpvals += stepper.dt * stepper.a[stage, j] .* tmpki[:,j];
+                            end
+                        end
+                        
+                        # Need to apply boundary conditions now
+                        tmpvals = apply_boundary_conditions_rhs_only(var, tmpvals, stime);
+                        
+                        place_sol_in_vars(var, tmpvals, stepper);
+                    end
+                    for stage=1:stepper.stages
+                        result += stepper.dt * stepper.b[stage] .* tmpki[:, stage];
+                    end
+                    
+                    result = apply_boundary_conditions_rhs_only(var, result, t + stepper.dt);
+                    place_sol_in_vars(var, result, stepper);
                 end
             else
-                b = assemble_rhs_only(var, linear, face_linear, t, stepper.dt);
-                sol = A\b;
+                assemble_t += @elapsed(b = assemble(var, nothing, linear, nothing, face_linear, t, stepper.dt; rhs_only = true, saved_geometric_factors = saved_GF));
+                linsolve_t += @elapsed(sol = A\b);
                 
                 place_sol_in_vars(var, sol, stepper);
             end
@@ -132,7 +199,7 @@ function linear_solve(var, bilinear, linear, face_bilinear, face_linear, stepper
         println("");
         end_t = Base.Libc.time();
 
-        log_entry("Solve took "*string(end_t-start_t)*" seconds");
+        log_entry("Stepping took "*string(end_t-start_t)*" seconds. ("*string(assemble_t)*" for assembly, "*string(linsolve_t)*" for linear solve)");
         #display(sol);
 		# outfile = "linear_sol.txt"
 		# open(outfile, "w") do f
@@ -145,7 +212,7 @@ function linear_solve(var, bilinear, linear, face_bilinear, face_linear, stepper
     else
         assemble_t = @elapsed((A, b) = assemble(var, bilinear, linear, face_bilinear, face_linear));
         # uncomment to look at A
-        global Amat = A;
+        # global Amat = A;
         
         sol_t = @elapsed(sol = A\b);
         
@@ -213,13 +280,13 @@ end
 
 # ########################
 # # tmp for testing
-function the_desired(args)
+# function the_desired(args)
     
-end
+# end
 # #########################
 
 # assembles the A and b in Au=b
-function assemble(var, bilinear, linear, face_bilinear, face_linear, t=0.0, dt=0.0)
+function assemble(var, bilinear, linear, face_bilinear, face_linear, t=0.0, dt=0.0; rhs_only = false, keep_geometric_factors = false, saved_geometric_factors = nothing)
     Np = refel.Np;
     nel = mesh_data.nel;
     N1 = size(grid_data.allnodes,2);
@@ -243,31 +310,49 @@ function assemble(var, bilinear, linear, face_bilinear, face_linear, t=0.0, dt=0
     Nn = dofs_per_node * N1;
 
     b = zeros(Nn);
-    #A = spzeros(Nn, Nn);
-    AI = zeros(Int, nel*dofs_per_node*Np*dofs_per_node*Np);
-    AJ = zeros(Int, nel*dofs_per_node*Np*dofs_per_node*Np);
-    AV = zeros(nel*dofs_per_node*Np*dofs_per_node*Np);
+    
+    if !rhs_only
+        AI = zeros(Int, nel*dofs_per_node*Np*dofs_per_node*Np);
+        AJ = zeros(Int, nel*dofs_per_node*Np*dofs_per_node*Np);
+        AV = zeros(nel*dofs_per_node*Np*dofs_per_node*Np);
+    end
+    
+    # Save geometric factors if desired
+    if keep_geometric_factors
+        saved_wdetj = [];
+        saved_J = [];
+    end
     
     # Stiffness and mass are precomputed for uniform grid meshes
-    if config.mesh_type == UNIFORM_GRID && config.geometry == SQUARE
+    precomputed_mass_stiffness = config.mesh_type == UNIFORM_GRID && config.geometry == SQUARE
+    if precomputed_mass_stiffness
         glb = grid_data.loc2glb[:,1];
         xe = grid_data.allnodes[:,glb[:]];
-        (detJ, J) = geometric_factors(refel, xe);
-        wgdetj = refel.wg .* detJ;
+        if saved_geometric_factors === nothing
+            (detJ, J) = geometric_factors(refel, xe);
+            wdetj = refel.wg .* detJ;
+            if keep_geometric_factors
+                saved_wdetj = [wdetj];
+                saved_J = [J];
+            end
+        else
+            wdetj = saved_geometric_factors[1][1];
+            J = saved_geometric_factors[2][1];
+        end
         if config.dimension == 1
             (RQ1, RD1) = build_deriv_matrix(refel, J);
             TRQ1 = RQ1';
-            stiffness = [(TRQ1 * diagm(wgdetj) * RQ1)];
+            stiffness = [(TRQ1 * diagm(wdetj) * RQ1)];
         elseif config.dimension == 2
             (RQ1, RQ2, RD1, RD2) = build_deriv_matrix(refel, J);
             (TRQ1, TRQ2) = (RQ1', RQ2');
-            stiffness = [(TRQ1 * diagm(wgdetj) * RQ1) , (TRQ2 * diagm(wgdetj) * RQ2)];
+            stiffness = [(TRQ1 * diagm(wdetj) * RQ1) , (TRQ2 * diagm(wdetj) * RQ2)];
         else
             (RQ1, RQ2, RQ3, RD1, RD2, RD3) = build_deriv_matrix(refel, J);
             (TRQ1, TRQ2, TRQ3) = (RQ1', RQ2', RQ3');
-            stiffness = [(TRQ1 * diagm(wgdetj) * RQ1) , (TRQ2 * diagm(wgdetj) * RQ2) , (TRQ3 * diagm(wgdetj) * RQ3)];
+            stiffness = [(TRQ1 * diagm(wdetj) * RQ1) , (TRQ2 * diagm(wdetj) * RQ2) , (TRQ3 * diagm(wdetj) * RQ3)];
         end
-        mass = (refel.Q)' * diagm(wgdetj) * refel.Q;
+        mass = (refel.Q)' * diagm(wdetj) * refel.Q;
     else
         stiffness = 0;
         mass = 0;
@@ -282,26 +367,44 @@ function assemble(var, bilinear, linear, face_bilinear, face_linear, t=0.0, dt=0
         glb = grid_data.loc2glb[:,e];           # global indices of this element's nodes for extracting values from var arrays
         xe = grid_data.allnodes[:,glb[:]];      # coordinates of this element's nodes for evaluating coefficient functions
         
-        (detJ, J) = geometric_factors(refel, xe);
+        if !precomputed_mass_stiffness
+            if saved_geometric_factors === nothing
+                (detJ, J) = geometric_factors(refel, xe);
+                wdetj = refel.wg .* detJ;
+                
+                if keep_geometric_factors
+                    push!(saved_wdetj, wdetj);
+                    push!(saved_J, J);
+                end
+            else
+                wdetj = saved_geometric_factors[1][e];
+                J = saved_geometric_factors[2][e];
+            end
+        end
         vol_J[ei] = J;
         
-        Astart = (e-1)*Np*dofs_per_node*Np*dofs_per_node + 1; # The segment of AI, AJ, AV for this element
+        if !rhs_only
+            Astart = (e-1)*Np*dofs_per_node*Np*dofs_per_node + 1; # The segment of AI, AJ, AV for this element
+            lhsargs = (var, xe, glb, refel, wdetj, J, LHS, t, dt, stiffness, mass);
+        end
         
         # The linear part. Compute the elemental linear part for each dof
-        rhsargs = (var, xe, glb, refel, RHS, t, dt, stiffness, mass);
-        lhsargs = (var, xe, glb, refel, LHS, t, dt, stiffness, mass);
+        rhsargs = (var, xe, glb, refel, wdetj, J, RHS, t, dt, stiffness, mass);
+        
         if dofs_per_node == 1
             linchunk = linear.func(rhsargs);  # get the elemental linear part
             b[glb] .+= linchunk;
-
-            bilinchunk = bilinear.func(lhsargs); # the elemental bilinear part
-            #A[glb, glb] .+= bilinchunk;         # This will be very inefficient for sparse A
-            for jj=1:Np
-                offset = Astart - 1 + (jj-1)*Np;
-                for ii=1:Np
-                    AI[offset + ii] = glb[ii];
-                    AJ[offset + ii] = glb[jj];
-                    AV[offset + ii] = bilinchunk[ii, jj];
+            
+            if !rhs_only
+                bilinchunk = bilinear.func(lhsargs); # the elemental bilinear part
+                #A[glb, glb] .+= bilinchunk;         # This will be very inefficient for sparse A
+                for jj=1:Np
+                    offset = Astart - 1 + (jj-1)*Np;
+                    for ii=1:Np
+                        AI[offset + ii] = glb[ii];
+                        AJ[offset + ii] = glb[jj];
+                        AV[offset + ii] = bilinchunk[ii, jj];
+                    end
                 end
             end
             
@@ -309,20 +412,25 @@ function assemble(var, bilinear, linear, face_bilinear, face_linear, t=0.0, dt=0
             # only one variable, but more than one dof
             linchunk = linear.func(rhsargs);
             insert_linear!(b, linchunk, glb, 1:dofs_per_node, dofs_per_node);
-
-            bilinchunk = bilinear.func(lhsargs);
-            insert_bilinear!(AI, AJ, AV, Astart, bilinchunk, glb, 1:dofs_per_node, dofs_per_node);
+            
+            if !rhs_only
+                bilinchunk = bilinear.func(lhsargs);
+                insert_bilinear!(AI, AJ, AV, Astart, bilinchunk, glb, 1:dofs_per_node, dofs_per_node);
+            end
+            
         else
             linchunk = linear.func(rhsargs);
             insert_linear!(b, linchunk, glb, 1:dofs_per_node, dofs_per_node);
-
-            bilinchunk = bilinear.func(lhsargs);
-            insert_bilinear!(AI, AJ, AV, Astart, bilinchunk, glb, 1:dofs_per_node, dofs_per_node);
+            
+            if !rhs_only
+                bilinchunk = bilinear.func(lhsargs);
+                insert_bilinear!(AI, AJ, AV, Astart, bilinchunk, glb, 1:dofs_per_node, dofs_per_node);
+            end
         end
     end
     
     # surface assembly for dg
-    if !(face_linear===nothing || face_bilinear===nothing)
+    if !(face_linear===nothing) && (rhs_only || !(face_bilinear===nothing))
         # dim2face = [0,2,4,6];
         # frefel = build_refel(refel.dim-1, refel.N, dim2face[refel.dim], config.elemental_nodes);
         
@@ -347,7 +455,7 @@ function assemble(var, bilinear, linear, face_bilinear, face_linear, t=0.0, dt=0
             
             (fdetJ, fJ) = geometric_factors_face(refel, frefelind[1], facenodes); # compute geometric factors here for the face
             #fdetJ = [1];
-            #fJ = [1];
+            fJ = 0;
             
             e1 = grid_data.face2element[1,fid]; # element on side 1
             e2 = grid_data.face2element[2,fid]; # and 2
@@ -362,11 +470,11 @@ function assemble(var, bilinear, linear, face_bilinear, face_linear, t=0.0, dt=0
             
             loc2glb = [grid_data.loc2glb[:,e1], grid_data.loc2glb[:,e2]]; # volume local to global
             
-            face_wgdetj = refel.surf_wg[1] .* fdetJ;
-            #println("face "*string(fid)*" fdetJ "*string(fdetJ)*" wgdetj "*string(face_wgdetj));
+            face_wdetj = refel.surf_wg[1] .* fdetJ;
+            #println("face "*string(fid)*" fdetJ "*string(fdetJ)*" wdetj "*string(face_wdetj));
             
-            rhsargs = (var, refel, loc2glb, fid, frefelind, facenodes, face2glb, normal, faceBID, fdetJ, fJ, vol_J1, vol_J2, face_wgdetj, RHS, t, dt);
-            lhsargs = (var, refel, loc2glb, fid, frefelind, facenodes, face2glb, normal, faceBID, fdetJ, fJ, vol_J1, vol_J2, face_wgdetj, LHS, t, dt);
+            rhsargs = (var, refel, loc2glb, fid, frefelind, facenodes, face2glb, normal, faceBID, fdetJ, fJ, vol_J1, vol_J2, face_wdetj, RHS, t, dt);
+            lhsargs = (var, refel, loc2glb, fid, frefelind, facenodes, face2glb, normal, faceBID, fdetJ, fJ, vol_J1, vol_J2, face_wdetj, LHS, t, dt);
             
             if dofs_per_node == 1
                 linchunk = face_linear.func(rhsargs);  # get the elemental linear part
@@ -382,36 +490,37 @@ function assemble(var, bilinear, linear, face_bilinear, face_linear, t=0.0, dt=0
                     b[face2glb[:,1]] .+= linchunk[1];
                 end
                 
-    
-                bilinchunk = face_bilinear.func(lhsargs); # the elemental bilinear part
-                
-                if typeof(bilinchunk[1]) <: Number
-                    bilinchunk = [[bilinchunk[1]], [bilinchunk[2]], [bilinchunk[3]], [bilinchunk[4]]];
-                else
-                    bilinchunk[1] = bilinchunk[1][flocal[1],flocal[1]];
-                    bilinchunk[2] = bilinchunk[2][flocal[1],flocal[2]];
-                    bilinchunk[3] = bilinchunk[3][flocal[2],flocal[1]];
-                    bilinchunk[4] = bilinchunk[4][flocal[2],flocal[2]];
-                end
-                #bilinchunk = temporary_lhs_func(lhsargs);
-                #println(bilinchunk)
-                nfp = size(face2glb,1);
-                for jj=1:nfp
-                    append!(AI, face2glb[:,1]);
-                    append!(AJ, face2glb[jj,1]*ones(Int, nfp));
-                    append!(AV, bilinchunk[1][:,jj]);
+                if !rhs_only
+                    bilinchunk = face_bilinear.func(lhsargs); # the elemental bilinear part
                     
-                    append!(AI, face2glb[:,1]);
-                    append!(AJ, face2glb[jj,2]*ones(Int, nfp));
-                    append!(AV, bilinchunk[2][:,jj]);
-                    
-                    append!(AI, face2glb[:,2]);
-                    append!(AJ, face2glb[jj,1]*ones(Int, nfp));
-                    append!(AV, bilinchunk[3][:,jj]);
-                    
-                    append!(AI, face2glb[:,2]);
-                    append!(AJ, face2glb[jj,2]*ones(Int, nfp));
-                    append!(AV, bilinchunk[4][:,jj]);
+                    if typeof(bilinchunk[1]) <: Number
+                        bilinchunk = [[bilinchunk[1]], [bilinchunk[2]], [bilinchunk[3]], [bilinchunk[4]]];
+                    else
+                        bilinchunk[1] = bilinchunk[1][flocal[1],flocal[1]];
+                        bilinchunk[2] = bilinchunk[2][flocal[1],flocal[2]];
+                        bilinchunk[3] = bilinchunk[3][flocal[2],flocal[1]];
+                        bilinchunk[4] = bilinchunk[4][flocal[2],flocal[2]];
+                    end
+                    #bilinchunk = temporary_lhs_func(lhsargs);
+                    #println(bilinchunk)
+                    nfp = size(face2glb,1);
+                    for jj=1:nfp
+                        append!(AI, face2glb[:,1]);
+                        append!(AJ, face2glb[jj,1]*ones(Int, nfp));
+                        append!(AV, bilinchunk[1][:,jj]);
+                        
+                        append!(AI, face2glb[:,1]);
+                        append!(AJ, face2glb[jj,2]*ones(Int, nfp));
+                        append!(AV, bilinchunk[2][:,jj]);
+                        
+                        append!(AI, face2glb[:,2]);
+                        append!(AJ, face2glb[jj,1]*ones(Int, nfp));
+                        append!(AV, bilinchunk[3][:,jj]);
+                        
+                        append!(AI, face2glb[:,2]);
+                        append!(AJ, face2glb[jj,2]*ones(Int, nfp));
+                        append!(AV, bilinchunk[4][:,jj]);
+                    end
                 end
             end	 	
         end
@@ -419,141 +528,174 @@ function assemble(var, bilinear, linear, face_bilinear, face_linear, t=0.0, dt=0
     
     loop_time = Base.Libc.time() - loop_time;
     
-    # Build the sparse A. Uses default + to combine overlaps
-    A = sparse(AI, AJ, AV);
+    if !rhs_only
+        # Build the sparse A. Uses default + to combine overlaps
+        A = sparse(AI, AJ, AV);
+    end
     
     # Boundary conditions
     bc_time = Base.Libc.time();
-    bidcount = length(grid_data.bids); # the number of BIDs
-    dirichlet_rows = zeros(0);
-    neumann_rows = zeros(0);
-    neumann_Is = zeros(Int,0);
-    neumann_Js = zeros(Int,0);
-    neumann_Vs = zeros(0);
-    if dofs_per_node > 1
-        if multivar
-            dofind = 0;
-            for vi=1:length(var)
-                for compo=1:length(var[vi].symvar.vals)
-                    dofind = dofind + 1;
-                    for bid=1:bidcount
-                        if prob.bc_type[var[vi].index, bid] == DIRICHLET
-                            #(A, b) = dirichlet_bc(A, b, prob.bc_func[var[vi].index, bid][compo], grid_data.bdry[bid], t, dofind, dofs_per_node);
-                            (tmprows, b) = dirichlet_bc(A, b, prob.bc_func[var[vi].index, bid][compo], grid_data.bdry[bid], t, dofind, dofs_per_node);
-                            append!(dirichlet_rows, tmprows);
-                        elseif prob.bc_type[var[vi].index, bid] == NEUMANN
-                            #(A, b) = neumann_bc(A, b, prob.bc_func[var[vi].index, bid][compo], grid_data.bdry[bid], bid, t, dofind, dofs_per_node);
-                            (tmprows, tmpIs, tmpJs, tmpVs, b) = neumann_bc(A, b, prob.bc_func[var[vi].index, bid][compo], grid_data.bdry[bid], bid, t, dofind, dofs_per_node);
-                            append!(neumann_rows, tmprows);
-                            append!(neumann_Is, tmpIs);
-                            append!(neumann_Js, tmpJs);
-                            append!(neumann_Vs, tmpVs);
-                        elseif prob.bc_type[var[vi].index, bid] == ROBIN
-                            printerr("Robin BCs not ready.");
-                        elseif prob.bc_type[var[vi].index, bid] == NO_BC
-                            # do nothing
-                        else
-                            printerr("Unsupported boundary condition type: "*prob.bc_type[var[vi].index, bid]);
-                        end
-                    end
-                end
-            end
-        else
-            for d=1:dofs_per_node
-                dofind = d;
-                for bid=1:bidcount
-                    if prob.bc_type[var.index, bid] == DIRICHLET
-                        #(A, b) = dirichlet_bc(A, b, prob.bc_func[var.index, bid][d], grid_data.bdry[bid], t, dofind, dofs_per_node);
-                        (tmprows, b) = dirichlet_bc(A, b, prob.bc_func[var.index, bid][d], grid_data.bdry[bid], t, dofind, dofs_per_node);
-                        append!(dirichlet_rows, tmprows);
-                    elseif prob.bc_type[var.index, bid] == NEUMANN
-                        #(A, b) = neumann_bc(A, b, prob.bc_func[var.index, bid][d], grid_data.bdry[bid], bid, t, dofind, dofs_per_node);
-                        (tmprows, tmpIs, tmpJs, tmpVs, b) = neumann_bc(A, b, prob.bc_func[var.index, bid][compo], grid_data.bdry[bid], bid, t, dofind, dofs_per_node);
-                        append!(neumann_rows, tmprows);
-                        append!(neumann_Is, tmpIs);
-                        append!(neumann_Js, tmpJs);
-                        append!(neumann_Vs, tmpVs);
-                    elseif prob.bc_type[var.index, bid] == ROBIN
-                        printerr("Robin BCs not ready.");
-                    elseif prob.bc_type[var.index, bid] == NO_BC
-                        # do nothing
-                    else
-                        printerr("Unsupported boundary condition type: "*prob.bc_type[var.index, bid]);
-                    end
-                end
-            end
-        end
+    if rhs_only
+        b = apply_boundary_conditions_rhs_only(var, b, t);
     else
-        for bid=1:bidcount
-            if prob.bc_type[var.index, bid] == DIRICHLET
-                #(A, b) = dirichlet_bc(A, b, prob.bc_func[var.index, bid][1], grid_data.bdry[bid], t);
-                (tmprows, b) = dirichlet_bc(A, b, prob.bc_func[var.index, bid][1], grid_data.bdry[bid], t);
-                append!(dirichlet_rows, tmprows);
-            elseif prob.bc_type[var.index, bid] == NEUMANN
-                #(A, b) = neumann_bc(A, b, prob.bc_func[var.index, bid][1], grid_data.bdry[bid], bid, t);
-                (tmprows, tmpIs, tmpJs, tmpVs, b) = neumann_bc(A, b, prob.bc_func[var.index, bid][1], grid_data.bdry[bid], bid, t);
-                append!(neumann_rows, tmprows);
-                append!(neumann_Is, tmpIs);
-                append!(neumann_Js, tmpJs);
-                append!(neumann_Vs, tmpVs);
-            elseif prob.bc_type[var.index, bid] == ROBIN
-                printerr("Robin BCs not ready.");
-            elseif prob.bc_type[var.index, bid] == NO_BC
-                # do nothing
-            else
-                printerr("Unsupported boundary condition type: "*prob.bc_type[var.index, bid]);
-            end
-        end
+        (A, b) = apply_boundary_conditions_lhs_rhs(var, A, b, t);
     end
+    # bidcount = length(grid_data.bids); # the number of BIDs
+    # if !rhs_only
+    #     dirichlet_rows = zeros(0);
+    #     neumann_rows = zeros(0);
+    #     neumann_Is = zeros(Int,0);
+    #     neumann_Js = zeros(Int,0);
+    #     neumann_Vs = zeros(0);
+    # end
+    # if dofs_per_node > 1
+    #     if multivar
+    #         dofind = 0;
+    #         for vi=1:length(var)
+    #             for compo=1:length(var[vi].symvar.vals)
+    #                 dofind = dofind + 1;
+    #                 for bid=1:bidcount
+    #                     if prob.bc_type[var[vi].index, bid] == NO_BC
+    #                         # do nothing
+    #                     elseif rhs_only
+    #                         # When doing RHS only, values are simply placed in the vector.
+    #                         b = dirichlet_bc_rhs_only(b, prob.bc_func[var[vi].index, bid][compo], grid_data.bdry[bid], t, dofind, dofs_per_node);
+    #                     elseif prob.bc_type[var[vi].index, bid] == DIRICHLET
+    #                         #(A, b) = dirichlet_bc(A, b, prob.bc_func[var[vi].index, bid][compo], grid_data.bdry[bid], t, dofind, dofs_per_node);
+    #                         (tmprows, b) = dirichlet_bc(A, b, prob.bc_func[var[vi].index, bid][compo], grid_data.bdry[bid], t, dofind, dofs_per_node);
+    #                         append!(dirichlet_rows, tmprows);
+    #                     elseif prob.bc_type[var[vi].index, bid] == NEUMANN
+    #                         #(A, b) = neumann_bc(A, b, prob.bc_func[var[vi].index, bid][compo], grid_data.bdry[bid], bid, t, dofind, dofs_per_node);
+    #                         (tmprows, tmpIs, tmpJs, tmpVs, b) = neumann_bc(A, b, prob.bc_func[var[vi].index, bid][compo], grid_data.bdry[bid], bid, t, dofind, dofs_per_node);
+    #                         append!(neumann_rows, tmprows);
+    #                         append!(neumann_Is, tmpIs);
+    #                         append!(neumann_Js, tmpJs);
+    #                         append!(neumann_Vs, tmpVs);
+    #                     elseif prob.bc_type[var[vi].index, bid] == ROBIN
+    #                         printerr("Robin BCs not ready.");
+    #                     else
+    #                         printerr("Unsupported boundary condition type: "*prob.bc_type[var[vi].index, bid]);
+    #                     end
+    #                 end
+    #             end
+    #         end
+    #     else
+    #         for d=1:dofs_per_node
+    #             dofind = d;
+    #             for bid=1:bidcount
+    #                 if prob.bc_type[var.index, bid] == NO_BC
+    #                     # do nothing
+    #                 elseif rhs_only
+    #                     # When doing RHS only, values are simply placed in the vector.
+    #                     b = dirichlet_bc_rhs_only(b, prob.bc_func[var.index, bid][d], grid_data.bdry[bid], t, d, dofs_per_node);
+    #                 elseif prob.bc_type[var.index, bid] == DIRICHLET
+    #                     #(A, b) = dirichlet_bc(A, b, prob.bc_func[var.index, bid][d], grid_data.bdry[bid], t, dofind, dofs_per_node);
+    #                     (tmprows, b) = dirichlet_bc(A, b, prob.bc_func[var.index, bid][d], grid_data.bdry[bid], t, dofind, dofs_per_node);
+    #                     append!(dirichlet_rows, tmprows);
+    #                 elseif prob.bc_type[var.index, bid] == NEUMANN
+    #                     #(A, b) = neumann_bc(A, b, prob.bc_func[var.index, bid][d], grid_data.bdry[bid], bid, t, dofind, dofs_per_node);
+    #                     (tmprows, tmpIs, tmpJs, tmpVs, b) = neumann_bc(A, b, prob.bc_func[var.index, bid][compo], grid_data.bdry[bid], bid, t, dofind, dofs_per_node);
+    #                     append!(neumann_rows, tmprows);
+    #                     append!(neumann_Is, tmpIs);
+    #                     append!(neumann_Js, tmpJs);
+    #                     append!(neumann_Vs, tmpVs);
+    #                 elseif prob.bc_type[var.index, bid] == ROBIN
+    #                     printerr("Robin BCs not ready.");
+    #                 else
+    #                     printerr("Unsupported boundary condition type: "*prob.bc_type[var.index, bid]);
+    #                 end
+    #             end
+    #         end
+    #     end
+    # else
+    #     for bid=1:bidcount
+    #         if prob.bc_type[var.index, bid] == NO_BC
+    #             # do nothing
+    #         elseif rhs_only
+    #             # When doing RHS only, values are simply placed in the vector.
+    #             b = dirichlet_bc_rhs_only(b, prob.bc_func[var.index, bid][1], grid_data.bdry[bid], t);
+    #         elseif prob.bc_type[var.index, bid] == DIRICHLET
+    #             #(A, b) = dirichlet_bc(A, b, prob.bc_func[var.index, bid][1], grid_data.bdry[bid], t);
+    #             (tmprows, b) = dirichlet_bc(A, b, prob.bc_func[var.index, bid][1], grid_data.bdry[bid], t);
+    #             append!(dirichlet_rows, tmprows);
+    #         elseif prob.bc_type[var.index, bid] == NEUMANN
+    #             #(A, b) = neumann_bc(A, b, prob.bc_func[var.index, bid][1], grid_data.bdry[bid], bid, t);
+    #             (tmprows, tmpIs, tmpJs, tmpVs, b) = neumann_bc(A, b, prob.bc_func[var.index, bid][1], grid_data.bdry[bid], bid, t);
+    #             append!(neumann_rows, tmprows);
+    #             append!(neumann_Is, tmpIs);
+    #             append!(neumann_Js, tmpJs);
+    #             append!(neumann_Vs, tmpVs);
+    #         elseif prob.bc_type[var.index, bid] == ROBIN
+    #             printerr("Robin BCs not ready.");
+    #         else
+    #             printerr("Unsupported boundary condition type: "*prob.bc_type[var.index, bid]);
+    #         end
+    #     end
+    # end
     
-    if length(dirichlet_rows)>0
-        A = identity_rows(A, dirichlet_rows, length(b));
-    end
-    if length(neumann_rows)>0
-        A = insert_sparse_rows(A, neumann_Is, neumann_Js, neumann_Vs);
-    end
+    # if !rhs_only
+    #     if length(dirichlet_rows)>0
+    #         A = identity_rows(A, dirichlet_rows, length(b));
+    #     end
+    #     if length(neumann_rows)>0
+    #         A = insert_sparse_rows(A, neumann_Is, neumann_Js, neumann_Vs);
+    #     end
+    # end
     
-    # Reference points
-    if size(prob.ref_point,1) >= maxvarindex
-        if multivar
-            posind = zeros(Int,0);
-            vals = zeros(0);
-            for vi=1:length(var)
-                if prob.ref_point[var[vi].index,1]
-                    eii = prob.ref_point[var[vi].index, 2];
-                    tmp = (grid_data.glbvertex[eii[1], eii[2]] - 1)*dofs_per_node + var_to_dofs[vi][1];
-                    if length(prob.ref_point[var[vi].index, 3]) > 1
-                        tmp = tmp:(tmp+length(prob.ref_point[var[vi].index, 3])-1);
-                    end
-                    posind = [posind; tmp];
-                    vals = [vals; prob.ref_point[var[vi].index, 3]];
-                end
-            end
-            if length(vals) > 0
-                A = identity_rows(A, posind, length(b));
-                b[posind] = vals;
-            end
+    # # Reference points
+    # if size(prob.ref_point,1) >= maxvarindex
+    #     if multivar
+    #         posind = zeros(Int,0);
+    #         vals = zeros(0);
+    #         for vi=1:length(var)
+    #             if prob.ref_point[var[vi].index,1]
+    #                 eii = prob.ref_point[var[vi].index, 2];
+    #                 tmp = (grid_data.glbvertex[eii[1], eii[2]] - 1)*dofs_per_node + var_to_dofs[vi][1];
+    #                 if length(prob.ref_point[var[vi].index, 3]) > 1
+    #                     tmp = tmp:(tmp+length(prob.ref_point[var[vi].index, 3])-1);
+    #                 end
+    #                 posind = [posind; tmp];
+    #                 vals = [vals; prob.ref_point[var[vi].index, 3]];
+    #             end
+    #         end
+    #         if length(vals) > 0
+    #             if !rhs_only A = identity_rows(A, posind, length(b)); end
+    #             b[posind] = vals;
+    #         end
             
-        else
-            if prob.ref_point[var.index,1]
-                eii = prob.ref_point[var.index, 2];
-                posind = (grid_data.glbvertex[eii[1], eii[2]] - 1)*dofs_per_node + 1;
-                if length(prob.ref_point[var.index, 3]) > 1
-                    posind = posind:(posind+length(prob.ref_point[var[vi].index, 3])-1);
-                else
-                    posind = [posind];
-                end
-                A = identity_rows(A, posind, length(b));
-                b[posind] = prob.ref_point[var.index, 3];
-            end
-        end
-    end
+    #     else
+    #         if prob.ref_point[var.index,1]
+    #             eii = prob.ref_point[var.index, 2];
+    #             posind = (grid_data.glbvertex[eii[1], eii[2]] - 1)*dofs_per_node + 1;
+    #             if length(prob.ref_point[var.index, 3]) > 1
+    #                 posind = posind:(posind+length(prob.ref_point[var[vi].index, 3])-1);
+    #             else
+    #                 posind = [posind];
+    #             end
+    #             if !rhs_only A = identity_rows(A, posind, length(b)); end
+    #             b[posind] = prob.ref_point[var.index, 3];
+    #         end
+    #     end
+    # end
     
     bc_time = Base.Libc.time() - bc_time;
     
-    log_entry("Elemental loop time:     "*string(loop_time));
-    # log_entry("Boundary condition time: "*string(bc_time));
-    return (A, b);
+    if rhs_only
+        if keep_geometric_factors
+            return (b, saved_wdetj, saved_J)
+        else
+            return b;
+        end
+        
+    else
+        log_entry("Elemental loop time:     "*string(loop_time));
+        log_entry("Boundary condition time: "*string(bc_time));
+        if keep_geometric_factors
+            return (A, b, saved_wdetj, saved_J);
+        else
+            return (A, b);
+        end
+    end
 end
 
 # assembles the A and b in Au=b
@@ -587,28 +729,26 @@ function assemble_rhs_only(var, linear, face_linear, t=0.0, dt=0.0)
         glb = grid_data.loc2glb[:,1];
         xe = grid_data.allnodes[:,glb[:]];
         (detJ, J) = geometric_factors(refel, xe);
-        wgdetj = refel.wg .* detJ;
+        wdetj = refel.wg .* detJ;
         if config.dimension == 1
             (RQ1, RD1) = build_deriv_matrix(refel, J);
             TRQ1 = RQ1';
-            stiffness = [(TRQ1 * diagm(wgdetj) * RQ1)];
+            stiffness = [(TRQ1 * diagm(wdetj) * RQ1)];
         elseif config.dimension == 2
             (RQ1, RQ2, RD1, RD2) = build_deriv_matrix(refel, J);
             (TRQ1, TRQ2) = (RQ1', RQ2');
-            stiffness = [(TRQ1 * diagm(wgdetj) * RQ1) , (TRQ2 * diagm(wgdetj) * RQ2)];
+            stiffness = [(TRQ1 * diagm(wdetj) * RQ1) , (TRQ2 * diagm(wdetj) * RQ2)];
         else
             (RQ1, RQ2, RQ3, RD1, RD2, RD3) = build_deriv_matrix(refel, J);
             (TRQ1, TRQ2, TRQ3) = (RQ1', RQ2', RQ3');
-            stiffness = [(TRQ1 * diagm(wgdetj) * RQ1) , (TRQ2 * diagm(wgdetj) * RQ2) , (TRQ3 * diagm(wgdetj) * RQ3)];
+            stiffness = [(TRQ1 * diagm(wdetj) * RQ1) , (TRQ2 * diagm(wdetj) * RQ2) , (TRQ3 * diagm(wdetj) * RQ3)];
         end
-        mass = (refel.Q)' * diagm(wgdetj) * refel.Q;
+        mass = (refel.Q)' * diagm(wdetj) * refel.Q;
     else
         stiffness = 0;
         mass = 0;
     end
     
-    dim2face = [0,2,4,6];
-    facerefel = build_refel(refel.dim-1, refel.N, dim2face[refel.dim], config.elemental_nodes);
     vol_J = Array{Jacobian,1}(undef,nel);
     
     # Elemental loop follows elemental ordering
@@ -662,9 +802,9 @@ function assemble_rhs_only(var, linear, face_linear, t=0.0, dt=0.0)
             
             faceBID = mesh_data.bdryID[fid]; # BID of face (0 for interior)
             
-            (fdetJ, fJ) = geometric_factors_face(refel, frefelind[1], facenodes); # compute geometric factors here for the face
+            fdetJ = geometric_factors_face(refel, frefelind[1], facenodes); # compute geometric factors here for the face
             #fdetJ = [1];
-            #fJ = [1];
+            fJ = 0;
             
             e1 = grid_data.face2element[1,fid]; # element on side 1
             e2 = grid_data.face2element[2,fid]; # and 2
@@ -679,10 +819,10 @@ function assemble_rhs_only(var, linear, face_linear, t=0.0, dt=0.0)
             
             loc2glb = [grid_data.loc2glb[:,e1], grid_data.loc2glb[:,e2]]; # volume local to global
             
-            face_wgdetj = refel.surf_wg[1] .* fdetJ;
+            face_wdetj = refel.surf_wg[1] .* fdetJ;
             
-            rhsargs = (var, refel, loc2glb, fid, frefelind, facenodes, face2glb, normal, faceBID, fdetJ, fJ, vol_J1, vol_J2, face_wgdetj, RHS, t, dt);
-            #lhsargs = (var, refel, loc2glb, fid, frefelind, facenodes, face2glb, normal, faceBID, fdetJ, fJ, vol_J1, vol_J2, face_wgdetj, LHS, t, dt);
+            rhsargs = (var, refel, loc2glb, fid, frefelind, facenodes, face2glb, normal, faceBID, fdetJ, fJ, vol_J1, vol_J2, face_wdetj, RHS, t, dt);
+            #lhsargs = (var, refel, loc2glb, fid, frefelind, facenodes, face2glb, normal, faceBID, fdetJ, fJ, vol_J1, vol_J2, face_wdetj, LHS, t, dt);
             
             if dofs_per_node == 1
                 linchunk = face_linear.func(rhsargs);  # get the elemental linear part
@@ -820,87 +960,6 @@ function insert_bilinear!(AI, AJ, AV, Astart, ael, glb, dof, Ndofs)
     
 end
 
-function get_face_map(fn, en)
-    fmap = zeros(Int, length(fn));
-    for i=1:length(fn)
-        for j=1:length(en)
-            if en[j] == fn[i]
-                fmap[i] = j;
-                break;
-            end
-        end
-    end
-    return fmap;
-end
-
-function get_face_maps(fns, en)
-    nfaces = size(fns,2);
-    np = size(fns,1);
-    fmap = zeros(Int, np, nfaces);
-    for fi=1:nfaces
-        for i=1:np
-            for j=1:length(en)
-                if en[j] == fns[i,fi]
-                    fmap[i,fi] = j;
-                    break;
-                end
-            end
-        end
-    end
-    
-    return fmap;
-end
-
-function face_boundary_condition(var, bid, inds, nodes, t)
-    fnp = size(grid_data.face2glb,1);
-    ave = zeros(fnp);
-    if prob.bc_type[var.index, bid] == DIRICHLET
-        val = prob.bc_func[var.index, bid][1];
-        if typeof(val) <: Number
-            for i=1:fnp
-                ave[i]=val;
-            end
-            
-        elseif typeof(val) == Coefficient && typeof(val.value[1]) == GenFunction
-            if config.dimension == 1
-                for i=1:fnp
-                    ave[i]=val.value[1].func(nodes[1,i],0,0,t);
-                end
-            elseif config.dimension == 2
-                for i=1:fnp
-                    ave[i]=val.value[1].func(nodes[1,i],nodes[2,i],0,t);
-                end
-            else
-                for i=1:fnp
-                    ave[i]=val.value[1].func(nodes[1,i],nodes[2,i],nodes[3,i],t);
-                end
-            end
-            
-        elseif typeof(val) == GenFunction
-            if config.dimension == 1
-                for i=1:fnp
-                    ave[i]=val.func(nodes[1,i],0,0,t);
-                end
-            elseif config.dimension == 2
-                for i=1:fnp
-                    ave[i]=val.func(nodes[1,i],nodes[2,i],0,t);
-                end
-            else
-                for i=1:fnp
-                    ave[i]=val.func(nodes[1,i],nodes[2,i],nodes[3,i],t);
-                end
-            end
-        end
-        
-    elseif prob.bc_type[var.index, bid] == NO_BC
-        for i=1:fnp
-            ave[i]=var.values[1,inds[i]];
-        end
-    end
-    
-    return ave;
-end
-
 function place_sol_in_vars(var, sol, stepper)
     # place the values in the variable value arrays
     if typeof(var) <: Array
@@ -912,9 +971,9 @@ function place_sol_in_vars(var, sol, stepper)
         for vi=1:length(var)
             components = length(var[vi].symvar.vals);
             for compi=1:components
-                if stepper.type == EULER_EXPLICIT || stepper.type == LSRK4 # explicit steppers
+                if stepper.type == EULER_EXPLICIT
                     var[vi].values[compi,:] += sol[(compi+tmp):totalcomponents:end];
-                else # implicit steppers
+                else
                     var[vi].values[compi,:] = sol[(compi+tmp):totalcomponents:end];
                 end
                 tmp = tmp + 1;
@@ -923,13 +982,40 @@ function place_sol_in_vars(var, sol, stepper)
     else
         components = length(var.symvar.vals);
         for compi=1:components
-            if stepper.type == EULER_EXPLICIT || stepper.type == LSRK4 # explicit steppers
+            if stepper.type == EULER_EXPLICIT
                 var.values[compi,:] += sol[compi:components:end];
-            else # implicit steppers
+            else
                 var.values[compi,:] = sol[compi:components:end];
             end
         end
     end
+end
+
+function get_var_vals(var)
+    # place the variable values in a vector
+    if typeof(var) <: Array
+        tmp = 0;
+        totalcomponents = 0;
+        for vi=1:length(var)
+            totalcomponents = totalcomponents + length(var[vi].symvar.vals);
+        end
+        vect = zeros(totalcomponents * length(var[1].values[1,:]));
+        for vi=1:length(var)
+            components = length(var[vi].symvar.vals);
+            for compi=1:components
+                vect[(compi+tmp):totalcomponents:end] = var[vi].values[compi,:];
+                tmp = tmp + 1;
+            end
+        end
+    else
+        components = length(var.symvar.vals);
+        vect = zeros(components * length(var.values[1,:]));
+        for compi=1:components
+            vect[compi:components:end] = var.values[compi,:];
+        end
+    end
+    
+    return vect;
 end
 
 end #module

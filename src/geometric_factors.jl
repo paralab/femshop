@@ -15,24 +15,28 @@ function copy(j::Jacobian)
     return Jacobian(copy(j.rx),copy(j.ry),copy(j.rz),copy(j.sx),copy(j.sy),copy(j.sz),copy(j.tx),copy(j.ty),copy(j.tz));
 end
 
-function geometric_factors(refel, pts)
+function geometric_factors(refel, pts; constantJ = false)
     # pts = element node global coords
-    # J = detJ
-    # D = Jacobian
+    # detJ = determinant(J)
+    # J = Jacobian
     if refel.dim == 0
-        J = [1];
-        D = Jacobian([1],[],[],[],[],[],[],[],[]);
+        detJ = [1];
+        J = Jacobian([1],[],[],[],[],[],[],[],[]);
         
     elseif refel.dim == 1
         if length(pts) == 1
             # 0D face refels can only have 1 point
-            J = [1];
-            D = Jacobian([1],[],[],[],[],[],[],[],[]);
+            detJ = [1];
+            J = Jacobian([1],[],[],[],[],[],[],[],[]);
         else
             xr  = refel.Dg*pts[:];
-            J = xr[:];
-            rx = 1 ./ J;
-            D = Jacobian(rx,[],[],[],[],[],[],[],[]);
+            if constantJ
+                detJ = xr[1];
+            else
+                detJ = xr[:];
+            end
+            rx = 1 ./ detJ;
+            J = Jacobian(rx,[],[],[],[],[],[],[],[]);
         end
         
     elseif refel.dim == 2
@@ -41,26 +45,23 @@ function geometric_factors(refel, pts)
             xs = refel.Dds*pts[1,:];
             yr = refel.Ddr*pts[2,:];
             ys = refel.Dds*pts[2,:];
-            J = -xs.*yr + xr.*ys;
-            J = J[1]; # assume constant detJ
-            
-            rx =  ys./J;
-            sx = -yr./J;
-            ry = -xs./J;
-            sy =  xr./J;
-            D = Jacobian(rx,ry,[],sx,sy,[],[],[],[]);
             
         else # quad
             (xr, xs) = tensor_grad2(refel.Dg, pts[1,:][:]);
             (yr, ys) = tensor_grad2(refel.Dg, pts[2,:][:]);
-            J = -xs.*yr + xr.*ys;
-            
-            rx =  ys./J;
-            sx = -yr./J;
-            ry = -xs./J;
-            sy =  xr./J;
-            D = Jacobian(rx,ry,[],sx,sy,[],[],[],[]);
         end
+        
+        if constantJ
+            detJ = -xs[1]*yr[1] + xr[1]*ys[1];
+        else
+            detJ = -xs.*yr + xr.*ys;
+        end
+        
+        rx =  ys./detJ;
+        sx = -yr./detJ;
+        ry = -xs./detJ;
+        sy =  xr./detJ;
+        J = Jacobian(rx,ry,[],sx,sy,[],[],[],[]);
         
     else
         if refel.Nfaces == 4 # tetrahedron
@@ -73,98 +74,74 @@ function geometric_factors(refel, pts)
             zr = refel.Ddr*pts[3,:];
             zs = refel.Dds*pts[3,:];
             zt = refel.Ddt*pts[3,:];
-            J = xr.*(ys.*zt-zs.*yt) - yr.*(xs.*zt-zs.*xt) + zr.*(xs.*yt-ys.*xt);
-            #J = J[1]; # assume constant detJ
-            
-            rx =  (ys.*zt - zs.*yt)./J;
-            ry = -(xs.*zt - zs.*xt)./J;
-            rz =  (xs.*yt - ys.*xt)./J;
-            
-            sx = -(yr.*zt - zr.*yt)./J;
-            sy =  (xr.*zt - zr.*xt)./J;
-            sz = -(xr.*yt - yr.*xt)./J;
-            
-            tx =  (yr.*zs - zr.*ys)./J;
-            ty = -(xr.*zs - zr.*xs)./J;
-            tz =  (xr.*ys - yr.*xs)./J;
-            D = Jacobian(rx,ry,rz,sx,sy,sz,tx,ty,tz);
             
         else # hexahedron
-            # (xr, xs, xt) = tensor_grad3(refel.Dg, pts[1,:][:]);
-            # (yr, ys, yt) = tensor_grad3(refel.Dg, pts[2,:][:]);
-            # (zr, zs, zt) = tensor_grad3(refel.Dg, pts[3,:][:]);
             (xr, xs, xt) = tensor_grad3(refel.Dr, pts[1,:][:]);
             (yr, ys, yt) = tensor_grad3(refel.Dr, pts[2,:][:]);
             (zr, zs, zt) = tensor_grad3(refel.Dr, pts[3,:][:]);
-            J = xr.*(ys.*zt-zs.*yt) - yr.*(xs.*zt-zs.*xt) + zr.*(xs.*yt-ys.*xt);
-            
-            rx =  (ys.*zt - zs.*yt)./J;
-            ry = -(xs.*zt - zs.*xt)./J;
-            rz =  (xs.*yt - ys.*xt)./J;
-            
-            sx = -(yr.*zt - zr.*yt)./J;
-            sy =  (xr.*zt - zr.*xt)./J;
-            sz = -(xr.*yt - yr.*xt)./J;
-            
-            tx =  (yr.*zs - zr.*ys)./J;
-            ty = -(xr.*zs - zr.*xs)./J;
-            tz =  (xr.*ys - yr.*xs)./J;
-            D = Jacobian(rx,ry,rz,sx,sy,sz,tx,ty,tz);
         end
+        
+        if constantJ
+            detJ = xr[1]*(ys[1]*zt[1]-zs[1]*yt[1]) - yr[1]*(xs[1]*zt[1]-zs[1]*xt[1]) + zr[1]*(xs[1]*yt[1]-ys[1]*xt[1]);
+        else
+            detJ = xr.*(ys.*zt-zs.*yt) - yr.*(xs.*zt-zs.*xt) + zr.*(xs.*yt-ys.*xt);
+        end
+        
+        rx =  (ys.*zt - zs.*yt)./detJ;
+        ry = -(xs.*zt - zs.*xt)./detJ;
+        rz =  (xs.*yt - ys.*xt)./detJ;
+        
+        sx = -(yr.*zt - zr.*yt)./detJ;
+        sy =  (xr.*zt - zr.*xt)./detJ;
+        sz = -(xr.*yt - yr.*xt)./detJ;
+        
+        tx =  (yr.*zs - zr.*ys)./detJ;
+        ty = -(xr.*zs - zr.*xs)./detJ;
+        tz =  (xr.*ys - yr.*xs)./detJ;
+        J = Jacobian(rx,ry,rz,sx,sy,sz,tx,ty,tz);
     end
     
-    return (J,D);
+    return (detJ,J);
 end
 
+# NOTE: Only returns the Jacobian determinant. Use the volume Jacobian for derivatives.
 function geometric_factors_face(refel, face, pts)
     # pts = face node global coords
-    # J = detJ
-    # D = Jacobian
     if refel.dim == 0
-        J = [1];
-        D = Jacobian([1],[],[],[],[],[],[],[],[]);
+        detJ = [1];
         
     elseif refel.dim == 1
-        # 1D face refels can only have 1 point
-        J = [1];
-        D = Jacobian([1],[],[],[],[],[],[],[],[]);
+        # 1D face can only have 1 point
+        detJ = [1];
         
     elseif refel.dim == 2
         dx = pts[1,end] - pts[1,1];
         dy = pts[2,end] - pts[2,1];
-        J = 2/sqrt(dx*dx+dy*dy);
-        
-        # rx =  ys./J;
-        # sx = -yr./J;
-        # ry = -xs./J;
-        # sy =  xr./J;
-        # D = Jacobian(rx,ry,[],sx,sy,[],[],[],[]);
-        D = nothing;
+        detJ = 2/sqrt(dx*dx+dy*dy);
         
     else
+        # TODO this assumes rectangular faces
         dx = abs(pts[1,end] - pts[1,1]);
         dy = abs(pts[2,end] - pts[2,1]);
         dz = abs(pts[3,end] - pts[3,1]);
         # TODO this assumes hex aligned with axes
-        if dx<0.00001 dx=1 end
-        if dy<0.00001 dy=1 end
-        if dz<0.00001 dz=1 end
-        J = 4/(dx*dy*dz);
-        D = nothing;
+        d1 = max(dx, dy);
+        d2 = max(min(dx, dy), dz);
+        
+        detJ = 4/(d1*d2);
     end
     
-    return (J,D);
+    return (detJ, 0);
 end
 
 function build_deriv_matrix(refel, J)
     if refel.dim == 1
         RQ1 = zeros(size(refel.Q));
         RD1 = zeros(size(refel.Q));
-        for i=1:length(J.rx)
-            for j=1:length(J.rx)
-                RQ1[i,j] = J.rx[i]*refel.Qr[i,j];
-                RD1[i,j] = J.rx[i]*refel.Ddr[i,j];
-            end
+        # Multiply rows of Qr and Ddr by J.rx
+        for i=1:length(J.rx) # loop over columns
+            RQ1[:,i] = J.rx .* refel.Qr[:,i];
+            RD1[:,i] = J.rx .* refel.Ddr[:,i];
         end
         return (RQ1,RD1);
         
@@ -174,12 +151,10 @@ function build_deriv_matrix(refel, J)
         RD1 = zeros(size(refel.Q));
         RD2 = zeros(size(refel.Q));
         for i=1:size(RQ1,1)
-            for j=1:size(RQ1,2)
-                RQ1[i,j] = J.rx[i]*refel.Qr[i,j] + J.sx[i]*refel.Qs[i,j];
-                RQ2[i,j] = J.ry[i]*refel.Qr[i,j] + J.sy[i]*refel.Qs[i,j];
-                RD1[i,j] = J.rx[i]*refel.Ddr[i,j] + J.sx[i]*refel.Dds[i,j];
-                RD2[i,j] = J.ry[i]*refel.Ddr[i,j] + J.sy[i]*refel.Dds[i,j];
-            end
+            RQ1[:,i] = J.rx .* refel.Qr[:,i] + J.sx .* refel.Qs[:,i];
+            RQ2[:,i] = J.ry .* refel.Qr[:,i] + J.sy .* refel.Qs[:,i];
+            RD1[:,i] = J.rx .* refel.Ddr[:,i] + J.sx .* refel.Dds[:,i];
+            RD2[:,i] = J.ry .* refel.Ddr[:,i] + J.sy .* refel.Dds[:,i];
         end
         return (RQ1, RQ2, RD1, RD2);
         
@@ -191,14 +166,12 @@ function build_deriv_matrix(refel, J)
         RD2 = zeros(size(refel.Q));
         RD3 = zeros(size(refel.Q));
         for i=1:size(RQ1,1)
-            for j=1:size(RQ1,2)
-                RQ1[i,j] = J.rx[i]*refel.Qr[i,j] + J.sx[i]*refel.Qs[i,j] + J.tx[i]*refel.Qt[i,j];
-                RQ2[i,j] = J.ry[i]*refel.Qr[i,j] + J.sy[i]*refel.Qs[i,j] + J.ty[i]*refel.Qt[i,j];
-                RQ3[i,j] = J.rz[i]*refel.Qr[i,j] + J.sz[i]*refel.Qs[i,j] + J.tz[i]*refel.Qt[i,j];
-                RD1[i,j] = J.rx[i]*refel.Ddr[i,j] + J.sx[i]*refel.Dds[i,j] + J.tx[i]*refel.Ddt[i,j];
-                RD2[i,j] = J.ry[i]*refel.Ddr[i,j] + J.sy[i]*refel.Dds[i,j] + J.ty[i]*refel.Ddt[i,j];
-                RD3[i,j] = J.rz[i]*refel.Ddr[i,j] + J.sz[i]*refel.Dds[i,j] + J.tz[i]*refel.Ddt[i,j];
-            end
+            RQ1[:,i] = J.rx .* refel.Qr[:,i] + J.sx .* refel.Qs[:,i] + J.tx .* refel.Qt[:,i];
+            RQ2[:,i] = J.ry .* refel.Qr[:,i] + J.sy .* refel.Qs[:,i] + J.ty .* refel.Qt[:,i];
+            RQ3[:,i] = J.rz .* refel.Qr[:,i] + J.sz .* refel.Qs[:,i] + J.tz .* refel.Qt[:,i];
+            RD1[:,i] = J.rx .* refel.Ddr[:,i] + J.sx .* refel.Dds[:,i] + J.tx .* refel.Ddt[:,i];
+            RD2[:,i] = J.ry .* refel.Ddr[:,i] + J.sy .* refel.Dds[:,i] + J.ty .* refel.Ddt[:,i];
+            RD3[:,i] = J.rz .* refel.Ddr[:,i] + J.sz .* refel.Dds[:,i] + J.tz .* refel.Ddt[:,i];
         end
         return (RQ1, RQ2, RQ3, RD1, RD2, RD3);
     end

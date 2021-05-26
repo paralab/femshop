@@ -76,30 +76,100 @@ function linear_solve(var, bilinear, linear, stepper=nothing)
         #return solve_matrix_free_asym(var, bilinear, linear, stepper);
     end
     if prob.time_dependent && !(stepper === nothing)
-        #TODO time dependent coefficients
-        assemble_t = @elapsed((A, b) = assemble(var, bilinear, linear, 0, stepper.dt));
-        log_entry("Assembly took "*string(assemble_t)*" seconds");
+        # Shall we save geometric factors to reuse each time step?
+        save_geometric_factors = true;
+        
+        if save_geometric_factors
+            assemble_t = @elapsed((A, b, wdetJ, J) = assemble(var, bilinear, linear, 0, stepper.dt; keep_geometric_factors=true));
+            saved_GF = (wdetJ, J);
+        else
+            assemble_t = @elapsed((A, b) = assemble(var, bilinear, linear, 0, stepper.dt));
+            saved_GF = nothing;
+        end
+        
+        log_entry("Initial assembly took "*string(assemble_t)*" seconds");
 
         log_entry("Beginning "*string(stepper.Nsteps)*" time steps.");
         t = 0;
         sol = [];
         start_t = Base.Libc.time();
+        assemble_t = 0;
+        linsolve_t = 0;
         last2update = 0;
         last10update = 0;
         print("Time stepping progress(%): 0");
         for i=1:stepper.Nsteps
             if stepper.stages > 1
-                resu = zeros(size(b));
-                for rki=1:stepper.stages
-                    rktime = t + stepper.c[rki]*stepper.dt;
-                    b = assemble_rhs_only(var, linear, rktime, stepper.dt);
-                    sol = A\b;
-                    resu = stepper.a[rki].*resu + sol;
-                    place_sol_in_vars(var, stepper.b[rki].*resu, stepper);
+                # LSRK4 is a special case, low storage
+                if stepper.type == LSRK4
+                    # Low storage RK4: 
+                    # p0 = u
+                    #   ki = ai*k(i-1) + dt*f(p(i-1), t+ci*dt)
+                    #   pi = p(i-1) + bi*ki
+                    # u = p5
+                    
+                    tmppi = get_var_vals(var);
+                    tmpki = zeros(size(b));
+                    for rki=1:stepper.stages
+                        rktime = t + stepper.c[rki]*stepper.dt;
+                        # p(i-1) is currently in u
+                        assemble_t += @elapsed(b = assemble(var, nothing, linear, rktime, stepper.dt; rhs_only = true, saved_geometric_factors = saved_GF));
+                        
+                        linsolve_t += @elapsed(sol = A\b);
+                        if rki == 1 # because a1 == 0
+                            tmpki = stepper.dt .* sol;
+                        else
+                            tmpki = stepper.a[rki].*tmpki + stepper.dt.*sol;
+                        end
+                        tmppi = tmppi + stepper.b[rki].*tmpki
+                        
+                        # Need to apply boundary conditions now to tmppi
+                        tmppi = apply_boundary_conditions_rhs_only(var, tmppi, rktime);
+                        
+                        place_sol_in_vars(var, tmppi, stepper);
+                    end
+                    
+                else
+                    # Explicit multi-stage methods: 
+                    # x = x + dt*sum(bi*ki)
+                    # ki = rhs(t+ci*dt, x+dt*sum(aij*kj)))   j < i
+                    
+                    # will hold the final result
+                    result = get_var_vals(var);
+                    # will be placed in var.values for each stage
+                    tmpvals = result;
+                    # Storage for each stage
+                    tmpki = zeros(length(b), stepper.stages);
+                    for stage=1:stepper.stages
+                        stime = t + stepper.c[stage]*stepper.dt;
+                        
+                        assemble_t += @elapsed(b = assemble(var, nothing, linear, stime, stepper.dt; rhs_only = true, saved_geometric_factors = saved_GF));
+                        
+                        linsolve_t += @elapsed(tmpki[:,stage] = A\b);
+                        
+                        tmpvals = result;
+                        for j=1:(stage-1)
+                            if stepper.a[stage, j] > 0
+                                tmpvals += stepper.dt * stepper.a[stage, j] .* tmpki[:,j];
+                            end
+                        end
+                        
+                        # Need to apply boundary conditions now
+                        tmpvals = apply_boundary_conditions_rhs_only(var, tmpvals, stime);
+                        
+                        place_sol_in_vars(var, tmpvals, stepper);
+                    end
+                    for stage=1:stepper.stages
+                        result += stepper.dt * stepper.b[stage] .* tmpki[:, stage];
+                    end
+                    result = apply_boundary_conditions_rhs_only(var, result, t + stepper.dt);
+                    place_sol_in_vars(var, result, stepper);
                 end
+                
             else
-                b = assemble_rhs_only(var, linear, t, stepper.dt);
-                sol = A\b;
+                assemble_t += @elapsed(b = assemble(var, nothing, linear, t, stepper.dt; rhs_only = true, saved_geometric_factors = saved_GF));
+                
+                linsolve_t += @elapsed(sol = A\b);
                 
                 place_sol_in_vars(var, sol, stepper);
             end
@@ -120,7 +190,7 @@ function linear_solve(var, bilinear, linear, stepper=nothing)
         println("");
         end_t = Base.Libc.time();
 
-        log_entry("Solve took "*string(end_t-start_t)*" seconds");
+        log_entry("Stepping took "*string(end_t-start_t)*" seconds. ("*string(assemble_t)*" for assembly, "*string(linsolve_t)*" for linear solve)");
         #display(sol);
 		# outfile = "linear_sol.txt"
 		# open(outfile, "w") do f
@@ -133,7 +203,7 @@ function linear_solve(var, bilinear, linear, stepper=nothing)
     else
         assemble_t = @elapsed((A, b) = assemble(var, bilinear, linear));
         # uncomment to look at A
-        global Amat = A;
+        #global Amat = A;
         
         sol_t = @elapsed(sol = A\b);
         
@@ -200,7 +270,7 @@ function nonlinear_solve(var, nlvar, bilinear, linear, stepper=nothing)
 end
 
 # assembles the A and b in Au=b
-function assemble(var, bilinear, linear, t=0.0, dt=0.0)
+function assemble(var, bilinear, linear, t=0.0, dt=0.0; rhs_only = false, keep_geometric_factors = false, saved_geometric_factors = nothing)
     Np = refel.Np;
     nel = mesh_data.nel;
     N1 = size(grid_data.allnodes,2);
@@ -224,31 +294,49 @@ function assemble(var, bilinear, linear, t=0.0, dt=0.0)
     Nn = dofs_per_node * N1;
 
     b = zeros(Nn);
-    #A = spzeros(Nn, Nn);
-    AI = zeros(Int, nel*dofs_per_node*Np*dofs_per_node*Np);
-    AJ = zeros(Int, nel*dofs_per_node*Np*dofs_per_node*Np);
-    AV = zeros(nel*dofs_per_node*Np*dofs_per_node*Np);
+    
+    if !rhs_only
+        AI = zeros(Int, nel*dofs_per_node*Np*dofs_per_node*Np);
+        AJ = zeros(Int, nel*dofs_per_node*Np*dofs_per_node*Np);
+        AV = zeros(nel*dofs_per_node*Np*dofs_per_node*Np);
+    end
+    
+    # Save geometric factors if desired
+    if keep_geometric_factors
+        saved_wdetj = [];
+        saved_J = [];
+    end
     
     # Stiffness and mass are precomputed for uniform grid meshes
-    if config.mesh_type == UNIFORM_GRID && config.geometry == SQUARE
+    precomputed_mass_stiffness = config.mesh_type == UNIFORM_GRID && config.geometry == SQUARE
+    if precomputed_mass_stiffness
         glb = grid_data.loc2glb[:,1];
         xe = grid_data.allnodes[:,glb[:]];
-        (detJ, J) = geometric_factors(refel, xe);
-        wgdetj = refel.wg .* detJ;
+        if saved_geometric_factors === nothing
+            (detJ, J) = geometric_factors(refel, xe);
+            wdetj = refel.wg .* detJ;
+            if keep_geometric_factors
+                saved_wdetj = [wdetj];
+                saved_J = [J];
+            end
+        else
+            wdetj = saved_geometric_factors[1][1];
+            J = saved_geometric_factors[2][1];
+        end
         if config.dimension == 1
             (RQ1, RD1) = build_deriv_matrix(refel, J);
             TRQ1 = RQ1';
-            stiffness = [(TRQ1 * diagm(wgdetj) * RQ1)];
+            stiffness = [(TRQ1 * diagm(wdetj) * RQ1)];
         elseif config.dimension == 2
             (RQ1, RQ2, RD1, RD2) = build_deriv_matrix(refel, J);
             (TRQ1, TRQ2) = (RQ1', RQ2');
-            stiffness = [(TRQ1 * diagm(wgdetj) * RQ1) , (TRQ2 * diagm(wgdetj) * RQ2)];
+            stiffness = [(TRQ1 * diagm(wdetj) * RQ1) , (TRQ2 * diagm(wdetj) * RQ2)];
         else
             (RQ1, RQ2, RQ3, RD1, RD2, RD3) = build_deriv_matrix(refel, J);
             (TRQ1, TRQ2, TRQ3) = (RQ1', RQ2', RQ3');
-            stiffness = [(TRQ1 * diagm(wgdetj) * RQ1) , (TRQ2 * diagm(wgdetj) * RQ2) , (TRQ3 * diagm(wgdetj) * RQ3)];
+            stiffness = [(TRQ1 * diagm(wdetj) * RQ1) , (TRQ2 * diagm(wdetj) * RQ2) , (TRQ3 * diagm(wdetj) * RQ3)];
         end
-        mass = (refel.Q)' * diagm(wgdetj) * refel.Q;
+        mass = (refel.Q)' * diagm(wdetj) * refel.Q;
     else
         stiffness = 0;
         mass = 0;
@@ -261,23 +349,41 @@ function assemble(var, bilinear, linear, t=0.0, dt=0.0)
         glb = grid_data.loc2glb[:,e];           # global indices of this element's nodes for extracting values from var arrays
         xe = grid_data.allnodes[:,glb[:]];      # coordinates of this element's nodes for evaluating coefficient functions
         
-        Astart = (e-1)*Np*dofs_per_node*Np*dofs_per_node + 1; # The segment of AI, AJ, AV for this element
-
-        # The linear part. Compute the elemental linear part for each dof
-        rhsargs = (var, xe, glb, refel, RHS, t, dt, stiffness, mass);
-        lhsargs = (var, xe, glb, refel, LHS, t, dt, stiffness, mass);
+        if !precomputed_mass_stiffness
+            if saved_geometric_factors === nothing
+                (detJ, J) = geometric_factors(refel, xe);
+                wdetj = refel.wg .* detJ;
+                
+                if keep_geometric_factors
+                    push!(saved_wdetj, wdetj);
+                    push!(saved_J, J);
+                end
+            else
+                wdetj = saved_geometric_factors[1][e];
+                J = saved_geometric_factors[2][e];
+            end
+        end
+        
+        rhsargs = (var, xe, glb, refel, wdetj, J, RHS, t, dt, stiffness, mass);
+        
+        if !rhs_only
+            Astart = (e-1)*Np*dofs_per_node*Np*dofs_per_node + 1; # The segment of AI, AJ, AV for this element
+            lhsargs = (var, xe, glb, refel, wdetj, J, LHS, t, dt, stiffness, mass);
+        end
         if dofs_per_node == 1
             linchunk = linear.func(rhsargs);  # get the elemental linear part
             b[glb] .+= linchunk;
-
-            bilinchunk = bilinear.func(lhsargs); # the elemental bilinear part
-            #A[glb, glb] .+= bilinchunk;         # This will be very inefficient for sparse A
-            for jj=1:Np
-                offset = Astart - 1 + (jj-1)*Np;
-                for ii=1:Np
-                    AI[offset + ii] = glb[ii];
-                    AJ[offset + ii] = glb[jj];
-                    AV[offset + ii] = bilinchunk[ii, jj];
+            
+            if !rhs_only
+                bilinchunk = bilinear.func(lhsargs); # the elemental bilinear part
+                #A[glb, glb] .+= bilinchunk;         # This will be very inefficient for sparse A
+                for jj=1:Np
+                    offset = Astart - 1 + (jj-1)*Np;
+                    for ii=1:Np
+                        AI[offset + ii] = glb[ii];
+                        AJ[offset + ii] = glb[jj];
+                        AV[offset + ii] = bilinchunk[ii, jj];
+                    end
                 end
             end
             
@@ -285,30 +391,38 @@ function assemble(var, bilinear, linear, t=0.0, dt=0.0)
             # only one variable, but more than one dof
             linchunk = linear.func(rhsargs);
             insert_linear!(b, linchunk, glb, 1:dofs_per_node, dofs_per_node);
-
-            bilinchunk = bilinear.func(lhsargs);
-            insert_bilinear!(AI, AJ, AV, Astart, bilinchunk, glb, 1:dofs_per_node, dofs_per_node);
+            
+            if !rhs_only
+                bilinchunk = bilinear.func(lhsargs);
+                insert_bilinear!(AI, AJ, AV, Astart, bilinchunk, glb, 1:dofs_per_node, dofs_per_node);
+            end
         else
             linchunk = linear.func(rhsargs);
             insert_linear!(b, linchunk, glb, 1:dofs_per_node, dofs_per_node);
-
-            bilinchunk = bilinear.func(lhsargs);
-            insert_bilinear!(AI, AJ, AV, Astart, bilinchunk, glb, 1:dofs_per_node, dofs_per_node);
+            
+            if !rhs_only
+                bilinchunk = bilinear.func(lhsargs);
+                insert_bilinear!(AI, AJ, AV, Astart, bilinchunk, glb, 1:dofs_per_node, dofs_per_node);
+            end
         end
     end
     loop_time = Base.Libc.time() - loop_time;
     
-    # Build the sparse A. Uses default + to combine overlaps
-    A = sparse(AI, AJ, AV);
+    if !rhs_only
+        # Build the sparse A. Uses default + to combine overlaps
+        A = sparse(AI, AJ, AV);
+    end
     
     # Boundary conditions
     bc_time = Base.Libc.time();
     bidcount = length(grid_data.bids); # the number of BIDs
-    dirichlet_rows = zeros(0);
-    neumann_rows = zeros(0);
-    neumann_Is = zeros(Int,0);
-    neumann_Js = zeros(Int,0);
-    neumann_Vs = zeros(0);
+    if !rhs_only
+        dirichlet_rows = zeros(0);
+        neumann_rows = zeros(0);
+        neumann_Is = zeros(Int,0);
+        neumann_Js = zeros(Int,0);
+        neumann_Vs = zeros(0);
+    end
     if dofs_per_node > 1
         if multivar
             dofind = 0;
@@ -316,7 +430,12 @@ function assemble(var, bilinear, linear, t=0.0, dt=0.0)
                 for compo=1:length(var[vi].symvar.vals)
                     dofind = dofind + 1;
                     for bid=1:bidcount
-                        if prob.bc_type[var[vi].index, bid] == DIRICHLET
+                        if prob.bc_type[var[vi].index, bid] == NO_BC
+                            # do nothing
+                        elseif rhs_only
+                            # When doing RHS only, values are simply placed in the vector.
+                            b = dirichlet_bc_rhs_only(b, prob.bc_func[var[vi].index, bid][compo], grid_data.bdry[bid], t, dofind, dofs_per_node);
+                        elseif prob.bc_type[var[vi].index, bid] == DIRICHLET
                             #(A, b) = dirichlet_bc(A, b, prob.bc_func[var[vi].index, bid][compo], grid_data.bdry[bid], t, dofind, dofs_per_node);
                             (tmprows, b) = dirichlet_bc(A, b, prob.bc_func[var[vi].index, bid][compo], grid_data.bdry[bid], t, dofind, dofs_per_node);
                             append!(dirichlet_rows, tmprows);
@@ -329,8 +448,6 @@ function assemble(var, bilinear, linear, t=0.0, dt=0.0)
                             append!(neumann_Vs, tmpVs);
                         elseif prob.bc_type[var[vi].index, bid] == ROBIN
                             printerr("Robin BCs not ready.");
-                        elseif prob.bc_type[var[vi].index, bid] == NO_BC
-                            # do nothing
                         else
                             printerr("Unsupported boundary condition type: "*prob.bc_type[var[vi].index, bid]);
                         end
@@ -341,7 +458,12 @@ function assemble(var, bilinear, linear, t=0.0, dt=0.0)
             for d=1:dofs_per_node
                 dofind = d;
                 for bid=1:bidcount
-                    if prob.bc_type[var.index, bid] == DIRICHLET
+                    if prob.bc_type[var.index, bid] == NO_BC
+                        # do nothing
+                    elseif rhs_only
+                        # When doing RHS only, values are simply placed in the vector.
+                        b = dirichlet_bc_rhs_only(b, prob.bc_func[var.index, bid][d], grid_data.bdry[bid], t, d, dofs_per_node);
+                    elseif prob.bc_type[var.index, bid] == DIRICHLET
                         #(A, b) = dirichlet_bc(A, b, prob.bc_func[var.index, bid][d], grid_data.bdry[bid], t, dofind, dofs_per_node);
                         (tmprows, b) = dirichlet_bc(A, b, prob.bc_func[var.index, bid][d], grid_data.bdry[bid], t, dofind, dofs_per_node);
                         append!(dirichlet_rows, tmprows);
@@ -354,8 +476,6 @@ function assemble(var, bilinear, linear, t=0.0, dt=0.0)
                         append!(neumann_Vs, tmpVs);
                     elseif prob.bc_type[var.index, bid] == ROBIN
                         printerr("Robin BCs not ready.");
-                    elseif prob.bc_type[var.index, bid] == NO_BC
-                        # do nothing
                     else
                         printerr("Unsupported boundary condition type: "*prob.bc_type[var.index, bid]);
                     end
@@ -364,7 +484,12 @@ function assemble(var, bilinear, linear, t=0.0, dt=0.0)
         end
     else
         for bid=1:bidcount
-            if prob.bc_type[var.index, bid] == DIRICHLET
+            if prob.bc_type[var.index, bid] == NO_BC
+                # do nothing
+            elseif rhs_only
+                # When doing RHS only, values are simply placed in the vector.
+                b = dirichlet_bc_rhs_only(b, prob.bc_func[var.index, bid][1], grid_data.bdry[bid], t);
+            elseif prob.bc_type[var.index, bid] == DIRICHLET
                 #(A, b) = dirichlet_bc(A, b, prob.bc_func[var.index, bid][1], grid_data.bdry[bid], t);
                 (tmprows, b) = dirichlet_bc(A, b, prob.bc_func[var.index, bid][1], grid_data.bdry[bid], t);
                 append!(dirichlet_rows, tmprows);
@@ -377,19 +502,19 @@ function assemble(var, bilinear, linear, t=0.0, dt=0.0)
                 append!(neumann_Vs, tmpVs);
             elseif prob.bc_type[var.index, bid] == ROBIN
                 printerr("Robin BCs not ready.");
-            elseif prob.bc_type[var.index, bid] == NO_BC
-                # do nothing
             else
                 printerr("Unsupported boundary condition type: "*prob.bc_type[var.index, bid]);
             end
         end
     end
     
-    if length(dirichlet_rows)>0
-        A = identity_rows(A, dirichlet_rows, length(b));
-    end
-    if length(neumann_rows)>0
-        A = insert_sparse_rows(A, neumann_Is, neumann_Js, neumann_Vs);
+    if !rhs_only
+        if length(dirichlet_rows)>0
+            A = identity_rows(A, dirichlet_rows, length(b));
+        end
+        if length(neumann_rows)>0
+            A = insert_sparse_rows(A, neumann_Is, neumann_Js, neumann_Vs);
+        end
     end
     
     # Reference points
@@ -409,7 +534,9 @@ function assemble(var, bilinear, linear, t=0.0, dt=0.0)
                 end
             end
             if length(vals) > 0
-                A = identity_rows(A, posind, length(b));
+                if !rhs_only
+                    A = identity_rows(A, posind, length(b));
+                end
                 b[posind] = vals;
             end
             
@@ -422,7 +549,9 @@ function assemble(var, bilinear, linear, t=0.0, dt=0.0)
                 else
                     posind = [posind];
                 end
-                A = identity_rows(A, posind, length(b));
+                if !rhs_only
+                    A = identity_rows(A, posind, length(b));
+                end
                 b[posind] = prob.ref_point[var.index, 3];
             end
         end
@@ -430,14 +559,28 @@ function assemble(var, bilinear, linear, t=0.0, dt=0.0)
     
     bc_time = Base.Libc.time() - bc_time;
     
-    log_entry("Elemental loop time:     "*string(loop_time));
-    log_entry("Boundary condition time: "*string(bc_time));
-    
-    return (A, b);
+    if rhs_only
+        if keep_geometric_factors
+            return (b, saved_wdetj, saved_J)
+        else
+            return b;
+        end
+        
+    else
+        log_entry("Elemental loop time:     "*string(loop_time));
+        log_entry("Boundary condition time: "*string(bc_time));
+        if keep_geometric_factors
+            return (A, b, saved_wdetj, saved_J);
+        else
+            return (A, b);
+        end
+    end
 end
 
+######################################################
+# To be romoved. Fix nonlinear solve first.
 # assembles the A and b in Au=b
-function assemble_rhs_only(var, linear, t=0.0, dt=0.0)
+function assemble_rhs_only(var, linear, t=0.0, dt=0.0; keep_geometric_factors = false, saved_geometric_factors = nothing)
     Np = refel.Np;
     nel = mesh_data.nel;
     N1 = size(grid_data.allnodes,2);
@@ -462,26 +605,37 @@ function assemble_rhs_only(var, linear, t=0.0, dt=0.0)
 
     b = zeros(Nn);
     
+    # Save geometric factors if desired
+    if keep_geometric_factors
+        saved_wdetj = [];
+        saved_J = [];
+    end
+    
     # Stiffness and mass are precomputed for uniform grid meshes
-    if config.mesh_type == UNIFORM_GRID && config.geometry == SQUARE
+    precomputed_mass_stiffness = config.mesh_type == UNIFORM_GRID && config.geometry == SQUARE
+    if precomputed_mass_stiffness
         glb = grid_data.loc2glb[:,1];
         xe = grid_data.allnodes[:,glb[:]];
         (detJ, J) = geometric_factors(refel, xe);
-        wgdetj = refel.wg .* detJ;
+        wdetj = refel.wg .* detJ;
+        if keep_geometric_factors
+            saved_wdetj = wdetj;
+            saved_J = J;
+        end
         if config.dimension == 1
             (RQ1, RD1) = build_deriv_matrix(refel, J);
             TRQ1 = RQ1';
-            stiffness = [(TRQ1 * diagm(wgdetj) * RQ1)];
+            stiffness = [(TRQ1 * diagm(wdetj) * RQ1)];
         elseif config.dimension == 2
             (RQ1, RQ2, RD1, RD2) = build_deriv_matrix(refel, J);
             (TRQ1, TRQ2) = (RQ1', RQ2');
-            stiffness = [(TRQ1 * diagm(wgdetj) * RQ1) , (TRQ2 * diagm(wgdetj) * RQ2)];
+            stiffness = [(TRQ1 * diagm(wdetj) * RQ1) , (TRQ2 * diagm(wdetj) * RQ2)];
         else
             (RQ1, RQ2, RQ3, RD1, RD2, RD3) = build_deriv_matrix(refel, J);
             (TRQ1, TRQ2, TRQ3) = (RQ1', RQ2', RQ3');
-            stiffness = [(TRQ1 * diagm(wgdetj) * RQ1) , (TRQ2 * diagm(wgdetj) * RQ2) , (TRQ3 * diagm(wgdetj) * RQ3)];
+            stiffness = [(TRQ1 * diagm(wdetj) * RQ1) , (TRQ2 * diagm(wdetj) * RQ2) , (TRQ3 * diagm(wdetj) * RQ3)];
         end
-        mass = (refel.Q)' * diagm(wgdetj) * refel.Q;
+        mass = (refel.Q)' * diagm(wdetj) * refel.Q;
     else
         stiffness = 0;
         mass = 0;
@@ -492,7 +646,22 @@ function assemble_rhs_only(var, linear, t=0.0, dt=0.0)
         glb = grid_data.loc2glb[:,e];       # global indices of this element's nodes for extracting values from var arrays
         xe = grid_data.allnodes[:,glb[:]];  # coordinates of this element's nodes for evaluating coefficient functions
         
-        rhsargs = (var, xe, glb, refel, RHS, t, dt, stiffness, mass);
+        if !precomputed_mass_stiffness
+            if saved_geometric_factors === nothing
+                (detJ, J) = geometric_factors(refel, xe);
+                wdetj = refel.wg .* detJ;
+                
+                if keep_geometric_factors
+                    push!(saved_wdetj, wdetj);
+                    push!(saved_J, J);
+                end
+            else
+                wdetj = saved_geometric_factors[1][e];
+                J = saved_geometric_factors[2][e];
+            end
+        end
+        
+        rhsargs = (var, xe, glb, refel, wdetj, J, RHS, t, dt, stiffness, mass);
 
         #linchunk = linear.func(args);  # get the elemental linear part
         if dofs_per_node == 1
@@ -585,6 +754,7 @@ function assemble_rhs_only(var, linear, t=0.0, dt=0.0)
 
     return b;
 end
+##########################################################
 
 # Inset the single dof into the greater construct
 function insert_linear!(b, bel, glb, dof, Ndofs)
@@ -633,9 +803,9 @@ function place_sol_in_vars(var, sol, stepper)
         for vi=1:length(var)
             components = length(var[vi].symvar.vals);
             for compi=1:components
-                if stepper.type == EULER_EXPLICIT || stepper.type == LSRK4 # explicit steppers
+                if stepper.type == EULER_EXPLICIT
                     var[vi].values[compi,:] += sol[(compi+tmp):totalcomponents:end];
-                else # implicit steppers
+                else 
                     var[vi].values[compi,:] = sol[(compi+tmp):totalcomponents:end];
                 end
                 tmp = tmp + 1;
@@ -644,13 +814,40 @@ function place_sol_in_vars(var, sol, stepper)
     else
         components = length(var.symvar.vals);
         for compi=1:components
-            if stepper.type == EULER_EXPLICIT || stepper.type == LSRK4 # explicit steppers
+            if stepper.type == EULER_EXPLICIT
                 var.values[compi,:] += sol[compi:components:end];
-            else # implicit steppers
+            else
                 var.values[compi,:] = sol[compi:components:end];
             end
         end
     end
+end
+
+function get_var_vals(var)
+    # place the variable values in a vector
+    if typeof(var) <: Array
+        tmp = 0;
+        totalcomponents = 0;
+        for vi=1:length(var)
+            totalcomponents = totalcomponents + length(var[vi].symvar.vals);
+        end
+        vect = zeros(totalcomponents * length(var[1].values[1,:]));
+        for vi=1:length(var)
+            components = length(var[vi].symvar.vals);
+            for compi=1:components
+                vect[(compi+tmp):totalcomponents:end] = var[vi].values[compi,:];
+                tmp = tmp + 1;
+            end
+        end
+    else
+        components = length(var.symvar.vals);
+        vect = zeros(components * length(var.values[1,:]));
+        for compi=1:components
+            vect[compi:components:end] = var.values[compi,:];
+        end
+    end
+    
+    return vect;
 end
 
 end #module

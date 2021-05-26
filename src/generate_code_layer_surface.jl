@@ -724,10 +724,10 @@ function generate_code_layer_julia_surface(symex, var, lorr)
         
     end
     if lorr == LHS
-        if (result[1] === nothing || result[1] == 0) result[1] = :(zeros(refel.Nfp[frefelind[1]]*$dofsper,refel.Nfp[frefelind[1]]*$dofsper)); end
-        if (result[2] === nothing || result[2] == 0) result[2] = :(zeros(refel.Nfp[frefelind[1]]*$dofsper,refel.Nfp[frefelind[1]]*$dofsper)); end
-        if (result[3] === nothing || result[3] == 0) result[3] = :(zeros(refel.Nfp[frefelind[1]]*$dofsper,refel.Nfp[frefelind[1]]*$dofsper)); end
-        if (result[4] === nothing || result[4] == 0) result[4] = :(zeros(refel.Nfp[frefelind[1]]*$dofsper,refel.Nfp[frefelind[1]]*$dofsper)); end
+        if (result[1] === nothing || result[1] == 0) result[1] = :(zeros(refel.Np*$dofsper,refel.Np*$dofsper)); end
+        if (result[2] === nothing || result[2] == 0) result[2] = :(zeros(refel.Np*$dofsper,refel.Np*$dofsper)); end
+        if (result[3] === nothing || result[3] == 0) result[3] = :(zeros(refel.Np*$dofsper,refel.Np*$dofsper)); end
+        if (result[4] === nothing || result[4] == 0) result[4] = :(zeros(refel.Np*$dofsper,refel.Np*$dofsper)); end
         
         r1 = result[1];
         r2 = result[2];
@@ -735,8 +735,8 @@ function generate_code_layer_julia_surface(symex, var, lorr)
         r4 = result[4];
         finalresult = :([$r1, $r2, $r3, $r4]);
     else
-        if (result[1] === nothing || result[1] == 0) result[1] = :(zeros(refel.Nfp[frefelind[1]]*$dofsper)); end
-        if (result[4] === nothing || result[4] == 0) result[4] = :(zeros(refel.Nfp[frefelind[1]]*$dofsper)); end
+        if (result[1] === nothing || result[1] == 0) result[1] = :(zeros(refel.Np*$dofsper)); end
+        if (result[4] === nothing || result[4] == 0) result[4] = :(zeros(refel.Np*$dofsper)); end
         
         r1 = result[1];
         r4 = result[4];
