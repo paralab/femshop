@@ -7,11 +7,11 @@ export init_codegenerator, finalize_codegenerator, Genfiles, set_custom_target,
         generate_all_files,
         generate_main, generate_config, generate_prob, generate_mesh, generate_genfunction, 
         generate_bilinear, generate_linear, generate_stepper, generate_output,
-        generate_code_layer, generate_code_layer_surface
+        generate_code_layer, generate_code_layer_surface, generate_code_layer_fv
 
 import ..Femshop: JULIA, CPP, MATLAB, DENDRO, HOMG, CUSTOM_GEN_TARGET,
             SQUARE, IRREGULAR, UNIFORM_GRID, TREE, UNSTRUCTURED, 
-            CG, DG, HDG,
+            CG, DG, HDG, FV,
             NODAL, MODAL, LEGENDRE, UNIFORM, GAUSS, LOBATTO, 
             NONLINEAR_NEWTON, NONLINEAR_SOMETHING, 
             EULER_EXPLICIT, EULER_IMPLICIT, CRANK_NICHOLSON, RK4, LSRK4, ABM4, 
@@ -65,6 +65,7 @@ custom_files_fun = 0;
 
 #General
 include("generate_code_layer.jl");
+include("generate_code_layer_fv.jl");
 #Matlab
 include("generate_matlab_utils.jl");
 include("generate_matlab_files.jl");

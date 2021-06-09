@@ -12,6 +12,10 @@ include("generate_code_layer_cachesim.jl");
 include("generate_code_layer_surface.jl");
 
 function generate_code_layer(ex, var, lorr)
+    if config.solver_type == FV
+        return generate_code_layer_fv(ex, var, lorr)
+    end
+    
     if use_cachesim
         if language == 0 || language == JULIA
             return generate_code_layer_cachesim(ex, var, lorr);
@@ -560,8 +564,29 @@ function generate_code_layer_julia(symex, var, lorr)
     return code;
 end
 
-# Changes the symbolic layer term into a code layer term
-# also records derivative and coefficient needs
+#=
+Changes the symbolic layer term into a code layer term.
+An example term with variable u, coefficient c
+Q is a quadrature matrix
+wgdetj is weights and geometric factors like: (weights*detJ)
+
+2*_c_1*_u_1*_v_1    ->  Q' * diagm(2 .* coef_0_1 .* wgdetj) * Q       on LHS
+                    ->  Q' * (wgdetj .* coef_0_1 .* (Q * coef_u_1))   on RHS
+                    
+Also records the needed derivative matrices like: J.rx * refel.Ddr
+D1 -> D1x
+D2 -> D1y
+D1_D1 -> D2x
+etc.
+
+Returns:
+- expression for term
+- needed coefficients
+- coefficient indices(vector components)
+- assigned names for coefficients (_c_1 -> coef_n_1 when c is the nth coefficient in coefficients array)
+- needed derivative matrices
+
+=#
 function process_term_julia(sterm, var, lorr, offset_ind=0)
     term = copy(sterm);
     need_derivative = false;
@@ -1121,6 +1146,10 @@ function is_unknown_var(v, vars)
 end
 
 # Extract meaning from the symbolic object name
+# The format of the input symbol should look like this
+#   MOD1_MOD2_..._var_n
+# There could be any number of mods, _var_n is the symvar symbol (n is the vector index, or 1 for scalar)
+# Returns ([n], var, [MOD1,MOD2,...]) all as strings
 function extract_symbols(ex)
     str = string(ex);
     #println("extracting from: "*str);
@@ -1144,6 +1173,7 @@ function extract_symbols(ex)
                 if str[i] == '_'
                     e = i-1;
                 else
+                    # These are the indices at the end. Parse one digit at a time.
                     index = [parse(Int, str[i]); index] # The indices on the variable
                 end
             end
@@ -1156,6 +1186,7 @@ function extract_symbols(ex)
                 if str[i] == '_'
                     e = i-1;
                 else
+                    # These are the indices at the end. Parse one digit at a time.
                     try
                         index = [parse(Int, str[i]); index] # The indices on the variable
                     catch
@@ -1205,4 +1236,27 @@ function extract_symbols(ex)
     #println("got: "*string(mods)*" "*string(var)*" "*string(index));
     
     return (index, var, mods);
+end
+
+# Separate the derivative mods(Dn_) from the other mods and return an array 
+# of derivative indices and the remaining mods.
+function get_derivative_mods(mods)
+    derivs = [];
+    others = [];
+    
+    for i=1:length(mods)
+        if length(mods[i]) == 2 && mods[i][1] == 'D'
+            try
+                index = parse(Int, mods[i][2])
+                push!(derivs, index);
+            catch
+                printerr("Unexpected modifier: "*mods[i]*" see get_derivative_mods() in generate_code_layer")
+                push!(others, mods[i]);
+            end
+        else
+            push!(others, mods[i]);
+        end
+    end
+    
+    return (derivs, others);
 end

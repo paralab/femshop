@@ -311,3 +311,106 @@ function reformat_for_stepper(lhs, rhs, face_lhs, face_rhs,stepper)
     
     return (newlhs, newrhs, newfacelhs, newfacerhs);
 end
+
+# Special version for FV. Assumes a Dt(u) term that is not explicitly included.
+function reformat_for_stepper_fv(dtvar, flhs, frhs, slhs, srhs, stepper)
+    # rebuild the expressions depending on type of time stepper
+    dt = symbols("dt");
+    newflhs = []; # flux
+    newfrhs = [];
+    newslhs = []; # source
+    newsrhs = [];
+    
+    if length(dtvar)>1 #multi dof
+        newflhs = copy(frhs);
+        newfrhs = copy(frhs);
+        newslhs = copy(srhs);
+        newsrhs = copy(srhs);
+        for vi=1:length(dtvar);
+            (newflhs[vi], newfrhs[vi], newslhs[vi], newsrhs[vi]) = reformat_for_stepper_fv(dtvar[vi], flhs[vi], frhs[vi], slhs[vi], srhs[vi], stepper);
+        end
+    else
+        # reformat depending on stepper type
+        if stepper == EULER_IMPLICIT # lhs1 + dt*lhs2 = dt*rhs + lhs1
+            # for i=1:length(lhs[2][1])
+            #     lhs[2][1][i] = lhs[2][1][i]*dt; # dt*lhs2
+            # end
+            # for i=1:length(rhs[1])
+            #     rhs[1][i] = rhs[1][i]*dt; # dt*rhs
+            # end
+            
+            # newlhs = copy(lhs[1][1]);
+            # append!(newlhs, lhs[2][1]); # lhs1 + dt*lhs2
+            # newrhs = copy(rhs[1]);
+            # append!(newrhs, lhs[1][1]);# dt*rhs + lhs1
+            
+        elseif stepper == EULER_EXPLICIT # (lhs1 - lhs1)/dt = rhs - lhs2
+            for i=1:length(flhs[1])
+                flhs[1][i] = -flhs[1][i]; # lhs2
+            end
+            # for i=1:length(frhs[1])
+            #     frhs[1][i] = frhs[1][i]; # rhs
+            # end
+            for i=1:length(slhs[1])
+                slhs[1][i] = -slhs[1][i]; # -lhs2
+            end
+            # for i=1:length(srhs[1])
+            #     srhs[1][i] = srhs[1][i]; # rhs
+            # end
+            
+            newflhs = [];# lhs1
+            newfrhs = copy(frhs[1]);
+            append!(newfrhs, flhs[1]);# rhs - lhs2
+            # append!(newfrhs, dtvar);# dt*rhs - dt*lhs2 + lhs1
+            
+            newslhs = [];# lhs1
+            newsrhs = copy(srhs[1]);
+            append!(newsrhs, slhs[1]);# rhs - lhs2
+            # append!(newsrhs, dtvar[1]);# dt*rhs - dt*lhs2 + lhs1
+            
+        elseif stepper == CRANK_NICHOLSON # lhs1 + 0.5*dt*lhs2 = dt*rhs - 0.5*dt*lhs2 + lhs1
+            # lhs2l = copy(lhs[2][1]);
+            # lhs2r = copy(lhs[2][1]);
+            # for i=1:length(lhs[2][1])
+            #     lhs2l[i] = Basic(0.5)*lhs2l[i]*dt; # 0.5*dt*lhs2
+            #     lhs2r[i] = Basic(-0.5)*lhs2r[i]*dt; # -0.5*dt*lhs2
+            # end
+            # for i=1:length(rhs[1])
+            #     rhs[1][i] = rhs[1][i]*dt; # dt*rhs
+            # end
+            
+            # newlhs = copy(lhs[1][1]);
+            # append!(newlhs, lhs2l); # lhs1 + 0.5*dt*lhs2
+            # newrhs = copy(rhs[1]);
+            # append!(newrhs, lhs[1][1]);# dt*rhs - 0.5*dt*lhs2 + lhs1
+            # append!(newrhs, lhs2r);
+            
+        elseif stepper == LSRK4 # (lhs1) : rhs - lhs2
+            # for i=1:length(lhs[2][1])
+            #     lhs[2][1][i] = -lhs[2][1][i]; # -lhs2
+            # end
+            # # for i=1:length(rhs[1])
+            # #     rhs[1][i] = rhs[1][i]; # rhs
+            # # end
+            
+            # newlhs = copy(lhs[1][1]);# lhs1
+            # newrhs = copy(rhs[1]);
+            # append!(newrhs, lhs[2][1]);# rhs - lhs2
+            
+        elseif stepper == RK4 # (lhs1) : rhs - lhs2
+            # for i=1:length(lhs[2][1])
+            #     lhs[2][1][i] = -lhs[2][1][i]; # -lhs2
+            # end
+            # # for i=1:length(rhs[1])
+            # #     rhs[1][i] = rhs[1][i]; # rhs
+            # # end
+            
+            # newlhs = copy(lhs[1][1]);# lhs1
+            # newrhs = copy(rhs[1]);
+            # append!(newrhs, lhs[2][1]);# rhs - lhs2
+            
+        end
+    end
+    
+    return (newflhs, newfrhs, newslhs, newsrhs);
+end

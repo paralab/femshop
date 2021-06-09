@@ -53,12 +53,15 @@ end
 # Set the solver type: CG, etc.
 macro solver(type)
     return esc(quote
-        Femshop.config.solver_type = $type;
-        if $type == DG
-            set_solver(Femshop.DGSolver);
-        elseif $type == CG
-            set_solver(Femshop.CGSolver);
-        end
+        # Femshop.config.solver_type = $type;
+        # if $type == DG
+        #     set_solver(Femshop.DGSolver);
+        # elseif $type == CG
+        #     set_solver(Femshop.CGSolver);
+        # elseif $type == FV
+        #     set_solver(Femshop.FVSolver);
+        # end
+        set_solver($type);
     end)
 end
 
@@ -462,42 +465,97 @@ macro weakForm(var, ex)
     end)
 end
 
+macro fluxAndSource(var, fex, sex)
+    return esc(quote
+        using LinearAlgebra
+        
+        if typeof($var) <: Array
+            # multiple simultaneous variables
+            symvars = [];
+            symfex = [];
+            symsex = [];
+            symdex = [];
+            if !(length($var) == length($fex) && length($var) == length($sex))
+                printerr("Error in flux function: # of unknowns must equal # of equations. (example: @flux([a,b,c], [f1,f2,f3]))");
+            end
+            for vi=1:length($var)
+                push!(symvars, $var[vi].symbol);
+                push!(symfex, Meta.parse(($fex)[vi]));
+                push!(symsex, Meta.parse(($sex)[vi]));
+                push!(symdex, Meta.parse("Dt("*string($var[vi].symbol)*")"));
+            end
+        else
+            symfex = Meta.parse($fex);
+            symsex = Meta.parse($sex);
+            symdex = Meta.parse("Dt("*string($var.symbol)*")");
+            symvars = $var.symbol;
+        end
+        
+        log_entry("Making flux and source for variable(s): "*string(symvars));
+        log_entry("flux, input: "*string($fex));
+        log_entry("source, input: "*string($sex));
+        
+        # The parsing step
+        (flhs_expr, frhs_expr) = sp_parse(symfex, symvars);
+        (slhs_expr, srhs_expr) = sp_parse(symsex, symvars);
+        (dlhs_expr, drhs_expr) = sp_parse(symdex, symvars);
+        
+        # Modify the expressions according to time stepper.
+        # There is an assumed Dt(u) added which is the only time derivative.
+        log_entry("time derivative, before modifying for time: "*string(dlhs_expr));
+        log_entry("flux, before modifying for time: "*string(flhs_expr)*" - "*string(frhs_expr));
+        log_entry("source, before modifying for time: "*string(slhs_expr)*" - "*string(srhs_expr));
+        
+        (newflhs, newfrhs, newslhs, newsrhs) = reformat_for_stepper_fv(dlhs_expr[1], flhs_expr, frhs_expr, slhs_expr, srhs_expr, Femshop.config.stepper);
+        
+        log_entry("flux, modified for time stepping: "*string(newflhs)*" - "*string(newfrhs));
+        log_entry("source, modified for time stepping: "*string(newslhs)*" - "*string(newsrhs));
+        
+        flhs_expr = newflhs;
+        frhs_expr = newfrhs;
+        slhs_expr = newslhs;
+        srhs_expr = newsrhs;
+        
+        # change symbolic layer into code layer
+        flhs_code = generate_code_layer_fv(flhs_expr, $var, LHS, "flux");
+        frhs_code = generate_code_layer_fv(frhs_expr, $var, RHS, "flux");
+        slhs_code = generate_code_layer_fv(slhs_expr, $var, LHS, "source");
+        srhs_code = generate_code_layer_fv(srhs_expr, $var, RHS, "source");
+        Femshop.log_entry("flux, code layer: \n  LHS = "*string(flhs_code)*" \n  RHS = "*string(frhs_code));
+        Femshop.log_entry("source, code layer: \n  LHS = "*string(slhs_code)*" \n  RHS = "*string(srhs_code));
+        
+        if Femshop.language == JULIA || Femshop.language == 0
+            args = "args";
+            @makeFunction(args, string(slhs_code));
+            set_lhs($var);
+            
+            @makeFunction(args, string(srhs_code));
+            set_rhs($var);
+            
+            @makeFunction(args, string(flhs_code));
+            set_lhs_surface($var);
+            
+            @makeFunction(args, string(frhs_code));
+            set_rhs_surface($var);
+            
+        else
+            # not ready
+            println("Not ready to generate FV code foe external target.")
+        end
+        
+    end)
+end
+
 # Import and export the code layer functions to allow manual changes
 macro exportCode(file)
-    lhsfile = string(file) * ".lhs"
-    rhsfile = string(file) * ".rhs"
     return esc(quote
-        export_code_layer($lhsfile, LHS);
-        export_code_layer($rhsfile, RHS);
-    end)
-end
-macro exportLHS(file)
-    return esc(quote
-    export_code_layer($file, LHS);
-    end)
-end
-macro exportRHS(file)
-    return esc(quote
-    export_code_layer($file, RHS);
+        export_code_layer($file);
     end)
 end
 
 macro importCode(file)
-    lhsfile = string(file) * ".lhs"
-    rhsfile = string(file) * ".rhs"
     return esc(quote
-        import_code_layer($lhsfile, LHS);
-        import_code_layer($rhsfile, RHS);
-    end)
-end
-macro importLHS(file)
-    return esc(quote
-    import_code_layer($file, LHS);
-    end)
-end
-macro importRHS(file)
-    return esc(quote
-    import_code_layer($file, RHS);
+        import_code_layer($file);
     end)
 end
 

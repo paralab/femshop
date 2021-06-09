@@ -6,20 +6,22 @@ module Femshop
 # Public macros and functions
 export @generateFor, @domain, @mesh, @solver, @stepper, @setSteps, @functionSpace, @trialFunction, @matrixFree,
         @testFunction, @nodes, @order, @boundary, @addBoundaryID, @referencePoint, @variable, @coefficient, @parameter, @testSymbol, @initial,
-        @timeInterval, @weakForm, @LHS, @RHS, @exportRHS, @exportLHS, @exportCode, @importRHS, @importLHS, @importCode,
+        @timeInterval, @weakForm, @fluxAndSource, @LHS, @RHS, @exportCode, @importCode,
         @customOperator, @customOperatorFile,
         @outputMesh, @useLog, @finalize
-export init_femshop, set_language, set_custom_gen_target, dendro, set_solver, set_stepper, set_specified_steps, set_matrix_free, reformat_for_stepper, 
+export init_femshop, set_language, set_custom_gen_target, dendro, set_solver, set_stepper, set_specified_steps, set_matrix_free,
+        reformat_for_stepper, reformat_for_stepper_fv,
         add_mesh, output_mesh, add_boundary_ID, add_test_function, 
         add_initial_condition, add_boundary_condition, add_reference_point, set_rhs, set_lhs, set_lhs_surface, set_rhs_surface, solve, 
         finalize, cachesim, cachesim_solve, export_code_layer, import_code_layer,
         morton_nodes, hilbert_nodes, tiled_nodes, morton_elements, hilbert_elements, tiled_elements, ef_nodes, random_nodes, random_elements
 export build_cache_level, build_cache, build_cache_auto
 export sp_parse
-export generate_code_layer, generate_code_layer_surface
+export generate_code_layer, generate_code_layer_surface, generate_code_layer_fv
 export Variable, add_variable
 export Coefficient, add_coefficient
 export Parameter, add_parameter
+export FVInfo
 
 ### Module's global variables ###
 # configuration, output files, etc.
@@ -39,6 +41,7 @@ log_line_index = 1;
 #mesh
 mesh_data = nothing;    # The basic element information as read from a MSH file or generated here.
 grid_data = nothing;    # The full collection of nodes(including internal nodes) and other mesh info in the actual DOF ordering.
+fv_info = nothing;      # Finite volume info
 refel = nothing;        # Reference element (will eventually be an array of refels)
 elemental_order = [];   # Determines the order of the elemental loops
 #problem variables
@@ -89,6 +92,7 @@ function init_femshop(name="unnamedProject")
     global log_line_index = 1;
     global mesh_data = nothing;
     global grid_data = nothing;
+    global fv_info = nothing;
     global refel = nothing;
     global elemental_order = [];
     global var_count = 0;
@@ -136,9 +140,18 @@ function dendro(;max_depth=6, wavelet_tol=0.1, partition_tol=0.3, solve_tol=1e-6
     global dendro_params = (max_depth, wavelet_tol, partition_tol, solve_tol, max_iters);
 end
 
-# This may be removed. Sets the solver to the DG or CG solver module. But does it ever get used?
-function set_solver(s)
-    global solver = s;
+# Set the solver module and type
+function set_solver(stype)
+    config.solver_type = stype;
+    if stype == DG
+        global solver = DGSolver;
+    elseif stype == CG
+        global solver = CGSolver;
+    elseif stype == FV
+        global solver = FVSolver;
+        sourcedir = @__DIR__
+        add_custom_op_file(string(sourcedir)*"/fv_ops.jl");
+    end
 end
 
 # Sets the time stepper
@@ -182,14 +195,12 @@ function add_mesh(mesh)
         
     end
     log_entry("Added mesh with "*string(mesh_data.nx)*" vertices and "*string(mesh_data.nel)*" elements.", 1);
-    
-    # # If using DG, need to change the cg grid into a dg grid
-    # if config.solver_type == DG
-    #     log_entry("Changing to a DG grid. (CG grid had "*string(size(grid_data.allnodes,2))*" nodes.)", 2);
-    #     global grid_data = cg_grid_to_dg_grid(grid_data, mesh_data, refel);
-    # end
-    
     log_entry("Full grid has "*string(size(grid_data.allnodes,2))*" nodes.", 2);
+    
+    # If using FV, set up the FV_info
+    if config.solver_type == FV
+        global fv_info = build_FV_info(grid_data);
+    end
     
     # Set elemental loop ordering to match the order from mesh for now.
     global elemental_order = 1:mesh_data.nel;
@@ -222,6 +233,10 @@ function add_variable(var)
     if language == JULIA || language == 0
         # adjust values arrays
         N = size(grid_data.allnodes,2);
+        if config.solver_type == FV
+            N = size(grid_data.loc2glb, 2); # FV has one value per cell
+        end
+        
         if var.type == SCALAR
             var.values = zeros(1, N);
         elseif var.type == VECTOR
@@ -526,38 +541,41 @@ function set_lhs_surface(var, code="")
 end
 
 # Import and export code layer functions
-function export_code_layer(filename, LorR)
+function export_code_layer(filename)
     # For now, only do this for Julia code because others are already output in code files.
     if language == JULIA || language == 0
         file = open(filename*".jl", "w");
-        println(file, "#=\nGenerated "*LorR*" functions for "*project_name*"\n=#\n");
-        if LorR == LHS
-            codevol = bilinears;
-            codesurf = face_bilinears;
-        else
-            codevol = linears;
-            codesurf = face_linears;
-        end
-        for i=1:length(variables)
-            var = string(variables[i].symbol);
-            if !(codevol[i] === nothing)
-                func_name = LorR*"_volume_function_for_"*var;
-                println(file, "function "*func_name*"(args)");
-                println(file, codevol[i].str);
-                println(file, "end #"*func_name*"\n");
+        println(file, "#=\nGenerated functions for "*project_name*"\n=#\n");
+        for LorR in [LHS, RHS]
+            if LorR == LHS
+                codevol = bilinears;
+                codesurf = face_bilinears;
             else
-                println(file, "# No "*LorR*" volume set for "*var*"\n");
+                codevol = linears;
+                codesurf = face_linears;
             end
-            
-            if !(codesurf[i] === nothing)
-                func_name = LorR*"_surface_function_for_"*var;
-                println(file, "function "*func_name*"(args)");
-                println(file, codesurf[i].str);
-                println(file, "end #"*func_name*"\n");
-            else
-                println(file, "# No "*LorR*" surface set for "*var*"\n");
+            for i=1:length(variables)
+                var = string(variables[i].symbol);
+                if !(codevol[i] === nothing)
+                    func_name = LorR*"_volume_function_for_"*var;
+                    println(file, "function "*func_name*"(args)");
+                    println(file, codevol[i].str);
+                    println(file, "end #"*func_name*"\n");
+                else
+                    println(file, "# No "*LorR*" volume set for "*var*"\n");
+                end
+                
+                if !(codesurf[i] === nothing)
+                    func_name = LorR*"_surface_function_for_"*var;
+                    println(file, "function "*func_name*"(args)");
+                    println(file, codesurf[i].str);
+                    println(file, "end #"*func_name*"\n");
+                else
+                    println(file, "# No "*LorR*" surface set for "*var*"\n");
+                end
             end
         end
+        
         close(file);
         
     else
@@ -565,81 +583,84 @@ function export_code_layer(filename, LorR)
     end
 end
 
-function import_code_layer(filename, LorR)
+function import_code_layer(filename)
     # For now, only do this for Julia code because others are already output in code files.
     if language == JULIA || language == 0
         file = open(filename*".jl", "r");
         lines = readlines(file, keep=true);
-        if LorR == LHS
-            codevol = bilinears;
-            codesurf = face_bilinears;
-        else
-            codevol = linears;
-            codesurf = face_linears;
+        for LorR in [LHS, RHS]
+            if LorR == LHS
+                codevol = bilinears;
+                codesurf = face_bilinears;
+            else
+                codevol = linears;
+                codesurf = face_linears;
+            end
+            
+            # Loop over variables and check to see if a matching function is present.
+            for i=1:length(variables)
+                # Scan the file for a pattern like
+                #   function LHS_volume_function_for_u
+                #       ...
+                #   end #LHS_volume_function_for_u
+                #
+                # Set LHS/RHS, volume/surface, and the variable name
+                var = string(variables[i].symbol);
+                vfunc_name = LorR*"_volume_function_for_"*var;
+                vfunc_string = "";
+                sfunc_name = LorR*"_surface_function_for_"*var;
+                sfunc_string = "";
+                for st=1:length(lines)
+                    if occursin("function "*vfunc_name, lines[st])
+                        # s is the start of the function
+                        for en=(st+1):length(lines)
+                            if occursin("end #"*vfunc_name, lines[en])
+                                # en is the end of the function
+                                st = en; # update st
+                                break;
+                            else
+                                vfunc_string *= lines[en];
+                            end
+                        end
+                    elseif occursin("function "*sfunc_name, lines[st])
+                        # s is the start of the function
+                        for en=(st+1):length(lines)
+                            if occursin("end #"*sfunc_name, lines[en])
+                                # en is the end of the function
+                                st = en; # update st
+                                break;
+                            else
+                                sfunc_string *= lines[en];
+                            end
+                        end
+                    end
+                end # lines loop
+                
+                # Generate the functions and set them in the right places
+                if vfunc_string == ""
+                    println("Warning: While importing, no "*LorR*" volume function was found for "*var);
+                else
+                    @makeFunction("args", string(vfunc_string));
+                    if LorR == LHS
+                        set_lhs(variables[i]);
+                    else
+                        set_rhs(variables[i]);
+                    end
+                end
+                if sfunc_string == ""
+                    println("Warning: While importing, no "*LorR*" surface function was found for "*var);
+                else
+                    @makeFunction("args", string(sfunc_string));
+                    if LorR == LHS
+                        set_lhs_surface(variables[i]);
+                    else
+                        set_rhs_surface(variables[i]);
+                    end
+                end
+                
+            end # vars loop
         end
         
-        # Loop over variables and check to see if a matching function is present.
-        for i=1:length(variables)
-            # Scan the file for a pattern like
-            #   function LHS_volume_function_for_u
-            #       ...
-            #   end #LHS_volume_function_for_u
-            #
-            # Set LHS/RHS, volume/surface, and the variable name
-            var = string(variables[i].symbol);
-            vfunc_name = LorR*"_volume_function_for_"*var;
-            vfunc_string = "";
-            sfunc_name = LorR*"_surface_function_for_"*var;
-            sfunc_string = "";
-            for st=1:length(lines)
-                if occursin("function "*vfunc_name, lines[st])
-                    # s is the start of the function
-                    for en=(st+1):length(lines)
-                        if occursin("end #"*vfunc_name, lines[en])
-                            # en is the end of the function
-                            st = en; # update st
-                            break;
-                        else
-                            vfunc_string *= lines[en];
-                        end
-                    end
-                elseif occursin("function "*sfunc_name, lines[st])
-                    # s is the start of the function
-                    for en=(st+1):length(lines)
-                        if occursin("end #"*sfunc_name, lines[en])
-                            # en is the end of the function
-                            st = en; # update st
-                            break;
-                        else
-                            sfunc_string *= lines[en];
-                        end
-                    end
-                end
-            end # lines loop
-            
-            # Generate the functions and set them in the right places
-            if vfunc_string == ""
-                println("Warning: While importing, no "*LorR*" volume function was found for "*var);
-            else
-                @makeFunction("args", string(vfunc_string));
-                if LorR == LHS
-                    set_lhs(variables[i]);
-                else
-                    set_rhs(variables[i]);
-                end
-            end
-            if sfunc_string == ""
-                println("Warning: While importing, no "*LorR*" surface function was found for "*var);
-            else
-                @makeFunction("args", string(sfunc_string));
-                if LorR == LHS
-                    set_lhs_surface(variables[i]);
-                else
-                    set_rhs_surface(variables[i]);
-                end
-            end
-            
-        end # vars loop
     else
         # TODO non-julia
     end
@@ -806,6 +827,31 @@ function solve(var, nlvar=nothing; nonlinear=false)
             end
             
             log_entry("Solved for "*varnames*".(took "*string(t)*" seconds)", 1);
+            
+        elseif config.solver_type == FV
+            init_fvsolver();
+            
+            slhs = bilinears[varind];
+            srhs = linears[varind];
+            flhs = face_bilinears[varind];
+            frhs = face_linears[varind];
+            
+            if prob.time_dependent
+                global time_stepper = init_stepper(grid_data.allnodes, time_stepper);
+                if use_specified_steps
+                    Femshop.time_stepper.dt = specified_dt;
+				    Femshop.time_stepper.Nsteps = specified_Nsteps;
+                end
+				if (nonlinear)
+                	t = 0;
+                    #TODO
+				else
+                	t = @elapsed(result = FVSolver.linear_solve(var, slhs, srhs, flhs, frhs, time_stepper));
+				end
+                # result is already stored in variables
+            else
+                # does this make sense?
+            end
         end
     end
 

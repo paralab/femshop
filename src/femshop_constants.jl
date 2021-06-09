@@ -4,7 +4,7 @@ Use string values to make printing/interpretation easier
 =#
 export JULIA, CPP, MATLAB, DENDRO, HOMG, CUSTOM_GEN_TARGET,
         SQUARE, IRREGULAR, UNIFORM_GRID, TREE, UNSTRUCTURED, 
-        CG, DG, HDG,
+        CG, DG, HDG, FV,
         NODAL, MODAL, LEGENDRE, UNIFORM, GAUSS, LOBATTO, 
         NONLINEAR_NEWTON, NONLINEAR_SOMETHING, 
         EULER_EXPLICIT, EULER_IMPLICIT, CRANK_NICHOLSON, RK4, LSRK4, ABM4, 
@@ -37,6 +37,7 @@ const UNSTRUCTURED = "unstructured";
 const CG = "CG";
 const DG = "DG";
 const HDG = "HDG";
+const FV = "FV";
 
 const NODAL = "nodal";
 const MODAL = "modal";

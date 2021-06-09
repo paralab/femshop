@@ -6,7 +6,7 @@ export sp_parse, add_custom_op, add_custom_op_file
 
 import ..Femshop: JULIA, CPP, MATLAB, DENDRO, HOMG, CUSTOM_GEN_TARGET,
             SQUARE, IRREGULAR, UNIFORM_GRID, TREE, UNSTRUCTURED, 
-            CG, DG, HDG,
+            CG, DG, HDG, FV,
             NODAL, MODAL, LEGENDRE, UNIFORM, GAUSS, LOBATTO, 
             NONLINEAR_NEWTON, NONLINEAR_SOMETHING, 
             EULER_EXPLICIT, EULER_IMPLICIT, CRANK_NICHOLSON, RK4, LSRK4, ABM4, 
@@ -76,7 +76,7 @@ function add_custom_op_file(file)
 end
 
 # Parses a variational form expression into a SymEngine Basic expression 
-# Takes an Expr, variable symbol, and test function symbol
+# Takes an Expr, variable symbol
 # The symbols are only for determining lhs vs. rhs
 # Returns a tuple of SymEngine expressions (lhs, rhs) for the equation lhs = rhs
 # lhs contains terms including the unknown variable
@@ -100,7 +100,11 @@ function sp_parse(ex, var)
     end
     
     # Work with a copy of ex
-    symex = copy(ex);
+    if typeof(ex) == Symbol
+        symex = ex;
+    else
+        symex = copy(ex);
+    end
     
     # Insert parameters
     symex = insert_parameters(symex);

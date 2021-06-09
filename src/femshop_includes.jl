@@ -45,6 +45,7 @@ include("parameter.jl");
 include("geometric_factors.jl");
 include("dg_utils.jl");
 include("time_steppers.jl");
+include("fv_utils.jl");
 
 # Femshop submodules
 include("cachesim/CachesimOut.jl");
@@ -57,4 +58,6 @@ include("DGSolver.jl");
 using .DGSolver
 include("CGSolver.jl");
 using .CGSolver
+include("FVSolver.jl");
+using .FVSolver
 

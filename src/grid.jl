@@ -43,7 +43,7 @@ function grid_from_mesh(mesh)
     
     refel = build_refel(dim, ord, nfaces, config.elemental_nodes);
     
-    if config.solver_type == DG
+    if config.solver_type == DG || config.solver_type == FV
         Gness = 2;
     else
         Gness = 1;
@@ -143,6 +143,12 @@ function grid_from_mesh(mesh)
         allnodes = tmpallnodes; # DG grid is already made
     end
     
+    # if config.solver_type == FV
+    #     centers = zeros(dim, nel);# For finite volume, store cell centers
+    # else
+    #     centers = zeros(0);
+    # end
+    
     # vertices, faces and boundary
     for ei=1:nel
         n_vert = etypetonv[mesh.etypes[ei]];
@@ -161,6 +167,10 @@ function grid_from_mesh(mesh)
             end
         end
         el_center ./= Np;
+        # # For finite volumes, store the cell center
+        # if config.solver_type == FV
+        #     centers[:, ei] = el_center;
+        # end
         
         # f2glb has duplicates. Compare to mesh faces and keep same ordering as mesh.
         # Copy normals and bdry info.
