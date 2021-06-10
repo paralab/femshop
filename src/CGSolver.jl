@@ -6,18 +6,18 @@ module CGSolver
 export init_cgsolver, solve, nonlinear_solve
 
 import ..Femshop: JULIA, CPP, MATLAB, DENDRO, HOMG, CUSTOM_GEN_TARGET,
-            SQUARE, IRREGULAR, UNIFORM_GRID, TREE, UNSTRUCTURED, 
-            CG, DG, HDG,
-            NODAL, MODAL, LEGENDRE, UNIFORM, GAUSS, LOBATTO, 
-            NONLINEAR_NEWTON, NONLINEAR_SOMETHING, 
-            EULER_EXPLICIT, EULER_IMPLICIT, CRANK_NICHOLSON, RK4, LSRK4, ABM4, 
-            DEFAULT_SOLVER, PETSC, 
-            VTK, RAW_OUTPUT, CUSTOM_OUTPUT, 
-            DIRICHLET, NEUMANN, ROBIN, NO_BC,
-            MSH_V2, MSH_V4,
-            SCALAR, VECTOR, TENSOR, SYM_TENSOR,
-            LHS, RHS,
-            LINEMESH, QUADMESH, HEXMESH
+        SQUARE, IRREGULAR, UNIFORM_GRID, TREE, UNSTRUCTURED, 
+        CG, DG, HDG, FV,
+        NODAL, MODAL, CELL, LEGENDRE, UNIFORM, GAUSS, LOBATTO, 
+        NONLINEAR_NEWTON, NONLINEAR_SOMETHING, 
+        EULER_EXPLICIT, EULER_IMPLICIT, CRANK_NICHOLSON, RK4, LSRK4, ABM4, 
+        DEFAULT_SOLVER, PETSC, 
+        VTK, RAW_OUTPUT, CUSTOM_OUTPUT, 
+        DIRICHLET, NEUMANN, ROBIN, NO_BC, FLUX,
+        MSH_V2, MSH_V4,
+        SCALAR, VECTOR, TENSOR, SYM_TENSOR,
+        LHS, RHS,
+        LINEMESH, QUADMESH, HEXMESH
 import ..Femshop: log_entry, printerr
 import ..Femshop: config, prob, variables, mesh_data, grid_data, refel, time_stepper, elemental_order
 import ..Femshop: Variable, Coefficient, GenFunction

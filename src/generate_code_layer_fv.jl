@@ -428,7 +428,7 @@ function generate_code_layer_fv_julia(symex, var, lorr, fors)
                     submatrices[smi] = nothing;
                 end
                 for i=1:length(terms[vi])
-                    ti = offset_ind[vi];
+                    ti = 1 + offset_ind[vi];
                     
                     if submatrices[ti] === nothing
                         submatrices[ti] = terms[vi][i];
@@ -442,11 +442,8 @@ function generate_code_layer_fv_julia(symex, var, lorr, fors)
                 
                 for ci=1:comps
                     if !(submatrices[ci] === nothing)
-                        ti = ci-1;
-                        sti = :($ti*refel.Np + 1);
-                        eni = :(($ti + 1)*refel.Np);
                         
-                        push!(code.args, Expr(:(+=), :(cell_average[$sti:$eni]), submatrices[ci]));
+                        push!(code.args, Expr(:(+=), :(cell_average[$ci]), submatrices[ci]));
                     end
                 end
                 
@@ -523,11 +520,8 @@ function generate_code_layer_fv_julia(symex, var, lorr, fors)
                     
                     for ci=1:comps
                         if !(submatrices[ci] === nothing)
-                            ti = ci-1;
-                            sti = :($ti*refel.Np + 1);
-                            eni = :(($ti + 1)*refel.Np);
                             
-                            push!(code.args, Expr(:(+=), :(cell_average[$sti:$eni]), submatrices[ci]));
+                            push!(code.args, Expr(:(+=), :(cell_average[$ci]), submatrices[ci]));
                         end
                     end
                     

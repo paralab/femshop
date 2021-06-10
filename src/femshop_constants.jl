@@ -5,12 +5,12 @@ Use string values to make printing/interpretation easier
 export JULIA, CPP, MATLAB, DENDRO, HOMG, CUSTOM_GEN_TARGET,
         SQUARE, IRREGULAR, UNIFORM_GRID, TREE, UNSTRUCTURED, 
         CG, DG, HDG, FV,
-        NODAL, MODAL, LEGENDRE, UNIFORM, GAUSS, LOBATTO, 
+        NODAL, MODAL, CELL, LEGENDRE, UNIFORM, GAUSS, LOBATTO, 
         NONLINEAR_NEWTON, NONLINEAR_SOMETHING, 
         EULER_EXPLICIT, EULER_IMPLICIT, CRANK_NICHOLSON, RK4, LSRK4, ABM4, 
         DEFAULT_SOLVER, PETSC, 
         VTK, RAW_OUTPUT, CUSTOM_OUTPUT, 
-        DIRICHLET, NEUMANN, ROBIN, NO_BC,
+        DIRICHLET, NEUMANN, ROBIN, NO_BC, FLUX,
         MSH_V2, MSH_V4,
         SCALAR, VECTOR, TENSOR, SYM_TENSOR,
         LHS, RHS,
@@ -39,8 +39,10 @@ const DG = "DG";
 const HDG = "HDG";
 const FV = "FV";
 
+# Value type
 const NODAL = "nodal";
 const MODAL = "modal";
+const CELL = "cell";
 
 # Function space
 const LEGENDRE = "Legendre";
@@ -80,6 +82,7 @@ const DIRICHLET = "Dirichlet";
 const NEUMANN = "Neumann";
 const ROBIN = "Robin";
 const NO_BC = "No BC";
+const FLUX = "flux";
 
 # variables
 const SCALAR = "scalar";

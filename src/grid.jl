@@ -19,6 +19,8 @@ struct Grid
     face2element::Array{Int,2}      # elements on both sides of a face, 0=boundary (size is (2, Nfaces))
     facenormals::Array{Float64,2}   # normal vector for each face
     faceRefelInd::Array{Int,2}      # Index for face within the refel for each side
+    
+    facebid::Array{Int,1}           # BID of each face (0=interior face)
 end
 
 etypetonv = [2, 3, 4, 4, 8, 6, 5, 2, 3, 4, 4, 8, 6, 5, 1, 4, 8, 6, 5]; # number of vertices for each type
@@ -43,7 +45,7 @@ function grid_from_mesh(mesh)
     
     refel = build_refel(dim, ord, nfaces, config.elemental_nodes);
     
-    if config.solver_type == DG || config.solver_type == FV
+    if config.solver_type == DG # || config.solver_type == FV ????
         Gness = 2;
     else
         Gness = 1;
@@ -69,6 +71,7 @@ function grid_from_mesh(mesh)
     face2element = zeros(Int, 2, size(mesh.face2element,2));  # face to element map
     facenormals = zeros(dim, totalfaces); # normal vectors for every face
     faceRefelInd = zeros(Int, 2, totalfaces); # Index in refel for this face for elements on both sides
+    facebid = zeros(Int, totalfaces); # BID of each face
     
     tmpallnodes = zeros(dim, mesh.nel*refel.Np);
     for ei=1:nel
@@ -223,6 +226,7 @@ function grid_from_mesh(mesh)
                     if !(gbid === nothing) # This is a boundary face
                         append!(bdry[gbid], tmpf2glb);
                         push!(bdryfc[gbid], thisfaceind);
+                        facebid[thisfaceind] = gbid;
                         thisnormal = normals[:, mfi];
                         normchunk = zeros(config.dimension, nfacenodes);
                         for ni=1:nfacenodes
@@ -280,7 +284,7 @@ function grid_from_mesh(mesh)
         end
     end
     
-    return (refel, Grid(allnodes, bdry, bdryfc, bdrynorm, bids, loc2glb, glbvertex, f2glb, element2face, face2element, facenormals, faceRefelInd));
+    return (refel, Grid(allnodes, bdry, bdryfc, bdrynorm, bids, loc2glb, glbvertex, f2glb, element2face, face2element, facenormals, faceRefelInd, facebid));
 end
 
 function collectBIDs(mesh)

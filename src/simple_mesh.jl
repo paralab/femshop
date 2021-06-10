@@ -51,19 +51,19 @@ function simple_line_mesh(nx, bn, interval)
     bdryID[1] = 1;
     f2e[:,1] = [1,0];
     normals[1] = -1;
-    # if bn == 2
-    #     bdryID[Nv] = 2; # for two BIDs
-    # else
-    #     bdryID[Nv] = 1; # for one BID
-    # end
+    if bn == 2
+        bdryID[Nv] = 2; # for two BIDs
+    else
+        bdryID[Nv] = 1; # for one BID
+    end
     
     mesh = MeshData(Nv, xv, ind, nel, el, etypes, numvert, invind, f2n, f2e, e2f, normals, bdryID); # MeshData struct
     
     (refel, grid) = grid_from_mesh(mesh);
     
-    if bn == 2
-        add_boundary_ID_to_grid(2, x -> x >= interval[2], grid);
-    end
+    # if bn == 2
+    #     add_boundary_ID_to_grid(2, x -> x >= interval[2], grid);
+    # end
     
     return (mesh, refel, grid);
 end
