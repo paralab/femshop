@@ -1,5 +1,7 @@
 # Geometric factors
-export geometric_factors, geometric_factors_face, Jacobian, build_deriv_matrix, build_face_deriv_matrix, get_quadrature_point_coords
+export GeometricFactors, Jacobian
+export build_geometric_factors, geometric_factors, geometric_factors_face, 
+        build_deriv_matrix, build_face_deriv_matrix, get_quadrature_point_coords
 
 include("tensor_ops.jl");
 
@@ -8,11 +10,84 @@ include("tensor_ops.jl");
 # Used by the "geometric_factors" function
 =#
 struct Jacobian
-    rx; ry; rz; sx; sy; sz; tx; ty; tz;
+    rx::Array{Float64,1}
+    ry::Array{Float64,1}
+    rz::Array{Float64,1}
+    sx::Array{Float64,1}
+    sy::Array{Float64,1}
+    sz::Array{Float64,1}
+    tx::Array{Float64,1}
+    ty::Array{Float64,1}
+    tz::Array{Float64,1}
 end
+
+#=
+Stores all of the geometric factors for the grid.
+=#
+struct GeometricFactors
+    J::Array{Jacobian,1}        # Jacobian for each element
+    detJ::Array{Float64,1}      # Determinant of Jacobian for each element
+    
+    # These below are only computed if needed, otherwise empty arrays
+    volume::Array{Float64,1}    # Volume of each element (used by FV)
+    face_detJ::Array{Float64,1} # Determinant of Jacobian for each face (used by DG and FV)
+    area::Array{Float64,1}      # Area of each face (used by FV)
+end
+
 import Base.copy
 function copy(j::Jacobian)
     return Jacobian(copy(j.rx),copy(j.ry),copy(j.rz),copy(j.sx),copy(j.sy),copy(j.sz),copy(j.tx),copy(j.ty),copy(j.tz));
+end
+
+# Construct the geometric factors from a grid+refel
+function build_geometric_factors(refel, grid; do_face_detj=false, do_vol_area=false, constant_jacobian=true)
+    nel = size(grid.loc2glb, 2);
+    totalfaces = size(grid.facenormals, 2);
+    dim = size(grid.allnodes, 1);
+    
+    detJ = zeros(nel);
+    J = Array{Jacobian,1}(undef, nel);
+    
+    if do_vol_area
+        volume = zeros(nel);
+        area = zeros(totalfaces);
+    else
+        volume = [];
+        area = [];
+    end
+    
+    for e=1:nel
+        glb = grid.loc2glb[:,e];
+        xe = grid.allnodes[:,glb[:]];
+        
+        (e_detJ, e_J) = geometric_factors(refel, xe, constantJ=constant_jacobian);
+        
+        detJ[e] = e_detJ[1];
+        J[e] = e_J;
+        
+        if do_vol_area
+            volume[e] = (2 ^ dim) * detJ[e];
+        end
+    end
+    
+    if do_face_detj
+        face_detj = zeros(totalfaces);
+        for fi=1:totalfaces
+            xf = grid.allnodes[:,grid.face2glb[:,1,fi]];
+            
+            (fdj, fj) = geometric_factors_face(refel, grid.faceRefelInd[1,fi], xf);
+            
+            face_detj[fi] = fdj[1];
+            
+            if do_vol_area
+                area[fi] = (2 ^ (dim-1)) * fdj[1];
+            end
+        end
+    else
+        face_detj = [];
+    end
+    
+    return GeometricFactors(J, detJ, volume, face_detj, area);
 end
 
 function geometric_factors(refel, pts; constantJ = false)
@@ -32,10 +107,11 @@ function geometric_factors(refel, pts; constantJ = false)
             xr  = refel.Dg*pts[:];
             if constantJ
                 detJ = xr[1];
+                rx = [1 / detJ];
             else
                 detJ = xr[:];
+                rx = 1 ./ detJ;
             end
-            rx = 1 ./ detJ;
             J = Jacobian(rx,[],[],[],[],[],[],[],[]);
         end
         
@@ -53,6 +129,10 @@ function geometric_factors(refel, pts; constantJ = false)
         
         if constantJ
             detJ = -xs[1]*yr[1] + xr[1]*ys[1];
+            xr = [xr[1]];
+            xs = [xs[1]];
+            yr = [yr[1]];
+            ys = [ys[1]];
         else
             detJ = -xs.*yr + xr.*ys;
         end
@@ -83,6 +163,15 @@ function geometric_factors(refel, pts; constantJ = false)
         
         if constantJ
             detJ = xr[1]*(ys[1]*zt[1]-zs[1]*yt[1]) - yr[1]*(xs[1]*zt[1]-zs[1]*xt[1]) + zr[1]*(xs[1]*yt[1]-ys[1]*xt[1]);
+            xr = [xr[1]];
+            xs = [xs[1]];
+            xt = [xt[1]];
+            yr = [yr[1]];
+            ys = [ys[1]];
+            yt = [yt[1]];
+            zr = [zr[1]];
+            zs = [zs[1]];
+            zt = [zt[1]];
         else
             detJ = xr.*(ys.*zt-zs.*yt) - yr.*(xs.*zt-zs.*xt) + zr.*(xs.*yt-ys.*xt);
         end
@@ -117,10 +206,11 @@ function geometric_factors_face(refel, face, pts)
     elseif refel.dim == 2
         dx = pts[1,end] - pts[1,1];
         dy = pts[2,end] - pts[2,1];
-        detJ = 2/sqrt(dx*dx+dy*dy);
+        detJ = 0.5 * sqrt(dx*dx+dy*dy);
         
     else
         # TODO this assumes rectangular faces
+        println("Warning: face geometric factors assume regular hex mesh. See geometric_factors_face() in geometric_factors.jl")
         dx = abs(pts[1,end] - pts[1,1]);
         dy = abs(pts[2,end] - pts[2,1]);
         dz = abs(pts[3,end] - pts[3,1]);
@@ -128,7 +218,7 @@ function geometric_factors_face(refel, face, pts)
         d1 = max(dx, dy);
         d2 = max(min(dx, dy), dz);
         
-        detJ = 4/(d1*d2);
+        detJ = 0.25 * (d1*d2);
     end
     
     return (detJ, 0);

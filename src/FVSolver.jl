@@ -21,7 +21,7 @@ import ..Femshop: JULIA, CPP, MATLAB, DENDRO, HOMG, CUSTOM_GEN_TARGET,
 import ..Femshop: log_entry, printerr
 import ..Femshop: config, prob, variables, mesh_data, grid_data, refel, time_stepper, elemental_order
 import ..Femshop: Variable, Coefficient, GenFunction
-import ..Femshop: geometric_factors, geometric_factors_face, build_deriv_matrix
+import ..Femshop: GeometricFactors, geo_factors, geometric_factors, geometric_factors_face, build_deriv_matrix
 import ..Femshop: FVInfo, fv_info, FV_cell_to_node, FV_node_to_cell
 
 using LinearAlgebra, SparseArrays
@@ -30,9 +30,6 @@ include("fv_boundary.jl");
 
 function init_fvsolver()
     dim = config.dimension;
-    
-    # Build FVInfo
-    # global fv_info = build_FV_info(grid_data);
 
     # build initial conditions
     for vind=1:length(variables)
@@ -59,9 +56,11 @@ function init_fvsolver()
                     for ei=1:nel
                         e = elemental_order[ei];
                         glb = grid_data.loc2glb[:,e];
+                        vol = geo_factors.volume[e];
+                        detj = geo_factors.detJ[e];
                         
                         for ci=1:length(prob.initial[vind])
-                            variables[vind].values[ci,e] = 0.5 * (refel.wg' * refel.Q * (nodal_values[ci,glb][:]))[1];
+                            variables[vind].values[ci,e] = detj / vol * (refel.wg' * refel.Q * (nodal_values[ci,glb][:]))[1];
                         end
                     end
                     
@@ -81,8 +80,10 @@ function init_fvsolver()
                     for ei=1:nel
                         e = elemental_order[ei];
                         glb = grid_data.loc2glb[:,e];
+                        vol = geo_factors.volume[e];
+                        detj = geo_factors.detJ[e];
                         
-                        variables[vind].values[e] = 0.5 * (refel.wg' * refel.Q * nodal_values[glb])[1];
+                        variables[vind].values[e] = detj / vol * (refel.wg' * refel.Q * nodal_values[glb])[1];
                     end
                 end
                 
@@ -117,17 +118,12 @@ function linear_solve(var, source_lhs, source_rhs, flux_lhs, flux_rhs, stepper=n
     fluxvec = zeros(Nn);
     facefluxvec = zeros(Nf);
     face_done = zeros(Bool, Nf); # Set to true when the corresponding fluxvec value is computed.
-    #cell_ave = zeros(Nn);
-    #cellave_done = zeros(Bool, Nn); # Set to true when the corresponding cell_ave value is computed.
-    #allocated_vecs = [sourcevec, fluxvec, face_done, cell_ave, cellave_done];
     allocated_vecs = [sourcevec, fluxvec, facefluxvec, face_done];
     
     if prob.time_dependent && !(stepper === nothing)
         log_entry("Beginning "*string(stepper.Nsteps)*" time steps.");
         t = 0;
         sol = get_var_vals(var);
-        
-        geo_facs = compute_geometric_factors(refel);
         
         # allocate storage used by steppers
         if stepper.type == LSRK4
@@ -157,7 +153,7 @@ function linear_solve(var, source_lhs, source_rhs, flux_lhs, flux_rhs, stepper=n
                         rktime = t + stepper.c[rki]*stepper.dt;
                         # p(i-1) is currently in u
                         
-                        sol = assemble(var, source_lhs, source_rhs, flux_lhs, flux_rhs, geo_facs, allocated_vecs, dofs_per_node, rktime, stepper.dt);
+                        sol = assemble(var, source_lhs, source_rhs, flux_lhs, flux_rh, allocated_vecs, dofs_per_node, rktime, stepper.dt);
                         
                         if rki == 1 # because a1 == 0
                             tmpki = stepper.dt .* sol;
@@ -181,7 +177,7 @@ function linear_solve(var, source_lhs, source_rhs, flux_lhs, flux_rhs, stepper=n
                     for stage=1:stepper.stages
                         stime = t + stepper.c[stage]*stepper.dt;
                         
-                        tmpki[:,stage] = assemble(var, source_lhs, source_rhs, flux_lhs, flux_rhs, geo_facs, allocated_vecs, dofs_per_node, stime, stepper.dt);
+                        tmpki[:,stage] = assemble(var, source_lhs, source_rhs, flux_lhs, flux_rhs, allocated_vecs, dofs_per_node, stime, stepper.dt);
                         
                         tmpvals = sol;
                         for j=1:(stage-1)
@@ -199,7 +195,7 @@ function linear_solve(var, source_lhs, source_rhs, flux_lhs, flux_rhs, stepper=n
                 end
                 
             elseif stepper.type == EULER_EXPLICIT
-                sol = sol .+ stepper.dt .* assemble(var, source_lhs, source_rhs, flux_lhs, flux_rhs, geo_facs, allocated_vecs, dofs_per_node, t, stepper.dt);
+                sol = sol .+ stepper.dt .* assemble(var, source_lhs, source_rhs, flux_lhs, flux_rhs, allocated_vecs, dofs_per_node, t, stepper.dt);
                 
                 place_sol_in_vars(var, sol, stepper);
                 
@@ -245,7 +241,7 @@ function linear_solve(var, source_lhs, source_rhs, flux_lhs, flux_rhs, stepper=n
     end
 end
 
-function assemble(var, source_lhs, source_rhs, flux_lhs, flux_rhs, geo_facs, allocated_vecs, dofs_per_node=1, t=0, dt=0)
+function assemble(var, source_lhs, source_rhs, flux_lhs, flux_rhs, allocated_vecs, dofs_per_node=1, t=0, dt=0)
     nel = size(grid_data.loc2glb, 2);
     dim = size(grid_data.allnodes, 1);
     
@@ -268,9 +264,9 @@ function assemble(var, source_lhs, source_rhs, flux_lhs, flux_rhs, geo_facs, all
         nodex = grid_data.allnodes[:,glb[:]];       # elemental node coordinates
         
         # geometric factors
-        detj = geo_facs[1][e];
-        J = geo_facs[2][e];
-        inv_vol = 0.5 / detj;
+        detj = geo_factors.detJ[e];
+        J = geo_factors.J[e];
+        inv_vol = 1/geo_factors.volume[e];
         
         sourceargs = (var, e, nodex, glb, refel, detj, J, t, dt);
         source = source_rhs.func(sourceargs) .* inv_vol;
@@ -308,22 +304,22 @@ function assemble(var, source_lhs, source_rhs, flux_lhs, flux_rhs, geo_facs, all
                 facex = grid_data.allnodes[:, face2glb[:, 1]];  # face node coordinates
                 
                 # geometric factors
-                fdetj = geo_facs[3][fid];
-                vol_J_this = geo_facs[2][e];
+                fdetj = geo_factors.face_detJ[fid];
+                face_area = geo_factors.area[fid];
                 
                 if neighbor == 0 # This is a boundary face. For now, just compute as if neighbor is identical. BCs handled later.
                     neighbor = e;
                 end
                 
-                vol_J_neighbor = geo_facs[2][neighbor];
+                vol_J_neighbor = geo_factors.J[neighbor];
                 vol_loc2glb = (glb, grid_data.loc2glb[:, neighbor]); # volume local to global
                 
                 nodex = (grid_data.allnodes[:,glb[:]], grid_data.allnodes[:,vol_loc2glb[2][:]]); # volume node coordinates
                 cellx = (fv_info.cellCenters[:, e], fv_info.cellCenters[:, neighbor]); # cell center coordinates
                 
-                fluxargs = (var, (e, neighbor), refel, vol_loc2glb, nodex, cellx, frefelind, facex, face2glb, normal, fdetj, (vol_J_this, vol_J_neighbor), t, dt);
+                fluxargs = (var, (e, neighbor), refel, vol_loc2glb, nodex, cellx, frefelind, facex, face2glb, normal, fdetj, face_area, (J, vol_J_neighbor), t, dt);
                 
-                flux = flux_rhs.func(fluxargs);
+                flux = flux_rhs.func(fluxargs) .* face_area;
                 if dofs_per_node > 1
                     facefluxvec[((fid-1)*dofs_per_node + 1):(fid*dofs_per_node)] = flux;
                     # Combine with source
@@ -358,7 +354,10 @@ function assemble(var, source_lhs, source_rhs, flux_lhs, flux_rhs, geo_facs, all
                                 # do nothing
                             elseif prob.bc_type[var[vi].index, fbid] == FLUX
                                 # compute the value and add it to the flux directly
-                                bflux = FV_dirichlet_bc_rhs_only(prob.bc_func[var[vi].index, fbid][compo], facex, t, dofind, dofs_per_node);
+                                Qvec = (refel.surf_wg[frefelind[1]] .* fdetj)' * (refel.surf_Q[frefelind[1]])[:, refel.face2local[frefelind[1]]]
+                                Qvec = Qvec ./ face_area
+                                bflux = FV_flux_bc_rhs_only(prob.bc_func[var[vi].index, fbid][compo], facex, Qvec, t, dofind, dofs_per_node) .* face_area;
+                                
                                 fluxvec[(e-1)*dofs_per_node + dofind] += (bflux - facefluxvec[(fid-1)*dofs_per_node + dofind]) .* inv_vol;
                                 facefluxvec[(fid-1)*dofs_per_node + dofind] = bflux;
                             else
@@ -373,7 +372,10 @@ function assemble(var, source_lhs, source_rhs, flux_lhs, flux_rhs, geo_facs, all
                             # do nothing
                         elseif prob.bc_type[var.index, fbid] == FLUX
                             # compute the value and add it to the flux directly
-                            bflux = FV_dirichlet_bc_rhs_only(prob.bc_func[var.index, fbid][d], facex, t, dofind, dofs_per_node);
+                            Qvec = (refel.surf_wg[frefelind[1]] .* fdetj)' * (refel.surf_Q[frefelind[1]])[:, refel.face2local[frefelind[1]]]
+                            Qvec = Qvec ./ face_area
+                            bflux = FV_flux_bc_rhs_only(prob.bc_func[var.index, fbid][d], facex, Qvec, t, dofind, dofs_per_node) .* face_area;
+                            
                             fluxvec[(e-1)*dofs_per_node + dofind] += (bflux - facefluxvec[(fid-1)*dofs_per_node + dofind]) .* inv_vol;
                             facefluxvec[(fid-1)*dofs_per_node + dofind] = bflux;
                         else
@@ -386,42 +388,10 @@ function assemble(var, source_lhs, source_rhs, flux_lhs, flux_rhs, geo_facs, all
         end# face loop
     end# element loop
     
-    
     return sourcevec + fluxvec;
 end
 
-# Computes geometric factors for all elements
-function compute_geometric_factors(refel)
-    nel = size(grid_data.loc2glb, 2);
-    saved_detJ = zeros(nel);
-    saved_J = Array{Any,1}(undef, nel);
-    
-    totalfaces = size(grid_data.facenormals, 2);
-    face_detj = zeros(totalfaces);
-    
-    for ei=1:nel
-        e = elemental_order[ei];
-        glb = grid_data.loc2glb[:,e];
-        xe = grid_data.allnodes[:,glb[:]];
-        
-        (detJ, J) = geometric_factors(refel, xe);
-        
-        saved_detJ[ei] = detJ[1];
-        saved_J[ei] = J;
-    end
-    
-    for fi=1:totalfaces
-        xf = grid_data.allnodes[:,grid_data.face2glb[:,1,fi]];
-        
-        (fdj, fj) = geometric_factors_face(refel, grid_data.faceRefelInd[1,fi], xf);
-        
-        face_detj[fi] = fdj[1];
-    end
-    
-    return (saved_detJ, saved_J, face_detj);
-end
-
-# Inset the single dof into the greater vector
+# Insert the single dof into the greater vector
 function insert_linear!(b, bel, glb, dof, Ndofs)
     # group nodal dofs
     for d=1:length(dof)

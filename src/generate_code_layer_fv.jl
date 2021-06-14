@@ -85,9 +85,10 @@ function generate_code_layer_fv_julia(symex, var, lorr, fors)
         push!(code.args, :(face2glb =   args[9]));  # Global indices of face nodes
         push!(code.args, :(normal =     args[10]));  # Normal vector from e1 to e2
         push!(code.args, :(face_detJ =  args[11])); # geometric factor for face
-        push!(code.args, :(vol_J =      args[12])); # jacobian for both elements
-        push!(code.args, :(time =       args[13])); # time for time dependent coefficients
-        push!(code.args, :(dt =         args[14])); # dt for time dependent problems
+        push!(code.args, :(area =       args[12])); # area face
+        push!(code.args, :(vol_J =      args[13])); # jacobian for both elements
+        push!(code.args, :(time =       args[14])); # time for time dependent coefficients
+        push!(code.args, :(dt =         args[15])); # dt for time dependent problems
         
         # # Quadrature matrix
         # push!(code.args, :(surf_Q1 = (refel.surf_wg[frefelind[1]] .* face_detj)' * refel.surf_Q[frefelind[1]]));
@@ -342,11 +343,11 @@ function generate_code_layer_fv_julia(symex, var, lorr, fors)
         # Integrate the coefficient over the cell
         # coef = Q * coef
         if length(need_integration) > 0
+            # Quadrature matrix
+            push!(code.args, :(surf_Q = (refel.surf_wg[frefelind[1]] .* face_detJ)' * refel.surf_Q[frefelind[1]][:,refel.face2local[frefelind[1]]]));
             for ici=1:length(need_integration)
-                if config.dimension == 1
-                    tmpc = need_integration[ici];
-                    push!(code.args, :($tmpc = $tmpc[1]));
-                end
+                tmpc = need_integration[ici];
+                push!(code.args, :($tmpc = (surf_Q * $tmpc) / area));
             end
         end
         
@@ -885,6 +886,7 @@ function process_flux_term_fv_julia(sterm, var, lorr, offset_ind=0)
     # Separate factors into var/coefficient parts
     coef_facs = [];
     coef_inds = [];
+    coef_names = [];
     coef_derivs = [];
     coef_mods = [];
     coef_expr_facs = [];
@@ -892,6 +894,7 @@ function process_flux_term_fv_julia(sterm, var, lorr, offset_ind=0)
         if typeof(factors[i]) <: Number
             push!(coef_facs, factors[i]);
             push!(coef_inds, -1);
+            push!(coef_names, "");
             push!(coef_derivs, [nothing, "", ""]);
             
         elseif typeof(factors[i]) == Expr && factors[i].head === :call
@@ -944,6 +947,17 @@ function process_flux_term_fv_julia(sterm, var, lorr, offset_ind=0)
                 
                 push!(coef_expr_facs, factors[i]);
                 #push!(coef_inds, 0);
+            elseif factors[i].args[1] === :abs
+                # The second arg is the thing in abs
+                (piece1, nd, nc, ncm, nci, ncd) = process_known_expr_fv_julia(factors[i].args[2]);
+                need_derivative = need_derivative || nd;
+                append!(needed_coef, nc);
+                append!(needed_coef_name, ncm);
+                append!(needed_coef_ind, nci);
+                append!(needed_coef_deriv, ncd);
+                factors[i].args[2] = piece1;
+                
+                push!(coef_expr_facs, factors[i]);
             end
             
         else
@@ -988,17 +1002,16 @@ function process_flux_term_fv_julia(sterm, var, lorr, offset_ind=0)
                         (derivs, others) = get_derivative_mods(mods);
                         dmatname = make_deriv_matrix_name(derivs);
                         push!(needed_derivatives, derivs);
-                        
                         push!(needed_coef_deriv, [v, derivs]);
-                        
                         push!(coef_mods, others);
-                        
                         push!(needed_coef_name, make_coef_name_fv(v, others, derivs, ind));
+                        push!(coef_names, make_coef_name_fv(v, others, derivs, ind));
                         
                     else
                         push!(needed_coef_deriv, [v, []]);
                         push!(coef_mods, []);
                         push!(needed_coef_name, make_coef_name_fv(v, [], [], ind));
+                        push!(coef_names, make_coef_name_fv(v, [], [], ind));
                     end
                     push!(needed_coef, v);
                     push!(needed_coef_ind, ind);
@@ -1008,6 +1021,7 @@ function process_flux_term_fv_julia(sterm, var, lorr, offset_ind=0)
                     
                 else
                     push!(coef_derivs, [nothing, []]);
+                    push!(coef_names, "");
                 end
                 
                 push!(coef_facs, v);
@@ -1031,13 +1045,13 @@ function process_flux_term_fv_julia(sterm, var, lorr, offset_ind=0)
                 multbydt = true;
             elseif typeof(tmp) == Symbol && !(tmp ===:dt)
                 name_ind += 1;
-                tmp = Symbol(needed_coef_name[name_ind]);
+                tmp = Symbol(coef_names[j]);
                 
-                if occursin("DGNORMAL1", needed_coef_name[name_ind])
-                    ind = coef_inds[name_ind];
+                if occursin("DGNORMAL1", coef_names[j])
+                    ind = coef_inds[j];
                     tmp = :(normal[$ind]);
-                elseif occursin("DGNORMAL2", needed_coef_name[name_ind])
-                    ind = coef_inds[name_ind];
+                elseif occursin("DGNORMAL2", coef_names[j])
+                    ind = coef_inds[j];
                     tmp = :(-normal[$ind]);
                 end
                 
@@ -1050,6 +1064,7 @@ function process_flux_term_fv_julia(sterm, var, lorr, offset_ind=0)
         end
     end
     
+    # These are factors coming from subexpressions
     if length(coef_expr_facs) > 0
         for j=1:length(coef_expr_facs)
             tmpc = coef_expr_facs[j];
@@ -1130,6 +1145,8 @@ function process_known_expr_fv_julia(ex)
             return (:./ , false, [], [], [], []);
         elseif ex === :^ || ex === :.^
             return (:.^ , false, [], [], [], []);
+        elseif ex === :abs
+            return (:abs , false, [], [], [], []);
         end
         
         (index, v, mods) = extract_symbols(ex);
@@ -1146,20 +1163,13 @@ function process_known_expr_fv_julia(ex)
                 tmp = :(-normal[$ind]);
             else
                 # Check for derivative mods
-                if length(mods) > 0 && typeof(v) == Symbol
-                    need_derivative = true;
-                    
-                    push!(needed_coef_deriv, [v, mods[1], mods[1][2]]);
-                    
-                else
-                    push!(needed_coef_deriv, [v, "", ""]);
-                end
-                
+                (derivs, others) = get_derivative_mods(mods);
+                push!(needed_coef_deriv, [v, derivs]);
                 push!(needed_coef, v);
-                push!(needed_coef_name, "");
                 push!(needed_coef_ind, ind);
                 
-                tmps = make_coef_name_fv(v, string(v), needed_coef_deriv[length(needed_coef)][2], ind);
+                tmps = make_coef_name_fv(v, others, derivs, ind);
+                push!(needed_coef_name, tmps);
                 tmp = Symbol(tmps); # The symbol to return
             end
         else

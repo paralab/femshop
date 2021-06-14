@@ -1,4 +1,4 @@
-function FV_dirichlet_bc_rhs_only(val, facex, t=0, dofind = 1, totaldofs = 1)
+function FV_flux_bc_rhs_only(val, facex, Qvec, t=0, dofind = 1, totaldofs = 1)
     if typeof(val) <: Number
         return val;
         
@@ -36,8 +36,7 @@ function FV_dirichlet_bc_rhs_only(val, facex, t=0, dofind = 1, totaldofs = 1)
     end
     
     # Do quadrature over the face
-    # TODO, for now just average
-    b = sum(bvals)/length(bvals);
+    b = Qvec * bvals;
     
-    return b;
+    return b[1];
 end

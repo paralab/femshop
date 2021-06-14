@@ -573,6 +573,10 @@ function add_boundary_ID_to_grid(bid, on_bdry, grid)
             # Remove bdryface
             deleteat!(grid.bdryface[i], indexin(move_faces[i], grid.bdryface[i]));
             
+            # Change the bid of moved faces in facebid
+            for fi=1:length(move_faces[i])
+                grid.facebid[move_faces[i][fi]] = bid;
+            end
         end
     end
     

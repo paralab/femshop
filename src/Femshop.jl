@@ -41,6 +41,7 @@ log_line_index = 1;
 #mesh
 mesh_data = nothing;    # The basic element information as read from a MSH file or generated here.
 grid_data = nothing;    # The full collection of nodes(including internal nodes) and other mesh info in the actual DOF ordering.
+geo_factors = nothing;  # Geometric factors
 fv_info = nothing;      # Finite volume info
 refel = nothing;        # Reference element (will eventually be an array of refels)
 elemental_order = [];   # Determines the order of the elemental loops
@@ -92,6 +93,7 @@ function init_femshop(name="unnamedProject")
     global log_line_index = 1;
     global mesh_data = nothing;
     global grid_data = nothing;
+    global geo_factors = nothing;
     global fv_info = nothing;
     global refel = nothing;
     global elemental_order = [];
@@ -194,6 +196,19 @@ function add_mesh(mesh)
         (refel, grid_data) = grid_from_mesh(mesh_data);
         
     end
+    
+    constantJ = true;
+    do_faces = false;
+    do_vol = false;
+    if config.solver_type == DG || config.solver_type == FV
+        do_faces = true;
+    end
+    if config.solver_type == FV
+        do_vol = true;
+    end
+    
+    global geo_factors = build_geometric_factors(refel, grid_data, do_face_detj=do_faces, do_vol_area=do_vol, constant_jacobian=constantJ);
+    
     log_entry("Added mesh with "*string(mesh_data.nx)*" vertices and "*string(mesh_data.nel)*" elements.", 1);
     log_entry("Full grid has "*string(size(grid_data.allnodes,2))*" nodes.", 2);
     
