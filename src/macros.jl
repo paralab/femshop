@@ -223,7 +223,7 @@ macro variable(var, type)
     return esc(quote
         varind = Femshop.var_count + 1;
         $var = Symbol($varsym);
-        $var = Femshop.Variable($var, nothing, varind, $type, [], [], false);
+        $var = Femshop.Variable($var, nothing, varind, $type, NODAL, [], [], false);
         add_variable($var);
     end)
 end
@@ -234,7 +234,7 @@ macro coefficient(c, type, val)
     return esc(quote
         $c = Symbol($csym);
         nfuns = @makeFunctions($val); # if val is constant, nfuns will be 0
-        $c = add_coefficient($c, $type, $val, nfuns);
+        $c = add_coefficient($c, $type, NODAL, $val, nfuns);
     end)
 end
 
@@ -549,13 +549,13 @@ end
 # Import and export the code layer functions to allow manual changes
 macro exportCode(file)
     return esc(quote
-        export_code_layer($file);
+        exportCode($file);
     end)
 end
 
 macro importCode(file)
     return esc(quote
-        import_code_layer($file);
+        importCode($file);
     end)
 end
 

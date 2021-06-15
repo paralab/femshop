@@ -12,9 +12,7 @@ export @generateFor, @domain, @mesh, @solver, @stepper, @setSteps, @functionSpac
 export init_femshop, set_language, set_custom_gen_target, dendro, set_solver, set_stepper, set_specified_steps, set_matrix_free,
         reformat_for_stepper, reformat_for_stepper_fv,
         add_mesh, output_mesh, add_boundary_ID, add_test_function, 
-        add_initial_condition, add_boundary_condition, add_reference_point, set_rhs, set_lhs, set_lhs_surface, set_rhs_surface, solve, 
-        finalize, cachesim, cachesim_solve, export_code_layer, import_code_layer,
-        morton_nodes, hilbert_nodes, tiled_nodes, morton_elements, hilbert_elements, tiled_elements, ef_nodes, random_nodes, random_elements
+        add_initial_condition, add_boundary_condition, add_reference_point, set_rhs, set_lhs, set_lhs_surface, set_rhs_surface
 export build_cache_level, build_cache, build_cache_auto
 export sp_parse
 export generate_code_layer, generate_code_layer_surface, generate_code_layer_fv
@@ -73,7 +71,8 @@ custom_gen_funcs = [];
 
 ###############################################################
 include("femshop_includes.jl");
-include("macros.jl"); # included here after globals are defined
+include("macros.jl");
+include("femshop_interface.jl"); # included here after globals are defined
 ###############################################################
 
 config = Femshop_config(); # These need to be initialized here
@@ -238,7 +237,7 @@ function add_test_function(v, type)
     # make SymType
     symvar = sym_var(string(v), type, config.dimension);
 
-    push!(test_functions, Femshop.Coefficient(v, symvar, varind, type, []););
+    push!(test_functions, Femshop.Coefficient(v, symvar, varind, type, NODAL, []););
     log_entry("Set test function symbol: "*string(v)*" of type: "*type, 2);
 end
 
@@ -277,7 +276,7 @@ function add_variable(var)
 end
 
 # Adds a coefficient with either constant value or some generated function of (x,y,z,t)
-function add_coefficient(c, type, val, nfuns)
+function add_coefficient(c, type, location, val, nfuns)
     global coefficients;
     vals = [];
     if nfuns == 0 # constant values
@@ -305,7 +304,7 @@ function add_coefficient(c, type, val, nfuns)
     symvar = sym_var(string(c), type, config.dimension);
 
     index = length(coefficients);
-    push!(coefficients, Coefficient(c, symvar, index, type, vals));
+    push!(coefficients, Coefficient(c, symvar, index, type, location, vals));
 
     log_entry("Added coefficient "*string(c)*" : "*string(val), 2);
 
@@ -555,384 +554,8 @@ function set_lhs_surface(var, code="")
     end
 end
 
-# Import and export code layer functions
-function export_code_layer(filename)
-    # For now, only do this for Julia code because others are already output in code files.
-    if language == JULIA || language == 0
-        file = open(filename*".jl", "w");
-        println(file, "#=\nGenerated functions for "*project_name*"\n=#\n");
-        for LorR in [LHS, RHS]
-            if LorR == LHS
-                codevol = bilinears;
-                codesurf = face_bilinears;
-            else
-                codevol = linears;
-                codesurf = face_linears;
-            end
-            for i=1:length(variables)
-                var = string(variables[i].symbol);
-                if !(codevol[i] === nothing)
-                    func_name = LorR*"_volume_function_for_"*var;
-                    println(file, "function "*func_name*"(args)");
-                    println(file, codevol[i].str);
-                    println(file, "end #"*func_name*"\n");
-                else
-                    println(file, "# No "*LorR*" volume set for "*var*"\n");
-                end
-                
-                if !(codesurf[i] === nothing)
-                    func_name = LorR*"_surface_function_for_"*var;
-                    println(file, "function "*func_name*"(args)");
-                    println(file, codesurf[i].str);
-                    println(file, "end #"*func_name*"\n");
-                else
-                    println(file, "# No "*LorR*" surface set for "*var*"\n");
-                end
-            end
-        end
-        
-        close(file);
-        
-    else
-        # Should we export for other targets?
-    end
-end
-
-function import_code_layer(filename)
-    # For now, only do this for Julia code because others are already output in code files.
-    if language == JULIA || language == 0
-        file = open(filename*".jl", "r");
-        lines = readlines(file, keep=true);
-        for LorR in [LHS, RHS]
-            if LorR == LHS
-                codevol = bilinears;
-                codesurf = face_bilinears;
-            else
-                codevol = linears;
-                codesurf = face_linears;
-            end
-            
-            # Loop over variables and check to see if a matching function is present.
-            for i=1:length(variables)
-                # Scan the file for a pattern like
-                #   function LHS_volume_function_for_u
-                #       ...
-                #   end #LHS_volume_function_for_u
-                #
-                # Set LHS/RHS, volume/surface, and the variable name
-                var = string(variables[i].symbol);
-                vfunc_name = LorR*"_volume_function_for_"*var;
-                vfunc_string = "";
-                sfunc_name = LorR*"_surface_function_for_"*var;
-                sfunc_string = "";
-                for st=1:length(lines)
-                    if occursin("function "*vfunc_name, lines[st])
-                        # s is the start of the function
-                        for en=(st+1):length(lines)
-                            if occursin("end #"*vfunc_name, lines[en])
-                                # en is the end of the function
-                                st = en; # update st
-                                break;
-                            else
-                                vfunc_string *= lines[en];
-                            end
-                        end
-                    elseif occursin("function "*sfunc_name, lines[st])
-                        # s is the start of the function
-                        for en=(st+1):length(lines)
-                            if occursin("end #"*sfunc_name, lines[en])
-                                # en is the end of the function
-                                st = en; # update st
-                                break;
-                            else
-                                sfunc_string *= lines[en];
-                            end
-                        end
-                    end
-                end # lines loop
-                
-                # Generate the functions and set them in the right places
-                if vfunc_string == ""
-                    println("Warning: While importing, no "*LorR*" volume function was found for "*var);
-                else
-                    @makeFunction("args", string(vfunc_string));
-                    if LorR == LHS
-                        set_lhs(variables[i]);
-                    else
-                        set_rhs(variables[i]);
-                    end
-                end
-                if sfunc_string == ""
-                    println("Warning: While importing, no "*LorR*" surface function was found for "*var);
-                else
-                    @makeFunction("args", string(sfunc_string));
-                    if LorR == LHS
-                        set_lhs_surface(variables[i]);
-                    else
-                        set_rhs_surface(variables[i]);
-                    end
-                end
-                
-            end # vars loop
-        end
-        
-    else
-        # TODO non-julia
-    end
-end
-
-# When using cachesim, this will be used to simulate the solve.
-function cachesim_solve(var, nlvar=nothing; nonlinear=false)
-    if !(gen_files === nothing && (language == JULIA || language == 0))
-        printerr("Cachesim solve is only ready for Julia direct solve");
-    else
-        if typeof(var) <: Array
-            varnames = "["*string(var[1].symbol);
-            for vi=2:length(var)
-                varnames = varnames*", "*string(var[vi].symbol);
-            end
-            varnames = varnames*"]";
-            varind = var[1].index;
-        else
-            varnames = string(var.symbol);
-            varind = var.index;
-        end
-
-        lhs = bilinears[varind];
-        rhs = linears[varind];
-        
-        t = @elapsed(result = CGSolver.linear_solve_cachesim(var, lhs, rhs));
-        log_entry("Generated cachesim ouput for "*varnames*".(took "*string(t)*" seconds)", 1);
-    end
-end
-
-# This will either solve the problem or generate the code for an external target.
-function solve(var, nlvar=nothing; nonlinear=false)
-    if use_cachesim
-        printerr("Use cachesim_solve(var) for generating cachesim output. Try again.");
-        return nothing;
-    end
-    # Generate files or solve directly
-    if prob.time_dependent
-        global time_stepper = init_stepper(grid_data.allnodes, time_stepper);
-    end
-    if !(gen_files === nothing && (language == JULIA || language == 0)) # if an external code gen target is ready
-        # generate_main();
-        if !(dendro_params === nothing)
-            generate_all_files(bilinears[1], linears[1], parameters=dendro_params);
-        else
-            generate_all_files(bilinears[1], linears[1]);
-        end
-        
-    else
-        if typeof(var) <: Array
-            varnames = "["*string(var[1].symbol);
-            for vi=2:length(var)
-                varnames = varnames*", "*string(var[vi].symbol);
-            end
-            varnames = varnames*"]";
-            varind = var[1].index;
-        else
-            varnames = string(var.symbol);
-            varind = var.index;
-        end
-        
-        if config.solver_type == CG
-            init_cgsolver();
-            
-            lhs = bilinears[varind];
-            rhs = linears[varind];
-            
-            if prob.time_dependent
-                global time_stepper = init_stepper(grid_data.allnodes, time_stepper);
-                if use_specified_steps
-                    Femshop.time_stepper.dt = specified_dt;
-				    Femshop.time_stepper.Nsteps = specified_Nsteps;
-                end
-                if (nonlinear)
-                    if time_stepper.type == EULER_EXPLICIT || time_stepper.type == LSRK4
-                        printerr("Warning: Use implicit stepper for nonlinear problem. Aborting.");
-                        return;
-                    end
-                	t = @elapsed(result = CGSolver.nonlinear_solve(var, nlvar, lhs, rhs, time_stepper));
-				else
-                	t = @elapsed(result = CGSolver.linear_solve(var, lhs, rhs, time_stepper));
-				end
-                # result is already stored in variables
-            else
-                # solve it!
-				if (nonlinear)
-                	t = @elapsed(result = CGSolver.nonlinear_solve(var, nlvar, lhs, rhs));
-                else
-                    t = @elapsed(result = CGSolver.linear_solve(var, lhs, rhs));
-				end
-                
-                # place the values in the variable value arrays
-                if typeof(var) <: Array && length(result) > 1
-                    tmp = 0;
-                    totalcomponents = 0;
-                    for vi=1:length(var)
-                        totalcomponents = totalcomponents + length(var[vi].symvar.vals);
-                    end
-                    for vi=1:length(var)
-                        components = length(var[vi].symvar.vals);
-                        for compi=1:components
-                            var[vi].values[compi,:] = result[(compi+tmp):totalcomponents:end];
-                            tmp = tmp + 1;
-                        end
-                    end
-                elseif length(result) > 1
-                    components = length(var.symvar.vals);
-                    for compi=1:components
-                        var.values[compi,:] = result[compi:components:end];
-                    end
-                end
-            end
-            
-            log_entry("Solved for "*varnames*".(took "*string(t)*" seconds)", 1);
-            
-        elseif config.solver_type == DG
-            init_dgsolver();
-            
-            lhs = bilinears[varind];
-            rhs = linears[varind];
-            slhs = face_bilinears[varind];
-            srhs = face_linears[varind];
-            
-            if prob.time_dependent
-                global time_stepper = init_stepper(grid_data.allnodes, time_stepper);
-                if use_specified_steps
-                    Femshop.time_stepper.dt = specified_dt;
-				    Femshop.time_stepper.Nsteps = specified_Nsteps;
-                end
-				if (nonlinear)
-                	t = @elapsed(result = DGSolver.nonlinear_solve(var, nlvar, lhs, rhs, slhs, srhs, time_stepper));
-				else
-                	t = @elapsed(result = DGSolver.linear_solve(var, lhs, rhs, slhs, srhs, time_stepper));
-				end
-                # result is already stored in variables
-            else
-                # solve it!
-				if (nonlinear)
-                	t = @elapsed(result = DGSolver.nonlinear_solve(var, nlvar, lhs, rhs, slhs, srhs));
-                else
-                    t = @elapsed(result = DGSolver.linear_solve(var, lhs, rhs, slhs, srhs));
-				end
-                
-                # place the values in the variable value arrays
-                if typeof(var) <: Array && length(result) > 1
-                    tmp = 0;
-                    totalcomponents = 0;
-                    for vi=1:length(var)
-                        totalcomponents = totalcomponents + length(var[vi].symvar.vals);
-                    end
-                    for vi=1:length(var)
-                        components = length(var[vi].symvar.vals);
-                        for compi=1:components
-                            var[vi].values[compi,:] = result[(compi+tmp):totalcomponents:end];
-                            tmp = tmp + 1;
-                        end
-                    end
-                elseif length(result) > 1
-                    components = length(var.symvar.vals);
-                    for compi=1:components
-                        var.values[compi,:] = result[compi:components:end];
-                    end
-                end
-            end
-            
-            log_entry("Solved for "*varnames*".(took "*string(t)*" seconds)", 1);
-            
-        elseif config.solver_type == FV
-            init_fvsolver();
-            
-            slhs = bilinears[varind];
-            srhs = linears[varind];
-            flhs = face_bilinears[varind];
-            frhs = face_linears[varind];
-            
-            if prob.time_dependent
-                global time_stepper = init_stepper(grid_data.allnodes, time_stepper);
-                if use_specified_steps
-                    Femshop.time_stepper.dt = specified_dt;
-				    Femshop.time_stepper.Nsteps = specified_Nsteps;
-                end
-				if (nonlinear)
-                	t = 0;
-                    #TODO
-				else
-                	t = @elapsed(result = FVSolver.linear_solve(var, slhs, srhs, flhs, frhs, time_stepper));
-				end
-                # result is already stored in variables
-            else
-                # does this make sense?
-            end
-        end
-    end
-
-end
-
 function finalize()
-    # Finalize generation
-    if gen_files != nothing
-        finalize_codegenerator();
-    end
-    if use_cachesim
-        CachesimOut.finalize();
-    end
-    # anything else
-    close_log();
-    println("Femshop has completed.");
-end
-
-function cachesim(use)
-    log_entry("Using cachesim - Only cachesim output will be generated.", 1);
-    global use_cachesim = use;
-end
-
-function morton_nodes(griddim)
-    t = @elapsed(global grid_data = reorder_grid_recursive(grid_data, griddim, MORTON_ORDERING));
-    log_entry("Reordered nodes to Morton. Took "*string(t)*" sec.", 2);
-end
-
-function morton_elements(griddim)
-    global elemental_order = get_recursive_order(MORTON_ORDERING, config.dimension, griddim);
-    log_entry("Reordered elements to Morton.", 2);
-end
-
-function hilbert_nodes(griddim)
-    t = @elapsed(global grid_data = reorder_grid_recursive(grid_data, griddim, HILBERT_ORDERING));
-    log_entry("Reordered nodes to Hilbert. Took "*string(t)*" sec.", 2);
-end
-
-function hilbert_elements(griddim)
-    global elemental_order = get_recursive_order(HILBERT_ORDERING, config.dimension, griddim);
-    log_entry("Reordered elements to Hilbert.", 2);
-end
-
-function tiled_nodes(griddim, tiledim)
-    t = @elapsed(global grid_data = reorder_grid_tiled(grid_data, griddim, tiledim));
-    log_entry("Reordered nodes to tiled. Took "*string(t)*" sec.", 2);
-end
-
-function tiled_elements(griddim, tiledim)
-    global elemental_order = get_tiled_order(config.dimension, griddim, tiledim, true);
-    log_entry("Reordered elements to tiled("*string(tiledim)*").", 2);
-end
-
-function ef_nodes()
-    t = @elapsed(global grid_data = reorder_grid_element_first(grid_data, config.basis_order_min, elemental_order));
-    log_entry("Reordered nodes to EF. Took "*string(t)*" sec.", 2);
-end
-
-function random_nodes(seed = 17)
-    t = @elapsed(global grid_data = reorder_grid_random(grid_data, seed));
-    log_entry("Reordered nodes to random. Took "*string(t)*" sec.", 2);
-end
-
-function random_elements(seed = 17)
-    global elemental_order = random_order(mesh_data.nel, seed);
-    log_entry("Reordered elements to random.", 2);
+    finalize_femshop();
 end
 
 end # module

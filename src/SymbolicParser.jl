@@ -63,6 +63,7 @@ function add_custom_op(s, handle)
     global custom_ops;
     push!(custom_op_names, s); # add the Symbol s to the list
     push!(custom_ops, SymOperator(s, handle));
+    log_entry("Added custom operator: "*string(s), 2);
 end
 
 # Includes a set of custom operators

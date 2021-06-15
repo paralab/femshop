@@ -31,10 +31,12 @@ end
 # fun is a string like "sin(x)*y + 3*z"
 macro makeFunction(args, fun)
     return esc(quote
-        local name = "genfunction_"*string(Femshop.genfunc_count);
-        local ex = Meta.parse($fun);
-        local nf = GenFunction(name, $args, $fun, ex, @stringToFunction(name, $args, $fun));
-        add_genfunction(nf);
+        let
+            name = "genfunction_"*string(Femshop.genfunc_count);
+            ex = Meta.parse($fun);
+            nf = GenFunction(name, $args, $fun, ex, @stringToFunction(name, $args, $fun));
+            add_genfunction(nf);
+        end
     end)
 end
 
