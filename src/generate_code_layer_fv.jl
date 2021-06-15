@@ -245,7 +245,7 @@ function generate_code_layer_fv_julia(symex, var, lorr, fors)
         
         cloopin = Expr(:block);
         
-        coef_deriv_possible = zeros(Bool, length(needed_coef));
+        coef_deriv_type = zeros(Int, length(needed_coef)); # 0:constant coef, 1:function, 2:variable values
         need_integration = [];
         for i=1:length(needed_coef)
             if !(typeof(needed_coef[i]) <: Number || needed_coef[i] === :dt)
@@ -295,20 +295,24 @@ function generate_code_layer_fv_julia(symex, var, lorr, fors)
                         push!(code.args, Expr(:(=), tmpc, :(zeros(refel.Nfp[frefelind[1]])))); # allocate coef_n
                     end
                     push!(cloopin.args, Expr(:(=), tmpv, tmpb)); # add it to the loop
-                    coef_deriv_possible[i] = true;
+                    coef_deriv_type[i] = 1;
                     push!(need_integration, tmpc);
                     
                 elseif ctype == 3
                     # variable values -> coef_n = variable.values
                     if variables[cval].type == SCALAR
-                        tmpb = :(Femshop.variables[$cval].values[$l2gsym]); 
+                        if occursin("D1", tmps) && fors == "flux"
+                            tmpb = :(Femshop.variables[$cval].values[els[2]] - Femshop.variables[$cval].values[els[1]]); 
+                        else
+                            tmpb = :(Femshop.variables[$cval].values[$l2gsym]); 
+                        end
                     else
                         compo = needed_coef_ind[i];
                         tmpb = :(Femshop.variables[$cval].values[$compo, $l2gsym]);
                     end
                     
                     push!(code.args, Expr(:(=), tmpc, tmpb));
-                    coef_deriv_possible[i] = true;
+                    coef_deriv_type[i] = 2;
                 end
                 
             end# number?
@@ -322,6 +326,7 @@ function generate_code_layer_fv_julia(symex, var, lorr, fors)
         
         # Apply derivatives after the initializing loop
         # Will look like: coef_i_j = D1x * coef_i_j
+        made_dxdydz = false;
         for i=1:length(needed_coef_deriv)
             if length(needed_coef_deriv[i][2]) > 0 && !(typeof(needed_coef[i]) <: Number || needed_coef[i] === :dt)
                 tmps = needed_coef_name[i];
@@ -329,12 +334,27 @@ function generate_code_layer_fv_julia(symex, var, lorr, fors)
                 
                 dmatname = make_deriv_matrix_name(needed_coef_deriv[i][2]);
                 dmat = Symbol(dmatname);
-                if coef_deriv_possible[i]
+                if coef_deriv_type[i] == 0 # derivatives of constant coefficients should be zero
+                    tmpb= 0;
+                    push!(code.args, Expr(:(=), tmpc, tmpb));
+                elseif coef_deriv_type[i] == 1 # derivative of function evaluated at nodes
                     tmpb= :($dmat * $tmpc);
-                else
-                    tmpb= 0; # derivatives of constant coefficients should be zero
+                    push!(code.args, Expr(:(=), tmpc, tmpb));
+                elseif coef_deriv_type[i] == 2 # derivative of variable values defined on cells
+                    # make dxdydz if needed
+                    if !made_dxdydz
+                        push!(code.args, :(dxyz = norm(cellx[2] - cellx[1]) .* normal));
+                    end
+                    if occursin("D1x", dmatname)
+                        push!(code.args, :(deriv_index = 1));
+                    elseif occursin("D1y", dmatname)
+                        push!(code.args, :(deriv_index = 2));
+                    elseif occursin("D1z", dmatname)
+                        push!(code.args, :(deriv_index = 3));
+                    end
+                    push!(code.args, :($tmpc = (els[1] != els[2] && abs(normal[deriv_index]) > 1e-10) ? $tmpc ./ dxyz[deriv_index] : 0));
                 end
-                push!(code.args, Expr(:(=), tmpc, tmpb));
+                
             else
                 # derivatives of constant coefficients should be zero
             end

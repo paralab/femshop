@@ -147,7 +147,7 @@ end
 function coefficient(name, val, type=SCALAR, location=NODAL)
     csym = Symbol(name);
     nfuns = @makeFunctions(val); # if val is constant, nfuns will be 0
-    return add_coefficient(csym, type, NODAL, val, nfuns);
+    return add_coefficient(csym, type, location, val, nfuns);
 end
 
 function parameter(name, val, type=SCALAR)

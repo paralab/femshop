@@ -246,9 +246,10 @@ function add_variable(var)
     global var_count += 1;
     if language == JULIA || language == 0
         # adjust values arrays
-        N = size(grid_data.allnodes,2);
-        if config.solver_type == FV
-            N = size(grid_data.loc2glb, 2); # FV has one value per cell
+        if var.location == CELL
+            N = size(grid_data.loc2glb, 2);
+        else
+            N = size(grid_data.allnodes,2);
         end
         
         if var.type == SCALAR
@@ -272,7 +273,7 @@ function add_variable(var)
     global face_linears = [face_linears; nothing];
     global face_bilinears = [face_bilinears; nothing];
 
-    log_entry("Added variable: "*string(var.symbol)*" of type: "*var.type, 2);
+    log_entry("Added variable: "*string(var.symbol)*" of type: "*var.type*", location: "*var.location, 2);
 end
 
 # Adds a coefficient with either constant value or some generated function of (x,y,z,t)
