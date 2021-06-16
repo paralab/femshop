@@ -27,9 +27,7 @@ initial(u, "x<0.5 ? sin(pi*x)^4 : 0")
 # The flux and source terms of the conservation equation
 # F and S in the following equation:
 # Dt(int(u dx)) = int(S dx) - int(F.n ds)
-coefficient("D", 0.1) # advection velocity
-# The "upwind" function applies upwinding to the term (a.n)*u with flow velocity a.
-# The optional third parameter is for tuning. Default upwind = 0, central = 1. Choose something between these.
+coefficient("D", 0.1) # Diffusion rate
 fluxAndSource(u, "-D*dot(grad(u),normal())", "0") 
 
 #exportCode("fvheat1dcode") # uncomment to export generated code to a file
