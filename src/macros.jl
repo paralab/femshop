@@ -217,13 +217,14 @@ macro outputMesh(file, format)
     end)
 end
 
-macro variable(var) return esc(:(@variable($var, SCALAR))); end
-macro variable(var, type)
+macro variable(var) return esc(:(@variable($var, SCALAR, NODAL))); end
+macro variable(var, type) return esc(:(@variable($var, $type, NODAL))); end
+macro variable(var, type, location)
     varsym = string(var);
     return esc(quote
         varind = Femshop.var_count + 1;
         $var = Symbol($varsym);
-        $var = Femshop.Variable($var, nothing, varind, $type, NODAL, [], [], false);
+        $var = Femshop.Variable($var, nothing, varind, $type, $location, [], [], false);
         add_variable($var);
     end)
 end
