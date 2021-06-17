@@ -4,45 +4,46 @@ if !@isdefined(Femshop)
 end
 init_femshop("FVadvection1d");
 
-@useLog("FVadvection1dlog")
+useLog("FVadvection1dlog")
 
 # Configuration setup
-@domain(1)
-@solver(FV)
-@stepper(RK4)
+domain(1)
+solverType(FV)
+timeStepper(RK4)
 
 # Mesh
 n = 40 # number of elements
-@mesh(LINEMESH, n, 2)
+mesh(LINEMESH, elsperdim=n, bids=2)
 
 # Variables and BCs
-@variable(u)
-@variable(v)
-@boundary(u, 1, FLUX, "t<0.2 ? 1 : 0")
-@boundary(u, 2, NO_BC)
-@boundary(v, 1, FLUX, "t<0.2 ? 1 : 0")
-@boundary(v, 2, NO_BC)
+u = variable("u", SCALAR, CELL)
+v = variable("v", SCALAR, CELL)
+boundary(u, 1, FLUX, "t<0.2 ? 1 : 0")
+boundary(u, 2, NO_BC)
+boundary(v, 1, FLUX, "t<0.2 ? 1 : 0")
+boundary(v, 2, NO_BC)
 
 # Time interval and initial condition
 T = 0.5;
-@timeInterval(T)
-@initial(u, "0")
-@initial(v, "0")
+timeInterval(T)
+initial(u, "0")
+initial(v, "0")
 
 # The flux and source terms of the conservation equation
 # F and S in the following equation:
 # Dt(int(u dx)) = int(S dx) - int(F.n ds)
-@coefficient(a, 1) # advection velocity
+coefficient("a", 1) # advection velocity
 # The "upwind" function applies upwinding to the term (a.n)*u with flow velocity a.
 # The optional third parameter is for tuning. Default upwind = 0, central = 1. Choose something between these.
-@fluxAndSource([u, v], ["upwind(a,u)", "upwind(a,v,0.75)"], ["0", "0"]) 
+flux([u, v], ["upwind(a,u)", "upwind(a,v,0.75)"]) 
+# Note that there is no source() for this problem. 
 
 #@exportCode("fvad1dcode") # uncomment to export generated code to a file
 #@importCode("fvad1dcode") # uncomment to import code from a file
 
 solve([u,v])
 
-@finalize()
+finalize_femshop()
 
 ##### Uncomment below to compare to exact solution
 

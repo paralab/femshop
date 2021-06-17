@@ -268,13 +268,17 @@ function assemble(var, source_lhs, source_rhs, flux_lhs, flux_rhs, allocated_vec
         J = geo_factors.J[e];
         inv_vol = 1/geo_factors.volume[e];
         
-        sourceargs = (var, e, nodex, glb, refel, detj, J, t, dt);
-        source = source_rhs.func(sourceargs) .* inv_vol;
+        if source_rhs === nothing
+            source = zeros(dofs_per_node);
+        else
+            sourceargs = (var, e, nodex, glb, refel, detj, J, t, dt);
+            source = source_rhs.func(sourceargs) .* inv_vol;
+        end
         
         if dofs_per_node > 1
             sourcevec[((e-1)*dofs_per_node + 1):(e*dofs_per_node)] = source;
         else
-            sourcevec[e] = source;
+            sourcevec[e] = source[1];
         end
         
         ##### Flux integrated over the faces #####

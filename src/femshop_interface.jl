@@ -1,11 +1,11 @@
 #=
 This file contains all of the common interface functions.
-Many of them simply call corresponding functions in Femshop.jl.
+Many of them simply call corresponding functions in jl.
 =#
 export generateFor, useLog, domain, solverType, functionSpace, trialSpace, testSpace, 
         nodeType, timeStepper, setSteps, matrixFree, customOperator, customOperatorFile,
         mesh, exportMesh, variable, coefficient, parameter, testSymbol, boundary, addBoundaryID,
-        refernecePoint, timeInterval, initial, weakForm, fluxAndSource, exportCode, importCode,
+        refernecePoint, timeInterval, initial, weakForm, fluxAndSource, flux, source, exportCode, importCode,
         solve, cachesimSolve, finalize_femshop, cachesim,
         morton_nodes, hilbert_nodes, tiled_nodes, morton_elements, hilbert_elements, 
         tiled_elements, ef_nodes, random_nodes, random_elements
@@ -243,7 +243,7 @@ function weakForm(var, wf)
         if length(result_exprs) == 4
             log_entry("Weak form, before modifying for time: Dt("*string(lhs_expr[1])*") + "*string(lhs_expr[2])*" + surface("*string(lhs_surf_expr)*") = "*string(rhs_expr)*" + surface("*string(rhs_surf_expr)*")");
             
-            (newlhs, newrhs, newsurflhs, newsurfrhs) = reformat_for_stepper(lhs_expr, rhs_expr, lhs_surf_expr, rhs_surf_expr, Femshop.config.stepper);
+            (newlhs, newrhs, newsurflhs, newsurfrhs) = reformat_for_stepper(lhs_expr, rhs_expr, lhs_surf_expr, rhs_surf_expr, config.stepper);
             #TODO reformat surface terms
             
             log_entry("Weak form, modified for time stepping: "*string(newlhs)*" + surface("*string(newsurflhs)*") = "*string(newrhs)*" + surface("*string(newsurfrhs)*")");
@@ -256,7 +256,7 @@ function weakForm(var, wf)
         else
             log_entry("Weak form, before modifying for time: Dt("*string(lhs_expr[1])*") + "*string(lhs_expr[2])*" = "*string(rhs_expr));
             
-            (newlhs, newrhs) = reformat_for_stepper(lhs_expr, rhs_expr, Femshop.config.stepper);
+            (newlhs, newrhs) = reformat_for_stepper(lhs_expr, rhs_expr, config.stepper);
             
             log_entry("Weak form, modified for time stepping: "*string(newlhs)*" = "*string(newrhs));
             
@@ -354,69 +354,125 @@ function weakForm(var, wf)
 end
 
 function fluxAndSource(var, fex, sex)
+    flux(var, fex);
+    source(var, sex);
+    # if typeof(var) <: Array
+    #     # multiple simultaneous variables
+    #     symvars = [];
+    #     symfex = [];
+    #     symsex = [];
+    #     symdex = [];
+    #     if !(length(var) == length(fex) && length(var) == length(sex))
+    #         printerr("Error in flux function: # of unknowns must equal # of equations. (example: @flux([a,b,c], [f1,f2,f3]))");
+    #     end
+    #     for vi=1:length(var)
+    #         push!(symvars, var[vi].symbol);
+    #         push!(symfex, Meta.parse((fex)[vi]));
+    #         push!(symsex, Meta.parse((sex)[vi]));
+    #         push!(symdex, Meta.parse("Dt("*string(var[vi].symbol)*")"));
+    #     end
+    # else
+    #     symfex = Meta.parse(fex);
+    #     symsex = Meta.parse(sex);
+    #     symdex = Meta.parse("Dt("*string(var.symbol)*")");
+    #     symvars = var.symbol;
+    # end
+    
+    # log_entry("Making flux and source for variable(s): "*string(symvars));
+    # log_entry("flux, input: "*string(fex));
+    # log_entry("source, input: "*string(sex));
+    
+    # # The parsing step
+    # (flhs_expr, frhs_expr) = sp_parse(symfex, symvars);
+    # (slhs_expr, srhs_expr) = sp_parse(symsex, symvars);
+    # (dlhs_expr, drhs_expr) = sp_parse(symdex, symvars);
+    
+    # # Modify the expressions according to time stepper.
+    # # There is an assumed Dt(u) added which is the only time derivative.
+    # log_entry("time derivative, before modifying for time: "*string(dlhs_expr));
+    # log_entry("flux, before modifying for time: "*string(flhs_expr)*" - "*string(frhs_expr));
+    # log_entry("source, before modifying for time: "*string(slhs_expr)*" - "*string(srhs_expr));
+    
+    # (newflhs, newfrhs, newslhs, newsrhs) = reformat_for_stepper_fv(dlhs_expr[1], flhs_expr, frhs_expr, slhs_expr, srhs_expr, config.stepper);
+    
+    # log_entry("flux, modified for time stepping: "*string(newflhs)*" - "*string(newfrhs));
+    # log_entry("source, modified for time stepping: "*string(newslhs)*" - "*string(newsrhs));
+    
+    # flhs_expr = newflhs;
+    # frhs_expr = newfrhs;
+    # slhs_expr = newslhs;
+    # srhs_expr = newsrhs;
+    
+    # # change symbolic layer into code layer
+    # flhs_code = generate_code_layer_fv(flhs_expr, var, LHS, "flux");
+    # frhs_code = generate_code_layer_fv(frhs_expr, var, RHS, "flux");
+    # slhs_code = generate_code_layer_fv(slhs_expr, var, LHS, "source");
+    # srhs_code = generate_code_layer_fv(srhs_expr, var, RHS, "source");
+    # log_entry("flux, code layer: \n  LHS = "*string(flhs_code)*" \n  RHS = "*string(frhs_code));
+    # log_entry("source, code layer: \n  LHS = "*string(slhs_code)*" \n  RHS = "*string(srhs_code));
+    
+    # if language == JULIA || language == 0
+    #     args = "args";
+    #     @makeFunction(args, string(slhs_code));
+    #     set_lhs(var);
+        
+    #     @makeFunction(args, string(srhs_code));
+    #     set_rhs(var);
+        
+    #     @makeFunction(args, string(flhs_code));
+    #     set_lhs_surface(var);
+        
+    #     @makeFunction(args, string(frhs_code));
+    #     set_rhs_surface(var);
+        
+    # else
+    #     # not ready
+    #     println("Not ready to generate FV code foe external target.")
+    # end
+end
+
+function flux(var, fex)
     if typeof(var) <: Array
         # multiple simultaneous variables
         symvars = [];
         symfex = [];
-        symsex = [];
-        symdex = [];
-        if !(length(var) == length(fex) && length(var) == length(sex))
-            printerr("Error in flux function: # of unknowns must equal # of equations. (example: @flux([a,b,c], [f1,f2,f3]))");
+        if !(length(var) == length(fex))
+            printerr("Error in flux function: # of unknowns must equal # of equations. (example: flux([a,b,c], [f1,f2,f3]))");
         end
         for vi=1:length(var)
             push!(symvars, var[vi].symbol);
             push!(symfex, Meta.parse((fex)[vi]));
-            push!(symsex, Meta.parse((sex)[vi]));
-            push!(symdex, Meta.parse("Dt("*string(var[vi].symbol)*")"));
         end
     else
         symfex = Meta.parse(fex);
-        symsex = Meta.parse(sex);
-        symdex = Meta.parse("Dt("*string(var.symbol)*")");
         symvars = var.symbol;
     end
     
-    log_entry("Making flux and source for variable(s): "*string(symvars));
+    log_entry("Making flux for variable(s): "*string(symvars));
     log_entry("flux, input: "*string(fex));
-    log_entry("source, input: "*string(sex));
     
     # The parsing step
     (flhs_expr, frhs_expr) = sp_parse(symfex, symvars);
-    (slhs_expr, srhs_expr) = sp_parse(symsex, symvars);
-    (dlhs_expr, drhs_expr) = sp_parse(symdex, symvars);
+    # Note that this automatically puts a (-) on all rhs terms. These need to be reversed for FV.
     
     # Modify the expressions according to time stepper.
     # There is an assumed Dt(u) added which is the only time derivative.
-    log_entry("time derivative, before modifying for time: "*string(dlhs_expr));
     log_entry("flux, before modifying for time: "*string(flhs_expr)*" - "*string(frhs_expr));
-    log_entry("source, before modifying for time: "*string(slhs_expr)*" - "*string(srhs_expr));
     
-    (newflhs, newfrhs, newslhs, newsrhs) = reformat_for_stepper_fv(dlhs_expr[1], flhs_expr, frhs_expr, slhs_expr, srhs_expr, Femshop.config.stepper);
+    (newflhs, newfrhs) = reformat_for_stepper_fv_flux(flhs_expr, frhs_expr, config.stepper);
     
-    log_entry("flux, modified for time stepping: "*string(newflhs)*" - "*string(newfrhs));
-    log_entry("source, modified for time stepping: "*string(newslhs)*" - "*string(newsrhs));
+    log_entry("flux, modified for time stepping: "*string(newflhs)*" + "*string(newfrhs));
     
     flhs_expr = newflhs;
     frhs_expr = newfrhs;
-    slhs_expr = newslhs;
-    srhs_expr = newsrhs;
     
     # change symbolic layer into code layer
     flhs_code = generate_code_layer_fv(flhs_expr, var, LHS, "flux");
     frhs_code = generate_code_layer_fv(frhs_expr, var, RHS, "flux");
-    slhs_code = generate_code_layer_fv(slhs_expr, var, LHS, "source");
-    srhs_code = generate_code_layer_fv(srhs_expr, var, RHS, "source");
-    Femshop.log_entry("flux, code layer: \n  LHS = "*string(flhs_code)*" \n  RHS = "*string(frhs_code));
-    Femshop.log_entry("source, code layer: \n  LHS = "*string(slhs_code)*" \n  RHS = "*string(srhs_code));
+    log_entry("flux, code layer: \n  LHS = "*string(flhs_code)*" \n  RHS = "*string(frhs_code));
     
-    if Femshop.language == JULIA || Femshop.language == 0
+    if language == JULIA || language == 0
         args = "args";
-        @makeFunction(args, string(slhs_code));
-        set_lhs(var);
-        
-        @makeFunction(args, string(srhs_code));
-        set_rhs(var);
-        
         @makeFunction(args, string(flhs_code));
         set_lhs_surface(var);
         
@@ -425,7 +481,61 @@ function fluxAndSource(var, fex, sex)
         
     else
         # not ready
-        println("Not ready to generate FV code foe external target.")
+        println("Not ready to generate FV code for external target.")
+    end
+end
+
+function source(var, sex)
+    if typeof(var) <: Array
+        # multiple simultaneous variables
+        symvars = [];
+        symsex = [];
+        if !(length(var) == length(sex))
+            printerr("Error in source function: # of unknowns must equal # of equations. (example: source([a,b,c], [s1,s2,s3]))");
+        end
+        for vi=1:length(var)
+            push!(symvars, var[vi].symbol);
+            push!(symsex, Meta.parse((sex)[vi]));
+        end
+    else
+        symsex = Meta.parse(sex);
+        symvars = var.symbol;
+    end
+    
+    log_entry("Making source for variable(s): "*string(symvars));
+    log_entry("source, input: "*string(sex));
+    
+    # The parsing step
+    (slhs_expr, srhs_expr) = sp_parse(symsex, symvars);
+    # Note that this automatically puts a (-) on all rhs terms. These need to be reversed for FV.
+    
+    # Modify the expressions according to time stepper.
+    # There is an assumed Dt(u) added which is the only time derivative.
+    log_entry("source, before modifying for time: "*string(slhs_expr)*" - "*string(srhs_expr));
+    
+    (newslhs, newsrhs) = reformat_for_stepper_fv_source(slhs_expr, srhs_expr, config.stepper);
+    
+    log_entry("source, modified for time stepping: "*string(newslhs)*" + "*string(newsrhs));
+    
+    slhs_expr = newslhs;
+    srhs_expr = newsrhs;
+    
+    # change symbolic layer into code layer
+    slhs_code = generate_code_layer_fv(slhs_expr, var, LHS, "source");
+    srhs_code = generate_code_layer_fv(srhs_expr, var, RHS, "source");
+    log_entry("source, code layer: \n  LHS = "*string(slhs_code)*" \n  RHS = "*string(srhs_code));
+    
+    if language == JULIA || language == 0
+        args = "args";
+        @makeFunction(args, string(slhs_code));
+        set_lhs(var);
+        
+        @makeFunction(args, string(srhs_code));
+        set_rhs(var);
+        
+    else
+        # not ready
+        println("Not ready to generate FV code for external target.")
     end
 end
 
@@ -594,8 +704,8 @@ function solve(var, nlvar=nothing; nonlinear=false)
             if prob.time_dependent
                 time_stepper = init_stepper(grid_data.allnodes, time_stepper);
                 if use_specified_steps
-                    Femshop.time_stepper.dt = specified_dt;
-				    Femshop.time_stepper.Nsteps = specified_Nsteps;
+                    time_stepper.dt = specified_dt;
+				    time_stepper.Nsteps = specified_Nsteps;
                 end
                 if (nonlinear)
                     if time_stepper.type == EULER_EXPLICIT || time_stepper.type == LSRK4
@@ -650,8 +760,8 @@ function solve(var, nlvar=nothing; nonlinear=false)
             if prob.time_dependent
                 time_stepper = init_stepper(grid_data.allnodes, time_stepper);
                 if use_specified_steps
-                    Femshop.time_stepper.dt = specified_dt;
-				    Femshop.time_stepper.Nsteps = specified_Nsteps;
+                    time_stepper.dt = specified_dt;
+				    time_stepper.Nsteps = specified_Nsteps;
                 end
 				if (nonlinear)
                 	t = @elapsed(result = DGSolver.nonlinear_solve(var, nlvar, lhs, rhs, slhs, srhs, time_stepper));
@@ -702,8 +812,8 @@ function solve(var, nlvar=nothing; nonlinear=false)
             if prob.time_dependent
                 time_stepper = init_stepper(grid_data.allnodes, time_stepper);
                 if use_specified_steps
-                    Femshop.time_stepper.dt = specified_dt;
-				    Femshop.time_stepper.Nsteps = specified_Nsteps;
+                    time_stepper.dt = specified_dt;
+				    time_stepper.Nsteps = specified_Nsteps;
                 end
 				if (nonlinear)
                 	t = 0;

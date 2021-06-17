@@ -398,13 +398,15 @@ function generate_code_layer_fv_julia(symex, var, lorr, fors)
         if lorr == RHS
             push!(code.args, Expr(:(=), :cell_average, :(zeros($dofsper)))); # allocate result vector
         else
-            push!(code.args, Expr(:(=), :cell_Q_matrix, :(zeros($dofsper, refel.Np*$dofsper)))); # allocate quadrature matrix
+            push!(code.args, Expr(:(=), :cell_Q_matrix, :(zeros($dofsper, 2*$dofsper)))); # allocate quadrature matrix
         end
     end
     
     result = nothing; # Will hold the returned expression
     if typeof(var) <: Array # multivar
+        total_terms = 0;
         for vi=1:length(var)
+            total_terms += length(terms[vi]);
             # Add terms
             # Each component/dof should have one expression so that submatrix is only modified once.
             if lorr == LHS
@@ -470,6 +472,15 @@ function generate_code_layer_fv_julia(symex, var, lorr, fors)
                 
                 result = :cell_average;
                 
+            end
+        end
+        
+        if total_terms == 0
+            # there were no terms. Just return 0
+            if lorr == LHS
+                return :(return nothing);
+            else
+                return :(return zeros($dofsper));
             end
         end
         
