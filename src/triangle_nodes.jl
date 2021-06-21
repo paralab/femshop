@@ -33,7 +33,15 @@ function triangle_refel_nodes!(refel)
     refel.face2local = [get_face2local_map(refel.r, tf1),
                         get_face2local_map(refel.r, tf2),
                         get_face2local_map(refel.r, tf3)];
+                        
+    ### Unfinished: find correct surface quadrature weights.
+    ### For now just take average(correct for order=1).
+    refel.surf_r = [refel.r[refel.face2local[1],:], refel.r[refel.face2local[2],:], refel.r[refel.face2local[3],:]];
+    refel.surf_g = [refel.r[refel.face2local[1],:], refel.r[refel.face2local[2],:], refel.r[refel.face2local[3],:]];
     
+    tmp = [length(refel.face2local[1]), length(refel.face2local[2]), length(refel.face2local[3])];
+    refel.surf_wr = [ones(tmp[1])./tmp[1], ones(tmp[2])./tmp[2], ones(tmp[3])./tmp[3]];
+    refel.surf_wg = refel.surf_wr;
 end
 
 # Purpose  : Compute (x,y) nodes in equilateral triangle for polynomial of order N  

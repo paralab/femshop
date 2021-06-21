@@ -20,6 +20,30 @@ function build_triangle_refel(refel)
     refel.Ddr = refel.Dr*refel.invV;
     refel.Dds = refel.Ds*refel.invV;
     
+    ## Surfaces
+    nfaces = 3;
+    refel.surf_V = fill!(Array{Array{Float64}}(undef, nfaces), []);
+    #refel.surf_gradV = fill!(Array{Array{Float64}}(undef, nfaces), []);
+    refel.surf_Vg = fill!(Array{Array{Float64}}(undef, nfaces), []);
+    #refel.surf_gradVg = fill!(Array{Array{Float64}}(undef, nfaces), []);
+    
+    refel.surf_Q = fill!(Array{Array{Float64}}(undef, nfaces), []);
+    refel.surf_Qr = fill!(Array{Array{Float64}}(undef, nfaces), []);
+    refel.surf_Qs = fill!(Array{Array{Float64}}(undef, nfaces), []);
+    refel.surf_Ddr = fill!(Array{Array{Float64}}(undef, nfaces), []);
+    refel.surf_Dds = fill!(Array{Array{Float64}}(undef, nfaces), []);
+    
+    for fi=1:nfaces
+        (refel.surf_V[fi], surf_gradVr, surf_gradVs) = triangle_vandermonds(refel, refel.surf_r[fi]);
+        (refel.surf_Vg[fi], surf_gradVgr, surf_gradVgs) = triangle_vandermonds(refel, refel.surf_g[fi]);
+        
+        refel.surf_Q[fi] = refel.surf_V[fi] * refel.invV;
+        refel.surf_Qr[fi] = surf_gradVgr * refel.invV;
+        refel.surf_Qs[fi] = surf_gradVgs * refel.invV;
+        refel.surf_Ddr[fi] = surf_gradVr * refel.invV;
+        refel.surf_Dds[fi] = surf_gradVs * refel.invV;
+    end
+    
     return refel;
 end
 
