@@ -10,26 +10,25 @@ The Julia script: <a href="https://github.com/paralab/femshop/blob/master/src/ex
 
 The 1D Poisson equation with Dirichlet boundary and smooth functions is about as simple as it gets. This example demonstrates the basics of setting up a problem in Femshop. A uniform discretization of the unit domain is used with p=4 polynomial basis function space.
 
-Begin by importing and using the Femshop module. Then initialize. The name here is only used when generating code files.
+Begin by loading the Femshop module. Then initialize. The name here is only used when generating code files.
 ```
-include("../Femshop.jl");
-using .Femshop
+using Femshop
 init_femshop("poisson1d");
 ```
-Then set up the configuration. This example simply sets dimensionality of the domain and basis function space.
+Then set up the configuration. This example simply sets dimensionality of the domain and polynomial order of the basis function space.
 ```
-@domain(1)                  # dimension
-@functionSpace(LEGENDRE, 4) # basis function, order
+domain(1)                  	# dimension
+functionSpace(order=4) 		# polynomial order
 ```
 Use the built-in simple mesh generator to make the mesh and set up all node mappings.
 ```
-@mesh(LINEMESH, 20)         # uniform 1D mesh. 2nd arg is # of elements
+mesh(LINEMESH, elsperdim=20)# uniform 1D mesh with 20 elements
 ```
 Define the variable, test function, and forcing function symbols.
 ```
-@variable(u)                # same as @variable(u, SCALAR)
-@testSymbol(v)              # sets the symbol for a SCALAR test function
-@coefficient(f, "-100*pi*pi*sin(10*pi*x)*sin(pi*x) - pi*pi*sin(10*pi*x)*sin(pi*x) + 20*pi*pi*cos(10*pi*x)*cos(pi*x)")
+u = variable("u")           # make a scalar variable u
+testSymbol("v")             # sets the symbol for a test function
+coefficient("f", "-100*pi*pi*sin(10*pi*x)*sin(pi*x) - pi*pi*sin(10*pi*x)*sin(pi*x) + 20*pi*pi*cos(10*pi*x)*cos(pi*x)")
 ```
 Convert the PDE
 <div align="center"><img src="https://render.githubusercontent.com/render/math?math=\Delta%20u=f(x)"> </div>
@@ -39,11 +38,11 @@ into the weak form
 
 The boundary condition is specified.
 ```
-@boundary(u, 1, DIRICHLET, "0") # boundary condition for BID 1 is Dirichlet with value 0
+boundary(u, 1, DIRICHLET, 0) # boundary condition for BID 1 is Dirichlet with value 0
 ```
-Then write the weak form expression by setting the weak form equation above equal to zero. Finally, solve for u.
+Then write the weak form expression in the residual form. Finally, solve for u.
 ```
-@weakForm(u, "-grad(u)*grad(v) - f*v")
+weakForm(u, "-grad(u)*grad(v) - f*v")
 solve(u);
 ```
-End things with `@finalize()` to finish up any generated files and the log.
+End things with `finalize_femshop()` to finish up any generated files and the log.

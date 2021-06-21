@@ -15,27 +15,26 @@ Unstructured 2D meshes made of irregular triangles or quads are used in example-
 
 The following description is for the 2D case. Begin by importing and using the Femshop module. Then initialize. The name here is only used when generating code files.
 ```
-include("../Femshop.jl");
-using .Femshop
+using Femshop
 init_femshop("unstructured2d");
 ```
-Then set up the configuration. This example simply sets dimensionality of the domain and basis function space.
+Then set up the configuration. This example simply sets dimensionality of the domain and polynomial order of the basis function space.
 ```
-@domain(2, SQUARE, UNSTRUCTURED) # dimension, geometry, discretization
-@functionSpace(LEGENDRE, 2)      # basis function, order
+domain(2, grid=UNSTRUCTURED)# dimension, geometry, discretization
+functionSpace(order=2)      # basis function polynomial order
 ```
 Import the mesh from a .MSH file and set up all node mappings.
 ```
-@mesh("utriangle.msh")     # Use this line for triangles
-@mesh("uquad.msh")         # Use this line for quads
+mesh("utriangle.msh")     	# Use this line for triangles
+mesh("uquad.msh")         	# Use this line for quads
 ```
 Define the variable, test function, and other symbols.
 ```
-@variable(u)                # same as @variable(u, SCALAR)
-@testSymbol(v)              # sets the symbol for a SCALAR test function
-@coefficient(f, "(-10-(x+1)*200*pi*pi)*sin(10*pi*x)*sin(10*pi*y) + 10*pi*cos(10*pi*x)*sin(10*pi*y)")
-@coefficient(k, "x+1")
-@coefficient(C, 10)
+u = variable("u")           # same as @variable(u, SCALAR)
+testSymbol("v")             # sets the symbol for a SCALAR test function
+coefficient("f", "(-10-(x+1)*200*pi*pi)*sin(10*pi*x)*sin(10*pi*y) + 10*pi*cos(10*pi*x)*sin(10*pi*y)")
+coefficient("k", "x+1")
+coefficient("C", 10)
 ```
 Convert the PDE
 <div align="center"><img src="https://render.githubusercontent.com/render/math?math=\nabla\cdot%20(K\nabla%20u)-Cu=f(x)"> </div>
@@ -45,11 +44,11 @@ into the weak form
 
 The boundary condition is specified.
 ```
-@boundary(u, 1, DIRICHLET, "0") # boundary condition for BID 1 is Dirichlet with value 0
+boundary(u, 1, DIRICHLET, "0") # boundary condition for BID 1 is Dirichlet with value 0
 ```
 Then write the weak form expression in the residual form and solve for u.
 ```
-@weakForm(u, "k*dot(grad(u), grad(v)) + C*u*v+ f*v")
+weakForm(u, "k*dot(grad(u), grad(v)) + C*u*v+ f*v")
 solve(u);
 ```
-End things with `@finalize()` to finish up any generated files and the log.
+End things with `finalize_femshop()` to finish up any generated files and the log.

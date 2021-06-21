@@ -44,3 +44,11 @@ Unstructured meshes in 2D and 3D made of triangles, quadrilaterals, hexahedra an
 <br><a href="https://github.com/paralab/femshop/blob/master/src/examples/example-unstructured2d.jl">example-unstructured2d.jl</a>
 <br><a href="https://github.com/paralab/femshop/blob/master/src/examples/example-unstructured3d.jl">example-unstructured3d.jl</a>
 </p>
+
+<h3>Finite Volume: Advection</h3>
+<p><img src="images/fvadvec2d.png" alt="fvadvec2d" width="200">
+Finite volume method for a basic advection problem. This example demonstrates the finite volume capability as well as exporting/importing generated code.
+<br>Page: <a href="https://paralab.github.io/femshop/pages/FVadvection.html">FV Advection page</a>
+<br><a href="https://github.com/paralab/femshop/blob/master/src/examples/example-advection1d-fv.jl">example-advection1d-fv.jl</a>
+<br><a href="https://github.com/paralab/femshop/blob/master/src/examples/example-advection2d-fv.jl">example-advection2d-fv.jl</a>
+</p>

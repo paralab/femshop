@@ -12,31 +12,30 @@ A 3D linear elasticity equation that models the gravity induced deflection of a 
 
 Begin by importing and using the Femshop module. Then initialize. The name here is only used when generating code files.
 ```
-include("../Femshop.jl");
-using .Femshop
+using Femshop
 init_femshop("elasticity");
 ```
-Then set up the configuration. This example simply sets dimensionality of the domain and basis function space.
+Then set up the configuration. This example simply sets dimensionality of the domain and polynomial order of the basis function space.
 ```
-@domain(3)                  # dimension
-@functionSpace(LEGENDRE, 4) # basis function, order
+domain(1)                  	# dimension
+functionSpace(order=4) 		# polynomial order
 ```
 Use the built-in simple mesh generator to make the mesh and set up all node mappings.
 ```
 n = [10,4,4]; # The numbers of elements in each dimension. 10x4x4 elements
-interval = [0,1,0,0.2,0,0.2]; # The limits of the domain. A narrow beam.
+bounds = [0,1,0,0.2,0,0.2]; # The limits of the domain. A narrow beam.
 
 # 3D mesh defined by n and interval above with two boundary regions.
-@mesh(HEXMESH, n, 2, interval) 
+mesh(HEXMESH, elsperdim=n, bids=2, interval=bounds) 
 ```
 Define the variable, test function, and coefficient symbols.
 ```
-@variable(u, VECTOR)
-@testSymbol(v, VECTOR)
+u = variable("u", VECTOR)
+testSymbol("v", VECTOR)
 
-@coefficient(mu, "x>0.5 ? 0.2 : 10") # discontinuous mu
-@coefficient(lambda, 1.25)
-@coefficient(f, VECTOR, ["0","0","-0.1"]) # gravitational force
+coefficient("mu", "x>0.5 ? 0.2 : 10") # discontinuous mu
+coefficient("lambda", 1.25)
+coefficient("f", VECTOR, ["0","0","-0.1"]) # gravitational force
 ```
 Convert the PDE
 into the weak form
@@ -44,12 +43,12 @@ into the weak form
 
 The boundary conditions are specified.
 ```
-@boundary(u, 1, DIRICHLET, [0,0,0]) # x=0
-@boundary(u, 2, NEUMANN, [0,0,0])   # other
+boundary(u, 1, DIRICHLET, [0,0,0]) # x=0
+boundary(u, 2, NEUMANN, [0,0,0])   # other
 ```
-Then write the weak form expression by setting the weak form equation above equal to zero. Finally, solve for u.
+Then write the weak form expression in the residual form. Finally, solve for u.
 ```
-@weakForm(u, "inner( (lambda * div(u) .* [1 0 0; 0 1 0; 0 0 1] + mu .* (grad(u) + transpose(grad(u)))), grad(v)) - dot(f,v)")
+weakForm(u, "inner( (lambda * div(u) .* [1 0 0; 0 1 0; 0 0 1] + mu .* (grad(u) + transpose(grad(u)))), grad(v)) - dot(f,v)")
 solve(u);
 ```
-End things with `@finalize()` to finish up any generated files and the log.
+End things with `finalize_femshop()` to finish up any generated files and the log.
