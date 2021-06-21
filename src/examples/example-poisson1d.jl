@@ -3,30 +3,37 @@
 # CG, Linear element
 # Simplest test possible
 =#
-if !@isdefined(Femshop)
-    include("../Femshop.jl");
-    using .Femshop
-end
+
+### If the Femshop package has already been added, use this line #########
+using Femshop # Note: to add the package, first do: ]add "https://github.com/paralab/femshop.git"
+
+### If not, use these four lines (working from the examples directory) ###
+# if !@isdefined(Femshop)
+#     include("../Femshop.jl");
+#     using .Femshop
+# end
+##########################################################################
+
 init_femshop("poisson1d");
 
-# Try making an optional log
-@useLog("poisson1dlog")
+# Optionally generate a log
+useLog("poisson1dlog")
 
 # Set up the configuration (order doesn't matter)
-@domain(1)                      # dimension
-@functionSpace(LEGENDRE, 4)     # basis function, order
+domain(1)                      # dimension
+functionSpace(order=3)         # basis function polynomial order
 
 # Specify the problem (mesh comes first)
-@mesh(LINEMESH, 20)             # build uniform LINEMESH. 2nd arg=# of elements, (optional)3rd arg=# of BIDs
+mesh(LINEMESH, elsperdim=20)   # build uniform LINEMESH with 20 elements
 
-@variable(u)                    # same as @variable(u, SCALAR)
-@testSymbol(v)                  # sets the symbol for a test function
+u = variable("u")              # make a scalar variable with symbol u
+testSymbol("v")                # sets the symbol for a test function
 
-@boundary(u, 1, DIRICHLET, "0")   # boundary condition for BID 1 is Dirichlet with value 0
+boundary(u, 1, DIRICHLET, 0)  # boundary condition for BID 1 is Dirichlet with value 0
 
 # Write the weak form 
-@coefficient(f, "-100*pi*pi*sin(10*pi*x)*sin(pi*x) - pi*pi*sin(10*pi*x)*sin(pi*x) + 20*pi*pi*cos(10*pi*x)*cos(pi*x)")
-@weakForm(u, "-grad(u)*grad(v) - f*v")
+coefficient("f", "-100*pi*pi*sin(10*pi*x)*sin(pi*x) - pi*pi*sin(10*pi*x)*sin(pi*x) + 20*pi*pi*cos(10*pi*x)*cos(pi*x)")
+weakForm(u, "-grad(u)*grad(v) - f*v")
 
 solve(u);
 
@@ -52,4 +59,4 @@ println("max error = "*string(maxerr));
 log_dump_config();
 log_dump_prob();
 
-@finalize()
+finalize_femshop() # Finish writing and close any files

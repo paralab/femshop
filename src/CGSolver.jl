@@ -577,184 +577,188 @@ function assemble(var, bilinear, linear, t=0.0, dt=0.0; rhs_only = false, keep_g
     end
 end
 
-######################################################
-# To be romoved. Fix nonlinear solve first.
-# assembles the A and b in Au=b
 function assemble_rhs_only(var, linear, t=0.0, dt=0.0; keep_geometric_factors = false, saved_geometric_factors = nothing)
-    Np = refel.Np;
-    nel = mesh_data.nel;
-    N1 = size(grid_data.allnodes,2);
-    multivar = typeof(var) <: Array;
-    maxvarindex = 0;
-    if multivar
-        # multiple variables being solved for simultaneously
-        dofs_per_node = 0;
-        var_to_dofs = [];
-        for vi=1:length(var)
-            tmp = dofs_per_node;
-            dofs_per_node += length(var[vi].symvar.vals);
-            push!(var_to_dofs, (tmp+1):dofs_per_node);
-            maxvarindex = max(maxvarindex,var[vi].index);
-        end
-    else
-        # one variable
-        dofs_per_node = length(var.symvar.vals);
-        maxvarindex = var.index;
-    end
-    Nn = dofs_per_node * N1;
-
-    b = zeros(Nn);
-    
-    # Save geometric factors if desired
-    if keep_geometric_factors
-        saved_wdetj = [];
-        saved_J = [];
-    end
-    
-    # Stiffness and mass are precomputed for uniform grid meshes
-    precomputed_mass_stiffness = config.mesh_type == UNIFORM_GRID && config.geometry == SQUARE
-    if precomputed_mass_stiffness
-        glb = grid_data.loc2glb[:,1];
-        xe = grid_data.allnodes[:,glb[:]];
-        (detJ, J) = geometric_factors(refel, xe);
-        wdetj = refel.wg .* detJ;
-        if keep_geometric_factors
-            saved_wdetj = wdetj;
-            saved_J = J;
-        end
-        if config.dimension == 1
-            (RQ1, RD1) = build_deriv_matrix(refel, J);
-            TRQ1 = RQ1';
-            stiffness = [(TRQ1 * diagm(wdetj) * RQ1)];
-        elseif config.dimension == 2
-            (RQ1, RQ2, RD1, RD2) = build_deriv_matrix(refel, J);
-            (TRQ1, TRQ2) = (RQ1', RQ2');
-            stiffness = [(TRQ1 * diagm(wdetj) * RQ1) , (TRQ2 * diagm(wdetj) * RQ2)];
-        else
-            (RQ1, RQ2, RQ3, RD1, RD2, RD3) = build_deriv_matrix(refel, J);
-            (TRQ1, TRQ2, TRQ3) = (RQ1', RQ2', RQ3');
-            stiffness = [(TRQ1 * diagm(wdetj) * RQ1) , (TRQ2 * diagm(wdetj) * RQ2) , (TRQ3 * diagm(wdetj) * RQ3)];
-        end
-        mass = (refel.Q)' * diagm(wdetj) * refel.Q;
-    else
-        stiffness = 0;
-        mass = 0;
-    end
-    
-    # Elemental loop follows elemental ordering
-    for e=elemental_order;
-        glb = grid_data.loc2glb[:,e];       # global indices of this element's nodes for extracting values from var arrays
-        xe = grid_data.allnodes[:,glb[:]];  # coordinates of this element's nodes for evaluating coefficient functions
-        
-        if !precomputed_mass_stiffness
-            if saved_geometric_factors === nothing
-                (detJ, J) = geometric_factors(refel, xe);
-                wdetj = refel.wg .* detJ;
-                
-                if keep_geometric_factors
-                    push!(saved_wdetj, wdetj);
-                    push!(saved_J, J);
-                end
-            else
-                wdetj = saved_geometric_factors[1][e];
-                J = saved_geometric_factors[2][e];
-            end
-        end
-        
-        rhsargs = (var, xe, glb, refel, wdetj, J, RHS, t, dt, stiffness, mass);
-
-        #linchunk = linear.func(args);  # get the elemental linear part
-        if dofs_per_node == 1
-            linchunk = linear.func(rhsargs);  # get the elemental linear part
-            b[glb] .+= linchunk;
-
-        elseif typeof(var) == Variable
-            # only one variable, but more than one dof
-            linchunk = linear.func(rhsargs);
-            insert_linear!(b, linchunk, glb, 1:dofs_per_node, dofs_per_node);
-
-        else
-            linchunk = linear.func(rhsargs);
-            insert_linear!(b, linchunk, glb, 1:dofs_per_node, dofs_per_node);
-
-        end
-    end
-    
-    # Boundary conditions
-    bidcount = length(grid_data.bids); # the number of BIDs
-    if dofs_per_node > 1
-        if multivar
-            dofind = 0;
-            for vi=1:length(var)
-                for compo=1:length(var[vi].symvar.vals)
-                    dofind = dofind + 1;
-                    for bid=1:bidcount
-                        if prob.bc_type[var[vi].index, bid] == NO_BC
-                            # do nothing
-                        else
-                            b = dirichlet_bc_rhs_only(b, prob.bc_func[var[vi].index, bid][compo], grid_data.bdry[bid], t, dofind, dofs_per_node);
-                        end
-                    end
-                end
-            end
-        else
-            for d=1:dofs_per_node
-                #rows = ((d-1)*length(glb)+1):(d*length(glb));
-                dofind = d;
-                for bid=1:bidcount
-                    if prob.bc_type[var.index, bid] == NO_BC
-                        # do nothing
-                    else
-                        b = dirichlet_bc_rhs_only(b, prob.bc_func[var.index, bid][d], grid_data.bdry[bid], t, d, dofs_per_node);
-                    end
-                end
-            end
-        end
-    else
-        for bid=1:bidcount
-            if prob.bc_type[var.index, bid] == NO_BC
-                # do nothing
-            else
-                b = dirichlet_bc_rhs_only(b, prob.bc_func[var.index, bid][1], grid_data.bdry[bid], t);
-            end
-        end
-    end
-    
-    # Reference points
-    if size(prob.ref_point,1) >= maxvarindex
-        if multivar
-            posind = zeros(Int,0);
-            vals = zeros(0);
-            for vi=1:length(var)
-                if prob.ref_point[var[vi].index,1]
-                    eii = prob.ref_point[var[vi].index, 2];
-                    tmp = (grid_data.glbvertex[eii[1], eii[2]] - 1)*dofs_per_node + var_to_dofs[vi][1];
-                    if length(prob.ref_point[var[vi].index, 3]) > 1
-                        tmp = tmp:(tmp+length(prob.ref_point[var[vi].index, 3])-1);
-                    end
-                    posind = [posind; tmp];
-                    vals = [vals; prob.ref_point[var[vi].index, 3]];
-                end
-            end
-            if length(vals) > 0
-                b[posind] = vals;
-            end
-            
-        else
-            if prob.ref_point[var.index,1]
-                eii = prob.ref_point[var.index, 2];
-                posind = (grid_data.glbvertex[eii[1], eii[2]] - 1)*dofs_per_node + 1;
-                if length(prob.ref_point[var.index, 3]) > 1
-                    posind = posind:(posind+length(prob.ref_point[var[vi].index, 3])-1);
-                end
-                b[posind] = prob.ref_point[var.index, 3];
-            end
-        end
-    end
-
-    return b;
+    return assemble(var, nothing, linear, t, dt; rhs_only=true, keep_geometric_factors = keep_geometric_factors, saved_geometric_factors = saved_geometric_factors)
 end
-##########################################################
+
+# ######################################################
+# # To be romoved. Fix nonlinear solve first.
+# # assembles the A and b in Au=b
+# function assemble_rhs_only(var, linear, t=0.0, dt=0.0; keep_geometric_factors = false, saved_geometric_factors = nothing)
+#     Np = refel.Np;
+#     nel = mesh_data.nel;
+#     N1 = size(grid_data.allnodes,2);
+#     multivar = typeof(var) <: Array;
+#     maxvarindex = 0;
+#     if multivar
+#         # multiple variables being solved for simultaneously
+#         dofs_per_node = 0;
+#         var_to_dofs = [];
+#         for vi=1:length(var)
+#             tmp = dofs_per_node;
+#             dofs_per_node += length(var[vi].symvar.vals);
+#             push!(var_to_dofs, (tmp+1):dofs_per_node);
+#             maxvarindex = max(maxvarindex,var[vi].index);
+#         end
+#     else
+#         # one variable
+#         dofs_per_node = length(var.symvar.vals);
+#         maxvarindex = var.index;
+#     end
+#     Nn = dofs_per_node * N1;
+
+#     b = zeros(Nn);
+    
+#     # Save geometric factors if desired
+#     if keep_geometric_factors
+#         saved_wdetj = [];
+#         saved_J = [];
+#     end
+    
+#     # Stiffness and mass are precomputed for uniform grid meshes
+#     precomputed_mass_stiffness = config.mesh_type == UNIFORM_GRID && config.geometry == SQUARE
+#     if precomputed_mass_stiffness
+#         glb = grid_data.loc2glb[:,1];
+#         xe = grid_data.allnodes[:,glb[:]];
+#         (detJ, J) = geometric_factors(refel, xe);
+#         wdetj = refel.wg .* detJ;
+#         if keep_geometric_factors
+#             saved_wdetj = wdetj;
+#             saved_J = J;
+#         end
+#         if config.dimension == 1
+#             (RQ1, RD1) = build_deriv_matrix(refel, J);
+#             TRQ1 = RQ1';
+#             stiffness = [(TRQ1 * diagm(wdetj) * RQ1)];
+#         elseif config.dimension == 2
+#             (RQ1, RQ2, RD1, RD2) = build_deriv_matrix(refel, J);
+#             (TRQ1, TRQ2) = (RQ1', RQ2');
+#             stiffness = [(TRQ1 * diagm(wdetj) * RQ1) , (TRQ2 * diagm(wdetj) * RQ2)];
+#         else
+#             (RQ1, RQ2, RQ3, RD1, RD2, RD3) = build_deriv_matrix(refel, J);
+#             (TRQ1, TRQ2, TRQ3) = (RQ1', RQ2', RQ3');
+#             stiffness = [(TRQ1 * diagm(wdetj) * RQ1) , (TRQ2 * diagm(wdetj) * RQ2) , (TRQ3 * diagm(wdetj) * RQ3)];
+#         end
+#         mass = (refel.Q)' * diagm(wdetj) * refel.Q;
+#     else
+#         stiffness = 0;
+#         mass = 0;
+#     end
+    
+#     # Elemental loop follows elemental ordering
+#     for e=elemental_order;
+#         glb = grid_data.loc2glb[:,e];       # global indices of this element's nodes for extracting values from var arrays
+#         xe = grid_data.allnodes[:,glb[:]];  # coordinates of this element's nodes for evaluating coefficient functions
+        
+#         if !precomputed_mass_stiffness
+#             if saved_geometric_factors === nothing
+#                 (detJ, J) = geometric_factors(refel, xe);
+#                 wdetj = refel.wg .* detJ;
+                
+#                 if keep_geometric_factors
+#                     push!(saved_wdetj, wdetj);
+#                     push!(saved_J, J);
+#                 end
+#             else
+#                 wdetj = saved_geometric_factors[1][e];
+#                 J = saved_geometric_factors[2][e];
+#             end
+#         end
+        
+#         rhsargs = (var, xe, glb, refel, wdetj, J, RHS, t, dt, stiffness, mass);
+
+#         #linchunk = linear.func(args);  # get the elemental linear part
+#         if dofs_per_node == 1
+#             linchunk = linear.func(rhsargs);  # get the elemental linear part
+#             b[glb] .+= linchunk;
+
+#         elseif typeof(var) == Variable
+#             # only one variable, but more than one dof
+#             linchunk = linear.func(rhsargs);
+#             insert_linear!(b, linchunk, glb, 1:dofs_per_node, dofs_per_node);
+
+#         else
+#             linchunk = linear.func(rhsargs);
+#             insert_linear!(b, linchunk, glb, 1:dofs_per_node, dofs_per_node);
+
+#         end
+#     end
+    
+#     # Boundary conditions
+#     bidcount = length(grid_data.bids); # the number of BIDs
+#     if dofs_per_node > 1
+#         if multivar
+#             dofind = 0;
+#             for vi=1:length(var)
+#                 for compo=1:length(var[vi].symvar.vals)
+#                     dofind = dofind + 1;
+#                     for bid=1:bidcount
+#                         if prob.bc_type[var[vi].index, bid] == NO_BC
+#                             # do nothing
+#                         else
+#                             b = dirichlet_bc_rhs_only(b, prob.bc_func[var[vi].index, bid][compo], grid_data.bdry[bid], t, dofind, dofs_per_node);
+#                         end
+#                     end
+#                 end
+#             end
+#         else
+#             for d=1:dofs_per_node
+#                 #rows = ((d-1)*length(glb)+1):(d*length(glb));
+#                 dofind = d;
+#                 for bid=1:bidcount
+#                     if prob.bc_type[var.index, bid] == NO_BC
+#                         # do nothing
+#                     else
+#                         b = dirichlet_bc_rhs_only(b, prob.bc_func[var.index, bid][d], grid_data.bdry[bid], t, d, dofs_per_node);
+#                     end
+#                 end
+#             end
+#         end
+#     else
+#         for bid=1:bidcount
+#             if prob.bc_type[var.index, bid] == NO_BC
+#                 # do nothing
+#             else
+#                 b = dirichlet_bc_rhs_only(b, prob.bc_func[var.index, bid][1], grid_data.bdry[bid], t);
+#             end
+#         end
+#     end
+    
+#     # Reference points
+#     if size(prob.ref_point,1) >= maxvarindex
+#         if multivar
+#             posind = zeros(Int,0);
+#             vals = zeros(0);
+#             for vi=1:length(var)
+#                 if prob.ref_point[var[vi].index,1]
+#                     eii = prob.ref_point[var[vi].index, 2];
+#                     tmp = (grid_data.glbvertex[eii[1], eii[2]] - 1)*dofs_per_node + var_to_dofs[vi][1];
+#                     if length(prob.ref_point[var[vi].index, 3]) > 1
+#                         tmp = tmp:(tmp+length(prob.ref_point[var[vi].index, 3])-1);
+#                     end
+#                     posind = [posind; tmp];
+#                     vals = [vals; prob.ref_point[var[vi].index, 3]];
+#                 end
+#             end
+#             if length(vals) > 0
+#                 b[posind] = vals;
+#             end
+            
+#         else
+#             if prob.ref_point[var.index,1]
+#                 eii = prob.ref_point[var.index, 2];
+#                 posind = (grid_data.glbvertex[eii[1], eii[2]] - 1)*dofs_per_node + 1;
+#                 if length(prob.ref_point[var.index, 3]) > 1
+#                     posind = posind:(posind+length(prob.ref_point[var[vi].index, 3])-1);
+#                 end
+#                 b[posind] = prob.ref_point[var.index, 3];
+#             end
+#         end
+#     end
+
+#     return b;
+# end
+# ##########################################################
 
 # Inset the single dof into the greater construct
 function insert_linear!(b, bel, glb, dof, Ndofs)

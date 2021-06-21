@@ -1,35 +1,42 @@
 #=
 # Import a simple triangle or quad mesh from a .msh file.
 =#
-if !@isdefined(Femshop)
-    include("../Femshop.jl");
-    using .Femshop
-end
+
+### If the Femshop package has already been added, use this line #########
+using Femshop # Note: to add the package, first do: ]add "https://github.com/paralab/femshop.git"
+
+### If not, use these four lines (working from the examples directory) ###
+# if !@isdefined(Femshop)
+#     include("../Femshop.jl");
+#     using .Femshop
+# end
+##########################################################################
+
 init_femshop("unstruct2dtest");
 
-@useLog("unstruct2dlog")
+useLog("unstruct2dlog")
 
-@domain(2, SQUARE, UNSTRUCTURED)
-@functionSpace(LEGENDRE, 2)
+domain(2, grid=UNSTRUCTURED)
+functionSpace(order=2)
 
 # This rectangle covers [0, 0.1]x[0, 0.3]
 # Uncomment the desired mesh.
-@mesh("utriangle.msh")  # Using triangles
-#@mesh("uquad.msh")     # Using quads
+mesh("utriangle.msh")  # Using triangles
+#mesh("uquad.msh")     # Using quads
 
-@variable(u)
-@testSymbol(v)
+u = variable("u")
+testSymbol("v")
 
-@boundary(u, 1, DIRICHLET, 0)
+boundary(u, 1, DIRICHLET, 0)
 
-@coefficient(f, "(-10-(x+1)*200*pi*pi)*sin(10*pi*x)*sin(10*pi*y) + 10*pi*cos(10*pi*x)*sin(10*pi*y)")
-@coefficient(k, "x+1")
-@coefficient(C, 10)
-@weakForm(u, "k*dot(grad(u), grad(v)) + C*u*v+ f*v")
+coefficient("f", "(-10-(x+1)*200*pi*pi)*sin(10*pi*x)*sin(10*pi*y) + 10*pi*cos(10*pi*x)*sin(10*pi*y)")
+coefficient("k", "x+1")
+coefficient("C", 10)
+weakForm(u, "k*dot(grad(u), grad(v)) + C*u*v+ f*v")
 
 solve(u);
 
-@finalize()
+finalize_femshop();
 
 # exact solution is sin(10*pi*x)*sin(10*pi*y)
 # check error

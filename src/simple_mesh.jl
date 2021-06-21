@@ -212,11 +212,11 @@ function simple_quad_mesh(nxy, bn, interval)
         add_boundary_ID_to_grid(2, (x,y) -> (y <= interval[3]) || (y >= interval[4]), grid);
     elseif bn == 3
         add_boundary_ID_to_grid(2, (x,y) -> (x >= interval[2]), grid);
-        add_boundary_ID_to_grid(3, (x,y) -> (y <= interval[3]) || (y >= interval[4]), grid);
+        add_boundary_ID_to_grid(3, (x,y) -> ((y <= interval[3]) || (y >= interval[4])) && (x > interval[1] && x < interval[2]), grid);
     elseif bn == 4
         add_boundary_ID_to_grid(2, (x,y) -> (x >= interval[2]), grid);
-        add_boundary_ID_to_grid(3, (x,y) -> (y <= interval[3]), grid);
-        add_boundary_ID_to_grid(4, (x,y) -> (y >= interval[4]), grid);
+        add_boundary_ID_to_grid(3, (x,y) -> (y <= interval[3] && (x > interval[1] && x < interval[2])), grid);
+        add_boundary_ID_to_grid(4, (x,y) -> (y >= interval[4] && (x > interval[1] && x < interval[2])), grid);
     end
     
     return (mesh, refel, grid);

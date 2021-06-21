@@ -5,7 +5,7 @@ Many of them simply call corresponding functions in jl.
 export generateFor, useLog, domain, solverType, functionSpace, trialSpace, testSpace, 
         nodeType, timeStepper, setSteps, matrixFree, customOperator, customOperatorFile,
         mesh, exportMesh, variable, coefficient, parameter, testSymbol, boundary, addBoundaryID,
-        refernecePoint, timeInterval, initial, weakForm, fluxAndSource, flux, source, exportCode, importCode,
+        referencePoint, timeInterval, initial, weakForm, fluxAndSource, flux, source, exportCode, importCode,
         solve, cachesimSolve, finalize_femshop, cachesim,
         morton_nodes, hilbert_nodes, tiled_nodes, morton_elements, hilbert_elements, 
         tiled_elements, ef_nodes, random_nodes, random_elements
@@ -51,13 +51,13 @@ end
 function functionSpace(;space=LEGENDRE, order=0, orderMin=0, orderMax=0)
     config.trial_function = space;
     config.test_function = space;
-    if orderMax > orderMin && orderMax > 0
+    if orderMax > orderMin && orderMin >= 0
         config.p_adaptive = true;
         config.basis_order_min = orderMin;
         config.basis_order_max = orderMax;
     else
-        config.basis_order_min = order;
-        config.basis_order_max = order;
+        config.basis_order_min = max(order, orderMin);
+        config.basis_order_max = max(order, orderMin);
     end
 end
 
@@ -119,8 +119,8 @@ function mesh(msh; elsperdim=5, bids=1, interval=[0,1])
         
     else # msh should be a mesh file name
         # open the file and read the mesh data
-        mfile = open(m, "r");
-        log_entry("Reading mesh file: "*m);
+        mfile = open(msh, "r");
+        log_entry("Reading mesh file: "*msh);
         meshtime = @elapsed(mshdat=read_mesh(mfile));
         log_entry("Mesh reading took "*string(meshtime)*" seconds");
         add_mesh(mshdat);
@@ -162,12 +162,12 @@ function parameter(name, val, type=SCALAR)
     elseif typeof(val) == String
         # newval will be an array of expressions
         # search for x,y,z,t symbols and replace with special coefficients like parameterCoefficientForx
-        newval = [swap_parameter_xyzt(val)];
+        newval = [swap_parameter_xyzt(Meta.parse(val))];
         
     elseif typeof(val) <: Array
         newval = Array{Expr,1}(undef,length(val));
         for i=1:length(val)
-            newval[i] = swap_parameter_xyzt(val[i]);
+            newval[i] = swap_parameter_xyzt(Meta.parse(val[i]));
         end
         newval = reshape(newval,size(val));
     else

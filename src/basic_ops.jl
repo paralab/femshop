@@ -195,23 +195,28 @@ function sym_Dt_op(ex)
 end
 
 # Applies a derivative prefix. wrt is the axis index
-# sym_deriv(u_12, 1) -> D1_u_12
-function sym_deriv(var, wrt)
-    prefix = "D"*string(wrt)*"_";
+# sym_deriv_string(u_12, 1) -> D1_u_12
+function sym_deriv_string(var, wrt)
+    # since numbers may have been converted to Basic[]
+    if typeof(wrt) <: Number
+        swrt = string(wrt);
+    elseif typeof(wrt) <: Array
+        swrt = string(wrt[1]);
+    end
+    
+    prefix = "D"*swrt*"_";
     
     return symbols(prefix*string(var));
 end
 
 function sym_deriv_op(u, wrt)
-    prefix = "D"*string(wrt)*"_";
-    
     if typeof(u) <: Array
         result = copy(u);
         for i=1:length(result)
             result[i] = sym_deriv_op(u[i], wrt);
         end
     elseif typeof(u) == Basic
-        result = sym_deriv(u, wrt);
+        result = sym_deriv_string(u, wrt);
     elseif typeof(u) <: Number
         result = 0;
     end
@@ -233,13 +238,13 @@ function sym_grad_op(u)
         if rank == 0
             # result is a vector
             for i=1:d
-                push!(result, sym_deriv(u[1], i));
+                push!(result, sym_deriv_string(u[1], i));
             end
         elseif rank == 1
             # result is a tensor
             for i=1:d
                 for j=1:d
-                    push!(result, sym_deriv(u[i], j));
+                    push!(result, sym_deriv_string(u[i], j));
                 end
             end
             result = reshape(result, d,d);
@@ -250,7 +255,7 @@ function sym_grad_op(u)
             for i=1:d
                 for j=1:d
                     for k=1:d
-                        push!(result, sym_deriv(u[i+(j-1)*d], k));
+                        push!(result, sym_deriv_string(u[i+(j-1)*d], k));
                     end
                 end
             end
@@ -260,7 +265,7 @@ function sym_grad_op(u)
         # result is a vector
         d = config.dimension;
         for i=1:d
-            push!(result, sym_deriv(u, i));
+            push!(result, sym_deriv_string(u, i));
         end
     elseif typeof(u) <: Number
         return zeros(config.dimension);
@@ -287,12 +292,12 @@ function sym_div_op(u)
         elseif rank == 1
             # result is a scalar
             if d==1
-                result = [sym_deriv(u[1], 1)];
+                result = [sym_deriv_string(u[1], 1)];
             else
                 ex = :(a+b);
                 ex.args = [:+];
                 for i=1:d
-                    push!(ex.args, sym_deriv(u[i], i))
+                    push!(ex.args, sym_deriv_string(u[i], i))
                 end
                 result = [Basic(ex)];
             end
@@ -328,7 +333,7 @@ function sym_curl_op(u)
         elseif rank == 1
             # result is a vector
             if d==1
-                result = [sym_deriv(u[1], 1)];
+                result = [sym_deriv_string(u[1], 1)];
             else
                 #TODO
                 printerr("curl not ready");

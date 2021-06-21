@@ -300,7 +300,12 @@ function replace_symbols(ex)
     elseif typeof(ex) <:Array
         result = copy(ex);
         for i=1:length(ex)
-            result[i] = replace_symbols(ex[i]);
+            if typeof(ex[i]) == SymEngine.Basic
+                result[i] = replace_symbols(ex[i])[1];
+            else
+                result[i] = replace_symbols(ex[i]);
+            end
+            
         end
         return result;
     else
