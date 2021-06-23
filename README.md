@@ -16,15 +16,8 @@ femshop requires Julia version 1.3 or greater.
 
 ### Team
 
-- [Tan Bui-Thanh](http://users.ices.utexas.edu/~tanbui/), University of Texas at Austin
-- [Clint Dawson](https://www.ae.utexas.edu/people/faculty/faculty-directory/dawson), University of Texas at Austin
-- [Krzysztof Fidkowski](https://aero.engin.umich.edu/people/krzysztof-fidkowski/), Univeristy of Michigan
-- [Matthew Flatt](http://www.cs.utah.edu/~mflatt), University of Utah
-- [Baskar Ganapathysubramanian](https://www.me.iastate.edu/bglab/baskar-ganapathysubramanian/), Iowa State University
-- [Frank Giraldo](https://frankgiraldo.wixsite.com/mysite), Naval Postgraduate School
-- [David Kopriva](https://www.math.fsu.edu/~kopriva/), San Diego State University
-- [Cuong Nguyen](http://www.mit.edu/~cuongng/Site/Home.html), MIT
-- [Per-Olof Perrson](http://persson.berkeley.edu/), UC Berkeley
+- [Eric Heisler](https://ericheisler.github.io/), University of Utah
+- Aadesh Deshmukh, University of Utah
 - [Hari Sundar](http://www.cs.utah.edu/~hari/), University of Utah
 
 ## Learn more
