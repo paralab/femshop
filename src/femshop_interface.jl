@@ -6,7 +6,7 @@ export generateFor, useLog, domain, solverType, functionSpace, trialSpace, testS
         nodeType, timeStepper, setSteps, matrixFree, customOperator, customOperatorFile,
         mesh, exportMesh, variable, coefficient, parameter, testSymbol, boundary, addBoundaryID,
         referencePoint, timeInterval, initial, weakForm, fluxAndSource, flux, source, exportCode, importCode,
-        solve, cachesimSolve, finalize_femshop, cachesim,
+        solve, cachesimSolve, finalize_femshop, cachesim, output_values,
         morton_nodes, hilbert_nodes, tiled_nodes, morton_elements, hilbert_elements, 
         tiled_elements, ef_nodes, random_nodes, random_elements
 
@@ -83,8 +83,8 @@ function setSteps(dt, steps)
     set_specified_steps(dt, steps);
 end
 
-function matrixFree(;maxiters=100, tol=1e-6)
-    config.linalg_matrixfree = true;
+function matrixFree(shallwe=true; maxiters=100, tol=1e-6)
+    config.linalg_matrixfree = shallwe;
     config.linalg_matfree_max = maxiters;
     config.linalg_matfree_tol = tol;
 end
@@ -853,6 +853,31 @@ function cachesimSolve(var, nlvar=nothing; nonlinear=false)
         t = @elapsed(result = CGSolver.linear_solve_cachesim(var, lhs, rhs));
         log_entry("Generated cachesim ouput for "*varnames*".(took "*string(t)*" seconds)", 1);
     end
+end
+
+# Writes the values for each variable to filename in the given format.
+function output_values(vars, filename; format="raw", ascii=false)
+    available_formats = ["raw", "csv", "vtk"];
+    filename *= "."*format;
+    file = open(filename, "w");
+    log_entry("Writing values to file: "*filename);
+    
+    if format == "raw"
+        output_values_raw(vars, file)
+    elseif format == "csv"
+        output_values_csv(vars, file)
+    elseif format == "vtk"
+        if ascii
+            output_values_vtk(vars, file, "ASCII")
+        else
+            output_values_vtk(vars, file, "BINARY")
+        end
+    else
+        println("Unknown output file format("*string(format)*"). Choose from: "*string(available_formats));
+    end
+    log_entry("Finished writing to "*filename);
+    
+    close(file);
 end
 
 function finalize_femshop()

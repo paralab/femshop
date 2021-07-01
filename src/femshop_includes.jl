@@ -47,6 +47,8 @@ include("dg_utils.jl");
 include("time_steppers.jl");
 include("fv_utils.jl");
 
+include("output_data.jl");
+
 # Femshop submodules
 include("cachesim/CachesimOut.jl");
 using .CachesimOut
