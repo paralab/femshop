@@ -744,252 +744,252 @@ function process_known_expr_cachesim(ex)
     
 end
 
-###############################################################################################################
-# utils
-###############################################################################################################
+# ###############################################################################################################
+# # utils
+# ###############################################################################################################
 
-# Separates expressions into terms.
-# Assumes the expressions are expanded as they should be coming from the parser.
-# 2*a + b*c*5 - w*2 -> [2*a, b*c*5, w*2]
-function separate_terms(ex)
-    terms = [ex];
-    if typeof(ex) == Expr && ex.head === :call
-        if ex.args[1] === :+ || (ex.args[1] === :- && length(ex.args) > 2)
-            terms = [];
-            for i=2:length(ex.args)
-                append!(terms, separate_terms(ex.args[i]));
-            end
-        end
-    end
+# # Separates expressions into terms.
+# # Assumes the expressions are expanded as they should be coming from the parser.
+# # 2*a + b*c*5 - w*2 -> [2*a, b*c*5, w*2]
+# function separate_terms(ex)
+#     terms = [ex];
+#     if typeof(ex) == Expr && ex.head === :call
+#         if ex.args[1] === :+ || (ex.args[1] === :- && length(ex.args) > 2)
+#             terms = [];
+#             for i=2:length(ex.args)
+#                 append!(terms, separate_terms(ex.args[i]));
+#             end
+#         end
+#     end
     
-    return terms;
-end
+#     return terms;
+# end
 
-# Parses symengine terms into cachesim expressions
-function terms_to_expr(symex)
-    terms = [];
-    sz = size(symex);
-    if length(sz) == 1 # scalar or vector
-        for i=1:length(symex)
-            for ti=1:length(symex[i])
-                push!(terms, Meta.parse(string(symex[i][ti])));
-            end
-        end
-    elseif length(sz) == 2 # matrix
-        #TODO
-        printerr("sorry. still need to implement code layer for tensors.")
-    end
+# # Parses symengine terms into cachesim expressions
+# function terms_to_expr(symex)
+#     terms = [];
+#     sz = size(symex);
+#     if length(sz) == 1 # scalar or vector
+#         for i=1:length(symex)
+#             for ti=1:length(symex[i])
+#                 push!(terms, Meta.parse(string(symex[i][ti])));
+#             end
+#         end
+#     elseif length(sz) == 2 # matrix
+#         #TODO
+#         printerr("sorry. still need to implement code layer for tensors.")
+#     end
     
-    return terms;
-end
+#     return terms;
+# end
 
-# Separates terms into factors.
-# Assumes the term is only multiplied symbols or numbers
-# 2*a*thing -> [2, a, thing]
-function separate_factors(ex)
-    factors::Array{Any,1} = [ex];
-    if typeof(ex) == Expr && ex.head === :call
-        if ex.args[1] === :* || ex.args[1] === :.*
-            factors = [];
-            for i=2:length(ex.args)
-                append!(factors, separate_factors(ex.args[i]));
-            end
+# # Separates terms into factors.
+# # Assumes the term is only multiplied symbols or numbers
+# # 2*a*thing -> [2, a, thing]
+# function separate_factors(ex)
+#     factors::Array{Any,1} = [ex];
+#     if typeof(ex) == Expr && ex.head === :call
+#         if ex.args[1] === :* || ex.args[1] === :.*
+#             factors = [];
+#             for i=2:length(ex.args)
+#                 append!(factors, separate_factors(ex.args[i]));
+#             end
             
-        elseif ex.args[1] === :^ || ex.args[1] === :.^
-            factors = [];
-            power = ex.args[3];
-            if power == 1
-                factors = [ex.args[2]]; #a^1 = a
-            else
-                ex.args[1] = :.^ ;
-                factors = [ex]; # the power is handled later
-            end
+#         elseif ex.args[1] === :^ || ex.args[1] === :.^
+#             factors = [];
+#             power = ex.args[3];
+#             if power == 1
+#                 factors = [ex.args[2]]; #a^1 = a
+#             else
+#                 ex.args[1] = :.^ ;
+#                 factors = [ex]; # the power is handled later
+#             end
             
-        elseif ex.args[1] === :/ || ex.args[1] === :./
-            factors = [];
-            append!(factors, separate_factors(ex.args[2])); # a/b = a * 1/b
-            divex = :(1 ./ a);
-            divex.args[3] = ex.args[3];
-            push!(factors, divex);
+#         elseif ex.args[1] === :/ || ex.args[1] === :./
+#             factors = [];
+#             append!(factors, separate_factors(ex.args[2])); # a/b = a * 1/b
+#             divex = :(1 ./ a);
+#             divex.args[3] = ex.args[3];
+#             push!(factors, divex);
             
-        elseif ex.args[1] === :- && length(ex.args) == 2
-            # strip off negetive and place on first factor
-            subex = ex.args[2];
-            factors = separate_factors(subex);
-            negex = :(-a);
-            negex.args[2] = factors[1];
-            factors[1] = negex;
-        end
-    end
+#         elseif ex.args[1] === :- && length(ex.args) == 2
+#             # strip off negetive and place on first factor
+#             subex = ex.args[2];
+#             factors = separate_factors(subex);
+#             negex = :(-a);
+#             negex.args[2] = factors[1];
+#             factors[1] = negex;
+#         end
+#     end
     
-    return factors;
-end
+#     return factors;
+# end
 
-# Checks if the coefficient has constant value.
-# If so, also returns the value.
-function is_constant_coef(c)
-    isit = false;
-    val = 0;
-    for i=1:length(coefficients)
-        if c === coefficients[i].symbol
-            isit = (typeof(coefficients[i].value[1]) <: Number);
-            if isit
-                val = coefficients[i].value[1];
-            else
-                val = coefficients[i].value[1].name;
-            end
-        end
-    end
+# # Checks if the coefficient has constant value.
+# # If so, also returns the value.
+# function is_constant_coef(c)
+#     isit = false;
+#     val = 0;
+#     for i=1:length(coefficients)
+#         if c === coefficients[i].symbol
+#             isit = (typeof(coefficients[i].value[1]) <: Number);
+#             if isit
+#                 val = coefficients[i].value[1];
+#             else
+#                 val = coefficients[i].value[1].name;
+#             end
+#         end
+#     end
     
-    return (isit, val);
-end
+#     return (isit, val);
+# end
 
-# Checks the type of coefficient: constant, genfunction, or variable
-# Returns: (type, val)
-# constant: type=1, val=number
-# genfunction: type=2, val= index in genfunctions array
-# variable: type=3, val=index in variables array
-function get_coef_val(c, comp)
-    type = 0;
-    val = 0;
-    for i=1:length(coefficients)
-        if c === coefficients[i].symbol
-            isit = (typeof(coefficients[i].value[comp]) <: Number);
-            if isit
-                type = 1;
-                val = coefficients[i].value[comp];
-            else
-                type = 2;
-                name = coefficients[i].value[comp].name;
-                for j=1:length(genfunctions)
-                    if name == genfunctions[j].name
-                        val = j;
-                    end
-                end
-            end
-        end
-    end
-    if type == 0
-        for i=1:length(variables)
-            if c === variables[i].symbol
-                type = 3;
-                val = variables[i].index;
-            end
-        end
-    end
+# # Checks the type of coefficient: constant, genfunction, or variable
+# # Returns: (type, val)
+# # constant: type=1, val=number
+# # genfunction: type=2, val= index in genfunctions array
+# # variable: type=3, val=index in variables array
+# function get_coef_val(c, comp)
+#     type = 0;
+#     val = 0;
+#     for i=1:length(coefficients)
+#         if c === coefficients[i].symbol
+#             isit = (typeof(coefficients[i].value[comp]) <: Number);
+#             if isit
+#                 type = 1;
+#                 val = coefficients[i].value[comp];
+#             else
+#                 type = 2;
+#                 name = coefficients[i].value[comp].name;
+#                 for j=1:length(genfunctions)
+#                     if name == genfunctions[j].name
+#                         val = j;
+#                     end
+#                 end
+#             end
+#         end
+#     end
+#     if type == 0
+#         for i=1:length(variables)
+#             if c === variables[i].symbol
+#                 type = 3;
+#                 val = variables[i].index;
+#             end
+#         end
+#     end
     
-    return (type, val);
-end
+#     return (type, val);
+# end
 
-function get_coef_index(c)
-    ind = -1;
-    for i=1:length(coefficients)
-        if c === coefficients[i].symbol
-            ind = coefficients[i].index;
-        end
-    end
+# function get_coef_index(c)
+#     ind = -1;
+#     for i=1:length(coefficients)
+#         if c === coefficients[i].symbol
+#             ind = coefficients[i].index;
+#         end
+#     end
     
-    return ind;
-end
+#     return ind;
+# end
 
-function is_test_func(v)
-    for t in test_functions
-        if t.symbol === v
-            return true;
-        end
-    end
-    return false;
-end
+# function is_test_func(v)
+#     for t in test_functions
+#         if t.symbol === v
+#             return true;
+#         end
+#     end
+#     return false;
+# end
 
-function is_unknown_var(v, vars)
-    if typeof(vars) == Variable
-        return v===vars.symbol;
-    end
-    for t in vars
-        if t.symbol === v
-            return true;
-        end
-    end
-    return false;
-end
+# function is_unknown_var(v, vars)
+#     if typeof(vars) == Variable
+#         return v===vars.symbol;
+#     end
+#     for t in vars
+#         if t.symbol === v
+#             return true;
+#         end
+#     end
+#     return false;
+# end
 
-# Extract meaning from the symbolic object name
-function extract_symbols(ex)
-    str = string(ex);
-    #println("extracting from: "*str);
-    index = [];
-    var = nothing;
-    mods = [];
-    l = lastindex(str);
-    e = l; # end of variable name
-    b = l; # beginning of variable name
+# # Extract meaning from the symbolic object name
+# function extract_symbols(ex)
+#     str = string(ex);
+#     #println("extracting from: "*str);
+#     index = [];
+#     var = nothing;
+#     mods = [];
+#     l = lastindex(str);
+#     e = l; # end of variable name
+#     b = l; # beginning of variable name
     
-    # dt is a special symbol that will be assigned a number value in the generated function.
-    if str == "dt"
-        return([0], ex, []);
-    end
+#     # dt is a special symbol that will be assigned a number value in the generated function.
+#     if str == "dt"
+#         return([0], ex, []);
+#     end
     
-    if occursin("TEST", str)
-        # index = [];
-        var = :TEST;
-        for i=l:-1:0
-            if e==l
-                if str[i] == '_'
-                    e = i-1;
-                else
-                    index = [parse(Int, str[i]); index] # The indices on the variable
-                end
-            end
-        end
-        e = e-5;
-        b = e;
-    else
-        for i=l:-1:0
-            if e==l
-                if str[i] == '_'
-                    e = i-1;
-                else
-                    try
-                        index = [parse(Int, str[i]); index] # The indices on the variable
-                    catch
-                        return ([0],ex,[]);
-                    end
+#     if occursin("TEST", str)
+#         # index = [];
+#         var = :TEST;
+#         for i=l:-1:0
+#             if e==l
+#                 if str[i] == '_'
+#                     e = i-1;
+#                 else
+#                     index = [parse(Int, str[i]); index] # The indices on the variable
+#                 end
+#             end
+#         end
+#         e = e-5;
+#         b = e;
+#     else
+#         for i=l:-1:0
+#             if e==l
+#                 if str[i] == '_'
+#                     e = i-1;
+#                 else
+#                     try
+#                         index = [parse(Int, str[i]); index] # The indices on the variable
+#                     catch
+#                         return ([0],ex,[]);
+#                     end
                     
-                end
-            elseif b==l
-                if str[i] == '_'
-                    b = i+1;
-                end
+#                 end
+#             elseif b==l
+#                 if str[i] == '_'
+#                     b = i+1;
+#                 end
                 
-            else
-                # At this point we know b and e
-                if var === nothing
-                    var = Symbol(SubString(str, b, e));
-                    b = b-2;
-                    e = b;
-                end
-            end
-        end
-    end
+#             else
+#                 # At this point we know b and e
+#                 if var === nothing
+#                     var = Symbol(SubString(str, b, e));
+#                     b = b-2;
+#                     e = b;
+#                 end
+#             end
+#         end
+#     end
     
-    # extract the modifiers like D1_ -> :Dx
-    if b>1
-        e = b-1;
-        for i=e:-1:1
-            if str[i] == '_'
-                push!(mods, SubString(str, b, e));
+#     # extract the modifiers like D1_ -> :Dx
+#     if b>1
+#         e = b-1;
+#         for i=e:-1:1
+#             if str[i] == '_'
+#                 push!(mods, SubString(str, b, e));
                 
-                e = i-1;
+#                 e = i-1;
                 
-            elseif i == 1
-                push!(mods, SubString(str, 1, e));
-            end
-            b = i;
-        end
-    end
+#             elseif i == 1
+#                 push!(mods, SubString(str, 1, e));
+#             end
+#             b = i;
+#         end
+#     end
     
-    #println("got: "*string(mods)*" "*string(var)*" "*string(index));
+#     #println("got: "*string(mods)*" "*string(var)*" "*string(index));
     
-    return (index, var, mods);
-end
+#     return (index, var, mods);
+# end
 

@@ -21,7 +21,7 @@ import ..Femshop: Femshop_config, Femshop_prob, Variable, Coefficient
 import ..Femshop: log_entry, printerr
 import ..Femshop: config, prob, variables, coefficients, parameters, test_functions
 
-using SymEngine, LinearAlgebra
+using SymEngine, LinearAlgebra, Latexify
 
 #### globals ########################
 # Basic symbolic operators that are included automatically and have precedence
@@ -111,21 +111,30 @@ function sp_parse(ex, var)
     symex = insert_parameters(symex);
     # if debug println("insert parameters -> "*string(symex)); end
     log_entry("SP insert parameters -> "*string(symex), 3);
+    log_entry("SP insert parameters -> \n"*latexify(symex), 3);
     
     # Replace symbols for variables, coefficients, test functions, and special operators
     symex = replace_symbols(symex);
     # if debug println("replace symbols -> "*string(symex)); end
     log_entry("SP replace symbols -> "*string(symex), 3);
+    #log_entry("SP replace symbols -> \n"*latexify(string(symex)), 3);
     
     # Evaluate the expression to apply symbolic operators
     symex = apply_ops(symex);
     # if debug println("apply ops -> "*string(symex)); end
     log_entry("SP apply ops -> "*string(symex), 3);
+    tmp = "SP apply ops -> [\n";
+    for i=1:length(symex)
+        tmp *= latexify(string(symex[i])) * "\n";
+    end
+    tmp *= "]";
+    log_entry(tmp, 3);
     
     # Expand the expression and separate terms
     sterms = get_sym_terms(symex);
     # if debug println("sterms = "*string(sterms)); end
     log_entry("SP sterms = "*string(sterms), 3);
+    #log_entry("SP sterms = \n"*latexify(string(sterms)), 3);
     
     # Check for time derivatives
     timederiv = check_for_dt(sterms);
@@ -190,16 +199,22 @@ function sp_parse(ex, var)
     # if debug println("volRHS = "*string(rhs)); end
     log_entry("SP volLHS = "*string(lhs), 3);
     log_entry("SP volRHS = "*string(rhs), 3);
+    #log_entry("SP volLHS = \n"*latexify(lhs), 3);
+    #log_entry("SP volRHS = \n"*latexify(rhs), 3);
     if timederiv
         # if debug println("dtLHS = "*string(dtlhs)); end
         # if debug println("dtRHS = "*string(dtrhs)); end
         log_entry("SP dtLHS = "*string(dtlhs), 3);
         log_entry("SP dtRHS = "*string(dtrhs), 3);
+        #log_entry("SP dtLHS = \n"*latexify(dtlhs), 3);
+        #log_entry("SP dtRHS = \n"*latexify(dtrhs), 3);
         if has_surface
             # if debug println("surfLHS = "*string(surflhs)); end
             # if debug println("surfRHS = "*string(surfrhs)); end
             log_entry("SP surfLHS = "*string(surflhs), 3);
             log_entry("SP surfRHS = "*string(surfrhs), 3);
+            #log_entry("SP surfLHS = \n"*latexify(surflhs), 3);
+            #log_entry("SP surfRHS = \n"*latexify(surfrhs), 3);
             return ((dtlhs,lhs), rhs, surflhs, surfrhs);
         else
             return ((dtlhs,lhs), rhs);
@@ -211,6 +226,8 @@ function sp_parse(ex, var)
             # if debug println("surfRHS = "*string(surfrhs)); end
             log_entry("SP surfLHS = "*string(surflhs), 3);
             log_entry("SP surfRHS = "*string(surfrhs), 3);
+            #log_entry("SP surfLHS = \n"*latexify(surflhs), 3);
+            #log_entry("SP surfRHS = \n"*latexify(surfrhs), 3);
             return (lhs, rhs, surflhs, surfrhs);
         else
             return (lhs, rhs);
@@ -385,6 +402,8 @@ function get_sym_terms(ex)
     # First expand it
     newex = expand(ex);
     #println("expanded = "*string(newex));
+    log_entry("expanded: "*latexify(newex));
+    
     # Then separate the terms into an array
     return get_all_terms(newex);
 end

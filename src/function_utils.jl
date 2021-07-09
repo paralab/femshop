@@ -33,8 +33,14 @@ macro makeFunction(args, fun)
     return esc(quote
         let
             name = "genfunction_"*string(Femshop.genfunc_count);
-            ex = Meta.parse($fun);
-            nf = GenFunction(name, $args, $fun, ex, @stringToFunction(name, $args, $fun));
+            if typeof($fun) == Expr
+                ex = $fun;
+                strfun = string($fun);
+                nf = GenFunction(name, $args, strfun, ex, @stringToFunction(name, $args, strfun));
+            else
+                ex = Meta.parse($fun);
+                nf = GenFunction(name, $args, $fun, ex, @stringToFunction(name, $args, $fun));
+            end
             add_genfunction(nf);
         end
     end)

@@ -332,7 +332,7 @@ function generate_code_layer_fv_julia(symex, var, lorr, fors)
                 tmps = needed_coef_name[i];
                 tmpc = Symbol(tmps);
                 
-                dmatname = make_deriv_matrix_name(needed_coef_deriv[i][2]);
+                dmatname = make_deriv_matrix_name_fv(needed_coef_deriv[i][2]);
                 dmat = Symbol(dmatname);
                 if coef_deriv_type[i] == 0 # derivatives of constant coefficients should be zero
                     tmpb= 0;
@@ -723,8 +723,8 @@ function process_source_term_fv_julia(sterm, var, lorr, offset_ind=0)
                 end
                 if length(mods) > 0
                     need_derivative = true;
-                    (derivs, others) = get_derivative_mods(mods);
-                    dmatname = make_deriv_matrix_name(derivs);
+                    (derivs, others) = get_derivative_mods_fv(mods);
+                    dmatname = make_deriv_matrix_name_fv(derivs);
                     push!(needed_derivatives, derivs);
                     var_part = dmatname; # LHS part is just the matrix
                 else
@@ -740,8 +740,8 @@ function process_source_term_fv_julia(sterm, var, lorr, offset_ind=0)
                     if length(mods) > 0
                         need_derivative = true;
                         need_derivative_for_coefficient = true;
-                        (derivs, others) = get_derivative_mods(mods);
-                        dmatname = make_deriv_matrix_name(derivs);
+                        (derivs, others) = get_derivative_mods_fv(mods);
+                        dmatname = make_deriv_matrix_name_fv(derivs);
                         push!(needed_derivatives, derivs);
                         
                         push!(needed_coef_deriv, [v, derivs]);
@@ -1013,8 +1013,8 @@ function process_flux_term_fv_julia(sterm, var, lorr, offset_ind=0)
                 end
                 if length(mods) > 0
                     need_derivative = true;
-                    (derivs, others) = get_derivative_mods(mods);
-                    dmatname = make_deriv_matrix_name(derivs);
+                    (derivs, others) = get_derivative_mods_fv(mods);
+                    dmatname = make_deriv_matrix_name_fv(derivs);
                     push!(needed_derivatives, derivs);
                     var_part = dmatname; # LHS part is just the matrix
                 else
@@ -1030,8 +1030,8 @@ function process_flux_term_fv_julia(sterm, var, lorr, offset_ind=0)
                     if length(mods) > 0
                         need_derivative = true;
                         need_derivative_for_coefficient = true;
-                        (derivs, others) = get_derivative_mods(mods);
-                        dmatname = make_deriv_matrix_name(derivs);
+                        (derivs, others) = get_derivative_mods_fv(mods);
+                        dmatname = make_deriv_matrix_name_fv(derivs);
                         push!(needed_derivatives, derivs);
                         push!(needed_coef_deriv, [v, derivs]);
                         push!(coef_mods, others);
@@ -1194,7 +1194,7 @@ function process_known_expr_fv_julia(ex)
                 tmp = :(-normal[$ind]);
             else
                 # Check for derivative mods
-                (derivs, others) = get_derivative_mods(mods);
+                (derivs, others) = get_derivative_mods_fv(mods);
                 push!(needed_coef_deriv, [v, derivs]);
                 push!(needed_coef, v);
                 push!(needed_coef_ind, ind);
@@ -1398,7 +1398,7 @@ function make_coef_name_fv(c, othermods, derivs, cind)
         return "DGNORMAL2_"*string(cind);
     end
     
-    name = make_deriv_matrix_name(derivs) * name;
+    name = make_deriv_matrix_name_fv(derivs) * name;
     for i=length(othermods):-1:1
         name = string(othermods[i]) * "_" * name;
     end
@@ -1496,7 +1496,7 @@ end
 
 # Separate the derivative mods(Dn_) from the other mods and return an array 
 # of derivative indices and the remaining mods.
-function get_derivative_mods(mods)
+function get_derivative_mods_fv(mods)
     derivs = [];
     others = [];
     
@@ -1506,7 +1506,7 @@ function get_derivative_mods(mods)
                 index = parse(Int, mods[i][2])
                 push!(derivs, index);
             catch
-                printerr("Unexpected modifier: "*mods[i]*" see get_derivative_mods() in generate_code_layer")
+                printerr("Unexpected modifier: "*mods[i]*" see get_derivative_mods_fv() in generate_code_layer")
                 push!(others, mods[i]);
             end
         else
@@ -1519,7 +1519,7 @@ end
 
 # Makes a name for a derivative matrix
 # [1,2,3] -> D3zD2yD1x
-function make_deriv_matrix_name(deriv)
+function make_deriv_matrix_name_fv(deriv)
     dname = "";
     dn = [0;0;0];
     

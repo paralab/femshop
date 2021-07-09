@@ -232,15 +232,16 @@ function weakForm(var, wf)
     log_entry("Making weak form for variable(s): "*string(wfvars));
     log_entry("Weak form, input: "*string(wf));
     
+    # This is the parsing step. It goes from an Expr to arrays of Basic
     result_exprs = sp_parse(wfex, wfvars);
-    if length(result_exprs) == 4
+    if length(result_exprs) == 4 # has surface terms
         (lhs_expr, rhs_expr, lhs_surf_expr, rhs_surf_expr) = result_exprs;
     else
         (lhs_expr, rhs_expr) = result_exprs;
     end
     
     if typeof(lhs_expr) <: Tuple && length(lhs_expr) == 2 # has time derivative
-        if length(result_exprs) == 4
+        if length(result_exprs) == 4 # has surface terms
             log_entry("Weak form, before modifying for time: Dt("*string(lhs_expr[1])*") + "*string(lhs_expr[2])*" + surface("*string(lhs_surf_expr)*") = "*string(rhs_expr)*" + surface("*string(rhs_surf_expr)*")");
             
             (newlhs, newrhs, newsurflhs, newsurfrhs) = reformat_for_stepper(lhs_expr, rhs_expr, lhs_surf_expr, rhs_surf_expr, config.stepper);
@@ -253,7 +254,7 @@ function weakForm(var, wf)
             lhs_surf_expr = newsurflhs;
             rhs_surf_expr = newsurfrhs;
             
-        else
+        else # time derivative, but no surface
             log_entry("Weak form, before modifying for time: Dt("*string(lhs_expr[1])*") + "*string(lhs_expr[2])*" = "*string(rhs_expr));
             
             (newlhs, newrhs) = reformat_for_stepper(lhs_expr, rhs_expr, config.stepper);
@@ -266,6 +267,17 @@ function weakForm(var, wf)
         
     end
     
+    # Here we build a SymExpression for each of the pieces. 
+    # This is an Expr tree that is passed to the code generator.
+    if length(result_exprs) == 4 # has surface terms
+        (lhs_symexpr, rhs_symexpr, lhs_surf_symexpr, rhs_surf_symexpr) = build_symexpressions(wfvars, lhs_expr, rhs_expr, lhs_surf_expr, rhs_surf_expr);
+    else
+        (lhs_symexpr, rhs_symexpr) = build_symexpressions(wfvars, lhs_expr, rhs_expr);
+    end
+    log_entry("lhs symexpression:\n"*string(lhs_symexpr));
+    log_entry("rhs symexpression:\n"*string(rhs_symexpr));
+    
+    ########## This part simply makes a string for printing #############
     # make a string for the expression
     if typeof(lhs_expr[1]) <: Array
         lhsstring = "";
@@ -309,24 +321,56 @@ function weakForm(var, wf)
         end
     end
     log_entry("Weak form, symbolic layer:\n"*string(lhsstring)*"\n"*string(rhsstring));
+    ################ string ####################################
     
     # change symbolic layer into code layer
-    lhs_code = generate_code_layer(lhs_expr, var, LHS);
-    rhs_code = generate_code_layer(rhs_expr, var, RHS);
+    lhs_code = generate_code_layer(lhs_symexpr, var, LHS, "volume");
+    rhs_code = generate_code_layer(rhs_symexpr, var, RHS, "volume");
     if length(result_exprs) == 4
         lhs_surf_code = generate_code_layer_surface(lhs_surf_expr, var, LHS);
         rhs_surf_code = generate_code_layer_surface(rhs_surf_expr, var, RHS);
-        log_entry("Weak form, code layer: LHS = "*string(lhs_code)*"\nsurfaceLHS = "*string(lhs_surf_code)*" \nRHS = "*string(rhs_code)*"\nsurfaceRHS = "*string(rhs_surf_code));
+        log_entry("Weak form, code layer: LHS = \n"*string(lhs_code)*"\nsurfaceLHS = \n"*string(lhs_surf_code)*" \nRHS = \n"*string(rhs_code)*"\nsurfaceRHS = \n"*string(rhs_surf_code));
     else
-        log_entry("Weak form, code layer: LHS = "*string(lhs_code)*" \n  RHS = "*string(rhs_code));
+        log_entry("Weak form, code layer: LHS = \n"*string(lhs_code)*" \n  RHS = \n"*string(rhs_code));
     end
+    
+    ######## temporary
+    function stoe(s)
+        e = Expr(:block);
+        lines = split(s, "\n", keepempty=false);
+    
+        for i=1:length(lines)
+            tmp = Meta.parse(lines[i]);
+            # a toplevel wrapper might be put around the expression. remove it.
+            if !(tmp === nothing)
+                if tmp.head === :toplevel
+                    if length(tmp.args) > 0
+                        tmp = tmp.args[1];
+                    else
+                        tmp = nothing;
+                    end
+                end
+            end
+            if !(tmp === nothing)
+                push!(e.args, tmp);
+            end
+        end
+        
+        return e;
+    end
+    ###################
+    
+    lhs_code = stoe(lhs_code);
+    rhs_code = stoe(rhs_code);
+    
+    log_entry("Julia code Expr: LHS = \n"*string(lhs_code)*" \n  RHS = \n"*string(rhs_code), 3);
     
     if language == JULIA || language == 0
         args = "args";
-        @makeFunction(args, string(lhs_code));
+        @makeFunction(args, lhs_code);
         set_lhs(var);
         
-        @makeFunction(args, string(rhs_code));
+        @makeFunction(args, rhs_code);
         set_rhs(var);
         
         if length(result_exprs) == 4
@@ -356,79 +400,6 @@ end
 function fluxAndSource(var, fex, sex)
     flux(var, fex);
     source(var, sex);
-    # if typeof(var) <: Array
-    #     # multiple simultaneous variables
-    #     symvars = [];
-    #     symfex = [];
-    #     symsex = [];
-    #     symdex = [];
-    #     if !(length(var) == length(fex) && length(var) == length(sex))
-    #         printerr("Error in flux function: # of unknowns must equal # of equations. (example: @flux([a,b,c], [f1,f2,f3]))");
-    #     end
-    #     for vi=1:length(var)
-    #         push!(symvars, var[vi].symbol);
-    #         push!(symfex, Meta.parse((fex)[vi]));
-    #         push!(symsex, Meta.parse((sex)[vi]));
-    #         push!(symdex, Meta.parse("Dt("*string(var[vi].symbol)*")"));
-    #     end
-    # else
-    #     symfex = Meta.parse(fex);
-    #     symsex = Meta.parse(sex);
-    #     symdex = Meta.parse("Dt("*string(var.symbol)*")");
-    #     symvars = var.symbol;
-    # end
-    
-    # log_entry("Making flux and source for variable(s): "*string(symvars));
-    # log_entry("flux, input: "*string(fex));
-    # log_entry("source, input: "*string(sex));
-    
-    # # The parsing step
-    # (flhs_expr, frhs_expr) = sp_parse(symfex, symvars);
-    # (slhs_expr, srhs_expr) = sp_parse(symsex, symvars);
-    # (dlhs_expr, drhs_expr) = sp_parse(symdex, symvars);
-    
-    # # Modify the expressions according to time stepper.
-    # # There is an assumed Dt(u) added which is the only time derivative.
-    # log_entry("time derivative, before modifying for time: "*string(dlhs_expr));
-    # log_entry("flux, before modifying for time: "*string(flhs_expr)*" - "*string(frhs_expr));
-    # log_entry("source, before modifying for time: "*string(slhs_expr)*" - "*string(srhs_expr));
-    
-    # (newflhs, newfrhs, newslhs, newsrhs) = reformat_for_stepper_fv(dlhs_expr[1], flhs_expr, frhs_expr, slhs_expr, srhs_expr, config.stepper);
-    
-    # log_entry("flux, modified for time stepping: "*string(newflhs)*" - "*string(newfrhs));
-    # log_entry("source, modified for time stepping: "*string(newslhs)*" - "*string(newsrhs));
-    
-    # flhs_expr = newflhs;
-    # frhs_expr = newfrhs;
-    # slhs_expr = newslhs;
-    # srhs_expr = newsrhs;
-    
-    # # change symbolic layer into code layer
-    # flhs_code = generate_code_layer_fv(flhs_expr, var, LHS, "flux");
-    # frhs_code = generate_code_layer_fv(frhs_expr, var, RHS, "flux");
-    # slhs_code = generate_code_layer_fv(slhs_expr, var, LHS, "source");
-    # srhs_code = generate_code_layer_fv(srhs_expr, var, RHS, "source");
-    # log_entry("flux, code layer: \n  LHS = "*string(flhs_code)*" \n  RHS = "*string(frhs_code));
-    # log_entry("source, code layer: \n  LHS = "*string(slhs_code)*" \n  RHS = "*string(srhs_code));
-    
-    # if language == JULIA || language == 0
-    #     args = "args";
-    #     @makeFunction(args, string(slhs_code));
-    #     set_lhs(var);
-        
-    #     @makeFunction(args, string(srhs_code));
-    #     set_rhs(var);
-        
-    #     @makeFunction(args, string(flhs_code));
-    #     set_lhs_surface(var);
-        
-    #     @makeFunction(args, string(frhs_code));
-    #     set_rhs_surface(var);
-        
-    # else
-    #     # not ready
-    #     println("Not ready to generate FV code foe external target.")
-    # end
 end
 
 function flux(var, fex)

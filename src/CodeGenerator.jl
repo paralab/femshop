@@ -26,6 +26,7 @@ import ..Femshop: Femshop_config, Femshop_prob, GenFunction, Variable, Coefficie
 import ..Femshop: log_entry, printerr
 import ..Femshop: config, prob, refel, mesh_data, grid_data, genfunctions, variables, coefficients, 
         test_functions, linears, bilinears, time_stepper
+import ..Femshop: SymExpression, SymEntity
 import ..Femshop: CachesimOut, use_cachesim
 import ..Femshop: custom_gen_funcs
 
@@ -63,9 +64,19 @@ custom_language_element_fun = 0;
 custom_code_layer_fun = 0;
 custom_files_fun = 0;
 
-#General
+# general code generator utils
+include("code_generator_utils.jl");
+#Code Gen functions
 include("generate_code_layer.jl");
 include("generate_code_layer_fv.jl");
+# External code gen
+include("generate_code_layer_dendro.jl");
+include("generate_code_layer_homg.jl");
+include("generate_code_layer_matlab.jl");
+include("generate_code_layer_cachesim.jl");
+# Surface integrals should be handled in the same place TODO
+include("generate_code_layer_surface.jl");
+
 #Matlab
 include("generate_matlab_utils.jl");
 include("generate_matlab_files.jl");
@@ -157,6 +168,41 @@ function finalize_codegenerator()
         close(f);
     end
     log_entry("Closed generated code files.");
+end
+
+# This is the primary code gen function that calls functions in the appropriate files
+function generate_code_layer(ex, var, lorr, vors)
+    if config.solver_type == FV
+        return generate_code_layer_fv(ex, var, lorr)
+    end
+    
+    if use_cachesim
+        if language == 0 || language == JULIA
+            return generate_code_layer_cachesim(ex, var, lorr);
+        else
+            printerr("Using cachesim. Not generating code to solve.")
+        end
+    else
+        if language == 0 || language == JULIA
+            return generate_code_layer_julia(ex, var, lorr, vors);
+        elseif language == CPP
+            if framework == DENDRO
+                return generate_code_layer_dendro(ex, var, lorr);
+            else
+                printerr("Plain C++ is not ready for code layer gen.")
+            end
+            
+        elseif language == MATLAB
+            if framework == HOMG
+                return generate_code_layer_homg(ex, var, lorr);
+            else
+                return generate_code_layer_matlab(ex, var, lorr);
+            end
+            
+        elseif framework == CUSTOM_GEN_TARGET
+            return custom_code_layer_fun(ex, var, lorr);
+        end
+    end
 end
 
 function generate_all_files(bilinex, linex; parameters=0)

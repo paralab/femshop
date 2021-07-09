@@ -364,11 +364,11 @@ function assemble(var, bilinear, linear, t=0.0, dt=0.0; rhs_only = false, keep_g
             end
         end
         
-        rhsargs = (var, xe, glb, refel, wdetj, J, RHS, t, dt, stiffness, mass);
+        rhsargs = (var, xe, glb, refel, wdetj, J, t, dt, stiffness, mass);
         
         if !rhs_only
             Astart = (e-1)*Np*dofs_per_node*Np*dofs_per_node + 1; # The segment of AI, AJ, AV for this element
-            lhsargs = (var, xe, glb, refel, wdetj, J, LHS, t, dt, stiffness, mass);
+            lhsargs = (var, xe, glb, refel, wdetj, J, t, dt, stiffness, mass);
         end
         if dofs_per_node == 1
             linchunk = linear.func(rhsargs);  # get the elemental linear part
