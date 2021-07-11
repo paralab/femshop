@@ -87,18 +87,18 @@ function init_stepper(x, stepper)
     end
 end
 
-function reformat_for_stepper(lhs, rhs, stepper)
+function reformat_for_stepper(lhs, rhs, stepper; one_var_only=false)
     # rebuild the expressions depending on type of time stepper
     dt = symbols("dt");
     newlhs = [];
     newrhs = [];
     
-    if length(rhs)>1 #multi dof
+    if !one_var_only # This works on each variable separately
         newlhs = copy(rhs);
         newrhs = copy(rhs);
         for vi=1:length(rhs)
             if length(lhs[1][vi]) > 0 # this dof has a time derivative term
-                (newlhs[vi], newrhs[vi]) = reformat_for_stepper((lhs[1][vi], lhs[2][vi]), rhs[vi], stepper);
+                (newlhs[vi], newrhs[vi]) = reformat_for_stepper((lhs[1][vi], lhs[2][vi]), rhs[vi], stepper, one_var_only=true);
             else # no time derivative for this dof
                 newlhs[vi] = lhs[2][vi];
                 newrhs[vi] = rhs[vi];
@@ -107,71 +107,71 @@ function reformat_for_stepper(lhs, rhs, stepper)
     else
         # reformat depending on stepper type
         if stepper == EULER_IMPLICIT # lhs1 + dt*lhs2 = dt*rhs + lhs1
-            for i=1:length(lhs[2][1])
-                lhs[2][1][i] = lhs[2][1][i]*dt; # dt*lhs2
+            for i=1:length(lhs[2])
+                lhs[2][i] = lhs[2][i]*dt; # dt*lhs2
             end
-            for i=1:length(rhs[1])
-                rhs[1][i] = rhs[1][i]*dt; # dt*rhs
+            for i=1:length(rhs)
+                rhs[i] = rhs[i]*dt; # dt*rhs
             end
             
-            newlhs = copy(lhs[1][1]);
-            append!(newlhs, lhs[2][1]); # lhs1 + dt*lhs2
-            newrhs = copy(rhs[1]);
-            append!(newrhs, lhs[1][1]);# dt*rhs + lhs1
+            newlhs = copy(lhs[1]);
+            append!(newlhs, lhs[2]); # lhs1 + dt*lhs2
+            newrhs = copy(rhs);
+            append!(newrhs, lhs[1]);# dt*rhs + lhs1
             
         elseif stepper == EULER_EXPLICIT # lhs1 = dt*rhs - dt*lhs2 + lhs1
-            for i=1:length(lhs[2][1])
-                lhs[2][1][i] = -lhs[2][1][i]*dt; # -dt*lhs2
+            for i=1:length(lhs[2])
+                lhs[2][i] = -lhs[2][i]*dt; # -dt*lhs2
             end
-            for i=1:length(rhs[1])
-                rhs[1][i] = rhs[1][i]*dt; # dt*rhs
+            for i=1:length(rhs)
+                rhs[i] = rhs[i]*dt; # dt*rhs
             end
             
-            newlhs = copy(lhs[1][1]);# lhs1
-            newrhs = copy(rhs[1]);
-            append!(newrhs, lhs[2][1]);# dt*rhs - dt*lhs2
-            append!(newrhs, lhs[1][1]);# dt*rhs - dt*lhs2 + lhs1
+            newlhs = copy(lhs[1]);# lhs1
+            newrhs = copy(rhs);
+            append!(newrhs, lhs[2]);# dt*rhs - dt*lhs2
+            append!(newrhs, lhs[1]);# dt*rhs - dt*lhs2 + lhs1
             
         elseif stepper == CRANK_NICHOLSON # lhs1 + 0.5*dt*lhs2 = dt*rhs - 0.5*dt*lhs2 + lhs1
-            lhs2l = copy(lhs[2][1]);
-            lhs2r = copy(lhs[2][1]);
-            for i=1:length(lhs[2][1])
+            lhs2l = copy(lhs[2]);
+            lhs2r = copy(lhs[2]);
+            for i=1:length(lhs[2])
                 lhs2l[i] = Basic(0.5)*lhs2l[i]*dt; # 0.5*dt*lhs2
                 lhs2r[i] = Basic(-0.5)*lhs2r[i]*dt; # -0.5*dt*lhs2
             end
-            for i=1:length(rhs[1])
-                rhs[1][i] = rhs[1][i]*dt; # dt*rhs
+            for i=1:length(rhs)
+                rhs[i] = rhs[i]*dt; # dt*rhs
             end
             
-            newlhs = copy(lhs[1][1]);
+            newlhs = copy(lhs[1]);
             append!(newlhs, lhs2l); # lhs1 + 0.5*dt*lhs2
-            newrhs = copy(rhs[1]);
-            append!(newrhs, lhs[1][1]);# dt*rhs - 0.5*dt*lhs2 + lhs1
+            newrhs = copy(rhs);
+            append!(newrhs, lhs[1]);# dt*rhs - 0.5*dt*lhs2 + lhs1
             append!(newrhs, lhs2r);
             
         elseif stepper == LSRK4 # (lhs1) : rhs - lhs2
-            for i=1:length(lhs[2][1])
-                lhs[2][1][i] = -lhs[2][1][i]; # -lhs2
+            for i=1:length(lhs[2])
+                lhs[2][i] = -lhs[2][i]; # -lhs2
             end
             # for i=1:length(rhs[1])
             #     rhs[1][i] = rhs[1][i]; # rhs
             # end
             
-            newlhs = copy(lhs[1][1]);# lhs1
-            newrhs = copy(rhs[1]);
-            append!(newrhs, lhs[2][1]);# rhs - lhs2
+            newlhs = copy(lhs[1]);# lhs1
+            newrhs = copy(rhs);
+            append!(newrhs, lhs[2]);# rhs - lhs2
             
         elseif stepper == RK4 # (lhs1) : rhs - lhs2
-            for i=1:length(lhs[2][1])
-                lhs[2][1][i] = -lhs[2][1][i]; # -lhs2
+            for i=1:length(lhs[2])
+                lhs[2][i] = -lhs[2][i]; # -lhs2
             end
             # for i=1:length(rhs[1])
             #     rhs[1][i] = rhs[1][i]; # rhs
             # end
             
-            newlhs = copy(lhs[1][1]);# lhs1
-            newrhs = copy(rhs[1]);
-            append!(newrhs, lhs[2][1]);# rhs - lhs2
+            newlhs = copy(lhs[1]);# lhs1
+            newrhs = copy(rhs);
+            append!(newrhs, lhs[2]);# rhs - lhs2
             
         end
     end

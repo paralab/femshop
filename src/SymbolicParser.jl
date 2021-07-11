@@ -49,7 +49,7 @@ function *(a::Array{Basic,1}, b::Array{Basic,1})
         return [transpose(a) * b];
     else
         # un oh... How do I redirect this to the symengine method?
-        # (sigh) This will be an error until I figure it out.
+        # This will be an error until I figure it out.
     end
 end
 # import Base.sqrt
@@ -111,7 +111,7 @@ function sp_parse(ex, var)
     symex = insert_parameters(symex);
     # if debug println("insert parameters -> "*string(symex)); end
     log_entry("SP insert parameters -> "*string(symex), 3);
-    log_entry("SP insert parameters -> \n"*latexify(symex), 3);
+    #log_entry("SP insert parameters -> \n"*latexify(symex), 3);
     
     # Replace symbols for variables, coefficients, test functions, and special operators
     symex = replace_symbols(symex);
@@ -119,13 +119,16 @@ function sp_parse(ex, var)
     log_entry("SP replace symbols -> "*string(symex), 3);
     #log_entry("SP replace symbols -> \n"*latexify(string(symex)), 3);
     
+    # change some operators like ^ and / to broadcast versions .^ ./
+    symex = broadcast_ops(symex);
+    
     # Evaluate the expression to apply symbolic operators
     symex = apply_ops(symex);
     # if debug println("apply ops -> "*string(symex)); end
     log_entry("SP apply ops -> "*string(symex), 3);
     tmp = "SP apply ops -> [\n";
     for i=1:length(symex)
-        tmp *= latexify(string(symex[i])) * "\n";
+        #tmp *= latexify(string(symex[i])) * "\n";
     end
     tmp *= "]";
     log_entry(tmp, 3);
@@ -270,7 +273,7 @@ end
 # Replaces variable, coefficient and operator symbols in the expression
 function replace_symbols(ex)
     if typeof(ex) <: Number
-        return [Basic(ex)];
+        return ex;
     elseif typeof(ex) == Symbol
         # variable?
         for v in variables
@@ -330,6 +333,30 @@ function replace_symbols(ex)
     end
 end
 
+function broadcast_ops(ex)
+    if typeof(ex) <:Array
+        result = [];
+        for i=1:length(ex)
+            push!(result, broadcast_ops(ex[i]));
+        end
+        return result;
+    elseif typeof(ex) == Expr
+        for i=1:length(ex.args)
+            ex.args[i] = broadcast_ops(ex.args[i]);
+        end
+        return ex;
+    elseif typeof(ex) == Symbol
+        # replace ^,/,+,- with .^,./,.+,.-
+        if ex === :^ ex = :.^
+        elseif ex === :/ ex = :./
+        elseif ex === :* ex = :.*
+        elseif ex === :+ ex = :.+
+        elseif ex === :- ex = :.-
+        end
+    end
+    return ex;
+end
+
 # Eval to apply the sym_*_op ops to create a SymEngine expression
 function apply_ops(ex)
     try
@@ -367,32 +394,13 @@ function has_unknown(ex, var)
     return result;
 end
 
-# Separate terms for each element of ex.
-# Elements of the returned array are arrays of terms
+# Separate terms for each variable ex.
 function get_sym_terms(ex)
     # Recursively work on each term of the array
     if typeof(ex) <: Array
-        sz = size(ex);
-        result = Array{Array,length(sz)}(undef, sz);
-        
-        if length(sz) == 1 # vector or scalar
-            for i=1:sz[1]
-                result[i] = get_sym_terms(ex[i]);
-            end
-        elseif length(sz) == 2 # matrix
-            for j=1:sz[2]
-                for i=1:sz[1]
-                    result[i,j] = get_sym_terms(ex[i,j]);
-                end
-            end
-        elseif length(sz) == 3 # rank 3
-            for k=1:sz[3]
-                for j=1:sz[2]
-                    for i=1:sz[1]
-                        result[i,j,k] = get_sym_terms(ex[i,j,k]);
-                    end
-                end
-            end
+        result = [get_sym_terms(ex[1])];
+        for i=2:length(ex)
+            push!(result,  get_sym_terms(ex[i]));
         end
         
         return result;
@@ -402,7 +410,7 @@ function get_sym_terms(ex)
     # First expand it
     newex = expand(ex);
     #println("expanded = "*string(newex));
-    log_entry("expanded: "*latexify(newex));
+    #log_entry("expanded: "*latexify(newex));
     
     # Then separate the terms into an array
     return get_all_terms(newex);
@@ -432,7 +440,7 @@ function get_all_terms(ex)
         return terms;
     end
     if ex.head === :call
-        if ex.args[1] === :+
+        if ex.args[1] === :+ || ex.args[1] === :.+
             for i=2:length(ex.args)
                 terms = append!(terms, get_all_terms(ex.args[i]));
             end

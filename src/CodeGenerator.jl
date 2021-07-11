@@ -66,10 +66,11 @@ custom_files_fun = 0;
 
 # general code generator utils
 include("code_generator_utils.jl");
-#Code Gen functions
+# general code gen functions
 include("generate_code_layer.jl");
 include("generate_code_layer_fv.jl");
-# External code gen
+# target specific code gen functions
+include("generate_code_layer_julia.jl");
 include("generate_code_layer_dendro.jl");
 include("generate_code_layer_homg.jl");
 include("generate_code_layer_matlab.jl");

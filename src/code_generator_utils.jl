@@ -83,6 +83,11 @@ end
 
 # Makes a name for this value based on coefficient or variable name, derivative and other modifiers, and component index.
 function make_coef_name(c)
+    # Special case for dt or other special symbols
+    if c.index < 0
+        return c.name;
+    end
+    
     tag = "";
     for i=1:length(c.flags)
         tag *= c.flags[i];
@@ -122,10 +127,61 @@ function is_same_entity(a, b)
     return a.name == b.name && a.index == b.index && a.derivs == b.derivs && a.flags == b.flags;
 end
 
+# Replaces math operators with broadcast(dot) versions
+function broadcast_all_ops(ex)
+    if typeof(ex) <: Array
+        result = [];
+        for i=1:length(ex)
+            push!(result, broadcast_all_ops(ex[i]));
+        end
+        return result;
+        
+    elseif typeof(ex) == Expr
+        if ex.head === :call
+            bopped = false;
+            if ex.args[1] === :^ ex.args[1] = :.^
+            elseif ex.args[1] === :/ ex.args[1] = :./
+            elseif ex.args[1] === :* ex.args[1] = :.*
+            elseif ex.args[1] === :+ ex.args[1] = :.+
+            elseif ex.args[1] === :- ex.args[1] = :.-
+            elseif !(ex.args[1] == :.)
+                bop = Expr(:., ex);
+                ex = bop;
+                bopped = true;
+            end
+            if bopped
+                for i=2:length(ex.args[1].args)
+                    ex.args[1].args[i] = broadcast_all_ops(ex.args[1].args[i]);
+                end
+            else
+                for i=2:length(ex.args)
+                    ex.args[i] = broadcast_all_ops(ex.args[i]);
+                end
+            end
+        end
+        
+        return ex;
+        
+    elseif typeof(ex) == Symbol
+        # replace ^,/,+,- with .^,./,.+,.-
+        if ex === :^ ex = :.^
+        elseif ex === :/ ex = :./
+        elseif ex === :* ex = :.*
+        elseif ex === :+ ex = :.+
+        elseif ex === :- ex = :.-
+        end
+    else
+        return ex;
+    end
+end
+
 # symex could be an array. If so, make a similar array containing an array of terms.
-# If symex is a SymExpression, make an array of terms.
-# A term is an Expr or Symbol representing tn in the top level t1+t2+t3...
-# The SymEntities in the Expr have been replaced with their corresponding make_coef_name symbols
+# This does any final processing of the terms. At this point symex should be a single term 
+# without a top level + or -. for example, a*b/c or a^2*b but not a*b+c
+# What processing is done:
+#   a/b -> a*(1/b)
+#   Broadcast all ops: +-*/^ -> .+.-.*./.^
+#   If it's a SymExpression, return the proccessed Expr in symex.tree
 function process_terms(symex)
     if typeof(symex) <: Array
         terms = [];
@@ -146,12 +202,7 @@ function process_terms(symex)
         
         if typeof(newex) == Expr && newex.head === :call
             if (newex.args[1] === :+ || newex.args[1] === :.+ || newex.args[1] === :- || newex.args[1] === :.-)
-                # each arg is a term
-                # Do this recursively to handle t1+(t2-(t3+...))
-                terms = [];
-                for i=2:length(newex.args)
-                    append!(terms, process_terms(newex.args[i]));
-                end
+                println("unexpected term in process terms: "*string(newex));
             else
                 if newex.args[1] === :/ || newex.args[1] === :./
                     # change a/b to a*1/b
@@ -161,10 +212,14 @@ function process_terms(symex)
                     mulex.args[3] = newex;
                     newex = mulex;
                 end
-                terms = newex;
             end
+            
+            # broadcast ops
+            newex = broadcast_all_ops(newex);
+            
+            terms = newex;
         else
-            # There is just one term
+            # There is just one factor
             terms = newex;
         end
     end
@@ -177,11 +232,13 @@ function separate_factors(ex, var=nothing)
     test_part = nothing;
     trial_part = nothing;
     coef_part = nothing;
+    test_ind = 0;
+    trial_ind = 0;
     
     if typeof(ex) == Expr
         if (ex.args[1] === :.- || ex.args[1] === :-) && length(ex.args)==2
             # a negative sign. Stick it on one of the factors
-            (test_part, trial_part, coef_part) = separate_factors(ex.args[2], var);
+            (test_part, trial_part, coef_part, test_ind, trial_ind) = separate_factors(ex.args[2], var);
             negex = :(-a);
             if !(coef_part === nothing)
                 negex.args[2] = coef_part;
@@ -198,12 +255,14 @@ function separate_factors(ex, var=nothing)
             tmpcoef = [];
             # Recursively separate each arg to handle a*(b*(c*...))
             for i=2:length(ex.args)
-                (testi, triali, coefi) = separate_factors(ex.args[i], var);
+                (testi, triali, coefi, testindi, trialindi) = separate_factors(ex.args[i], var);
                 if !(testi === nothing)
                     test_part = testi;
+                    test_ind = testindi;
                 end
                 if !(triali === nothing)
                     trial_part = triali;
+                    trial_ind = trialindi;
                 end
                 if !(coefi === nothing)
                     push!(tmpcoef, coefi);
@@ -217,12 +276,29 @@ function separate_factors(ex, var=nothing)
                 coef_part = tmpcoef[1];
             end
             
+        else # It is an Expr, but not -() or * (note: at this point a/b is a*(1/b) )
+            # This simplification may cause trouble somewhere. Revisit if needed.
+            coef_part = ex;
         end
     elseif typeof(ex) == SymEntity
         if is_test_function(ex)
             test_part = ex;
+            test_ind = ex.index;
         elseif !(var === nothing) && is_unknown_var(ex, var)
             trial_part = ex;
+            # find the trial index
+            if typeof(var) <: Array
+                tmpind = 0;
+                for vi=1:length(var)
+                    if is_unknown_var(ex,var[vi])
+                        trial_ind = tmpind + ex.index;
+                    else
+                        tmpind += length(var[vi].symvar.vals);
+                    end
+                end
+            else
+                trial_ind = ex.index;
+            end
         else
             coef_part = ex;
         end
@@ -236,7 +312,7 @@ function separate_factors(ex, var=nothing)
     # println(coef_part)
     # println("")
     
-    return (test_part, trial_part, coef_part);
+    return (test_part, trial_part, coef_part, test_ind, trial_ind);
 end
 
 function replace_entities_with_symbols(ex)
