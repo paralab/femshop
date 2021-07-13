@@ -20,15 +20,17 @@ using Test
     weakForm(u, "-grad(u)*grad(v) - f*v")
 
     solve(u);
-
-    maxerr = 0;
+    
+    allerr = zeros(size(Femshop.grid_data.allnodes,2));
     exact(x) = sin(10*pi*x)*sin(pi*x);
 
     for i=1:size(Femshop.grid_data.allnodes,2)
         x = Femshop.grid_data.allnodes[1,i];
         err = abs(u.values[i] - exact(x));
-        #maxerr = max(err,maxerr);
+        allerr[i] = err;
     end
+    maxerr = maximum(abs, allerr);
+    println("max error = "*string(maxerr));
     
     @test(maxerr < 0.01)
     
