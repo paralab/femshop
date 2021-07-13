@@ -27,10 +27,8 @@ using Test
     for i=1:size(Femshop.grid_data.allnodes,2)
         x = Femshop.grid_data.allnodes[1,i];
         err = abs(u.values[i] - exact(x));
-        global maxerr;
-        maxerr = max(err,maxerr);
+        #maxerr = max(err,maxerr);
     end
-    println("max error = "*string(maxerr));
     
     @test(maxerr < 0.01)
     
