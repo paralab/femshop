@@ -202,7 +202,7 @@ function make_elemental_computation_cg_julia(terms, var, dofsper, offset_ind, lo
                 # Process the terms for this variable
                 for ci=1:length(terms[vi]) # components
                     for i=1:length(terms[vi][ci])
-                        (term_result, test_ind, trial_ind) = generate_term_calculation_julia(terms[vi][ci][i], var, lorr);
+                        (term_result, test_ind, trial_ind) = generate_term_calculation_cg_julia(terms[vi][ci][i], var, lorr);
                         
                         # println(terms)
                         # println(terms[vi])
@@ -234,7 +234,7 @@ function make_elemental_computation_cg_julia(terms, var, dofsper, offset_ind, lo
             # Process the terms for this variable
             for ci=1:length(terms) # components
                 for i=1:length(terms[ci])
-                    (term_result, test_ind, trial_ind) = generate_term_calculation_julia(terms[ci][i], var, lorr);
+                    (term_result, test_ind, trial_ind) = generate_term_calculation_cg_julia(terms[ci][i], var, lorr);
                     
                     # Find the appropriate submatrix for this term
                     if lorr == LHS
@@ -286,7 +286,7 @@ function make_elemental_computation_cg_julia(terms, var, dofsper, offset_ind, lo
         
         #process each term
         for i=1:length(terms)
-            (term_result, test_ind, trial_ind) = generate_term_calculation_julia(terms[i], var, lorr);
+            (term_result, test_ind, trial_ind) = generate_term_calculation_cg_julia(terms[i], var, lorr);
             
             if i > 1
                 result *= " .+ " * term_result;
