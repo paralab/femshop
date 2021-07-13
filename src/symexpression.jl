@@ -153,7 +153,7 @@ end
 function extract_entity_parts(ex)
     str = string(ex);
     index = [];
-    var = nothing;
+    var = "";
     mods = [];
     l = lastindex(str);
     e = l; # end of variable name
@@ -185,7 +185,7 @@ function extract_entity_parts(ex)
             
         else
             # At this point we know b and e
-            if var === nothing
+            if var == ""
                 var = string((SubString(str, b, e)));
                 b = b-2;
                 e = b;
@@ -194,11 +194,15 @@ function extract_entity_parts(ex)
     end
     
     # Change index from [a, b] to a*d + b
-    newindex = index[end];
-    for i=1:(length(index)-1)
-        newindex = newindex + (index[i]-1)*config.dimension^(length(index)-i);
+    if length(index) > 0
+        newindex = index[end];
+        for i=1:(length(index)-1)
+            newindex = newindex + (index[i]-1)*config.dimension^(length(index)-i);
+        end
+        index = newindex;
+    else
+        index = 0;
     end
-    index = newindex;
     
     # extract the modifiers like D1_ etc. separated by underscores
     if b>1

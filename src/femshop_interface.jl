@@ -324,44 +324,15 @@ function weakForm(var, wf)
     ################ string ####################################
     
     # change symbolic layer into code layer
-    lhs_code = generate_code_layer(lhs_symexpr, var, LHS, "volume");
-    rhs_code = generate_code_layer(rhs_symexpr, var, RHS, "volume");
+    (lhs_string, lhs_code) = generate_code_layer(lhs_symexpr, var, LHS, "volume", config.solver_type, JULIA, "none");
+    (rhs_string, rhs_code) = generate_code_layer(rhs_symexpr, var, RHS, "volume", config.solver_type, JULIA, "none");
     if length(result_exprs) == 4
-        lhs_surf_code = generate_code_layer_surface(lhs_surf_expr, var, LHS);
-        rhs_surf_code = generate_code_layer_surface(rhs_surf_expr, var, RHS);
-        log_entry("Weak form, code layer: LHS = \n"*string(lhs_code)*"\nsurfaceLHS = \n"*string(lhs_surf_code)*" \nRHS = \n"*string(rhs_code)*"\nsurfaceRHS = \n"*string(rhs_surf_code));
+        # lhs_surf_code = generate_code_layer_surface(lhs_surf_expr, var, LHS);
+        # rhs_surf_code = generate_code_layer_surface(rhs_surf_expr, var, RHS);
+        # log_entry("Weak form, code layer: LHS = \n"*string(lhs_string)*"\nsurfaceLHS = \n"*string(lhs_surf_string)*" \nRHS = \n"*string(rhs_string)*"\nsurfaceRHS = \n"*string(rhs_surf_string));
     else
-        log_entry("Weak form, code layer: LHS = \n"*string(lhs_code)*" \n  RHS = \n"*string(rhs_code));
+        log_entry("Weak form, code layer: LHS = \n"*string(lhs_string)*" \n  RHS = \n"*string(rhs_string));
     end
-    
-    ######## temporary
-    function stoe(s)
-        e = Expr(:block);
-        lines = split(s, "\n", keepempty=false);
-    
-        for i=1:length(lines)
-            tmp = Meta.parse(lines[i]);
-            # a toplevel wrapper might be put around the expression. remove it.
-            if !(tmp === nothing)
-                if tmp.head === :toplevel
-                    if length(tmp.args) > 0
-                        tmp = tmp.args[1];
-                    else
-                        tmp = nothing;
-                    end
-                end
-            end
-            if !(tmp === nothing)
-                push!(e.args, tmp);
-            end
-        end
-        
-        return e;
-    end
-    ###################
-    
-    lhs_code = stoe(lhs_code);
-    rhs_code = stoe(rhs_code);
     
     log_entry("Julia code Expr: LHS = \n"*string(lhs_code)*" \n  RHS = \n"*string(rhs_code), 3);
     
@@ -437,17 +408,24 @@ function flux(var, fex)
     flhs_expr = newflhs;
     frhs_expr = newfrhs;
     
+    # Here we build a SymExpression for each of the pieces. 
+    # This is passed to the code generator.
+    (lhs_symexpr, rhs_symexpr) = build_symexpressions(symvars, flhs_expr, frhs_expr);
+    
+    log_entry("flux lhs symexpression:\n"*string(lhs_symexpr));
+    log_entry("flux rhs symexpression:\n"*string(rhs_symexpr));
+    
     # change symbolic layer into code layer
-    flhs_code = generate_code_layer_fv(flhs_expr, var, LHS, "flux");
-    frhs_code = generate_code_layer_fv(frhs_expr, var, RHS, "flux");
-    log_entry("flux, code layer: \n  LHS = "*string(flhs_code)*" \n  RHS = "*string(frhs_code));
+    (lhs_string, lhs_code) = generate_code_layer(lhs_symexpr, var, LHS, "surface", FV, JULIA, "none");
+    (rhs_string, rhs_code) = generate_code_layer(rhs_symexpr, var, RHS, "surface", FV, JULIA, "none");
+    log_entry("flux, code layer: \n  LHS = "*string(lhs_string)*" \n  RHS = "*string(rhs_string));
     
     if language == JULIA || language == 0
         args = "args";
-        @makeFunction(args, string(flhs_code));
+        @makeFunction(args, string(lhs_code));
         set_lhs_surface(var);
         
-        @makeFunction(args, string(frhs_code));
+        @makeFunction(args, string(rhs_code));
         set_rhs_surface(var);
         
     else
@@ -491,17 +469,24 @@ function source(var, sex)
     slhs_expr = newslhs;
     srhs_expr = newsrhs;
     
-    # change symbolic layer into code layer
-    slhs_code = generate_code_layer_fv(slhs_expr, var, LHS, "source");
-    srhs_code = generate_code_layer_fv(srhs_expr, var, RHS, "source");
-    log_entry("source, code layer: \n  LHS = "*string(slhs_code)*" \n  RHS = "*string(srhs_code));
+    # Here we build a SymExpression for each of the pieces. 
+    # This is passed to the code generator.
+    (lhs_symexpr, rhs_symexpr) = build_symexpressions(symvars, slhs_expr, srhs_expr);
+    
+    log_entry("source lhs symexpression:\n"*string(lhs_symexpr));
+    log_entry("source rhs symexpression:\n"*string(rhs_symexpr));
+    
+    # change symbolic layer into code code_layer
+    (lhs_string, lhs_code) = generate_code_layer(lhs_symexpr, var, LHS, "volume", FV, JULIA, "none");
+    (rhs_string, rhs_code) = generate_code_layer(rhs_symexpr, var, RHS, "volume", FV, JULIA, "none");
+    log_entry("source, code layer: \n  LHS = "*string(lhs_string)*" \n  RHS = "*string(rhs_string));
     
     if language == JULIA || language == 0
         args = "args";
-        @makeFunction(args, string(slhs_code));
+        @makeFunction(args, string(lhs_code));
         set_lhs(var);
         
-        @makeFunction(args, string(srhs_code));
+        @makeFunction(args, string(rhs_code));
         set_rhs(var);
         
     else

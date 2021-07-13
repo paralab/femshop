@@ -64,6 +64,9 @@ function get_coef_val(c)
             end
         end
     end
+    if type == 0 # something special with a nonzero index
+        return (-1,0);
+    end
     
     return (type, val);
 end
@@ -97,6 +100,7 @@ function make_coef_name(c)
     end
     
     str = "coef_"*tag*"_"*string(c.name)*"_"*string(c.index);
+    
     return str;
 end
 
@@ -144,14 +148,14 @@ function broadcast_all_ops(ex)
             elseif ex.args[1] === :* ex.args[1] = :.*
             elseif ex.args[1] === :+ ex.args[1] = :.+
             elseif ex.args[1] === :- ex.args[1] = :.-
-            elseif !(ex.args[1] == :.)
-                bop = Expr(:., ex);
+            else # named operator: abs -> abs.
+                bop = Expr(:., ex.args[1], Expr(:tuple, ex.args[2]));
                 ex = bop;
                 bopped = true;
             end
             if bopped
-                for i=2:length(ex.args[1].args)
-                    ex.args[1].args[i] = broadcast_all_ops(ex.args[1].args[i]);
+                for i=2:length(ex.args[2].args)
+                    ex.args[2].args[i] = broadcast_all_ops(ex.args[2].args[i]);
                 end
             else
                 for i=2:length(ex.args)
@@ -325,9 +329,34 @@ function replace_entities_with_symbols(ex)
             ex.args[i] = replace_entities_with_symbols(ex.args[i]);
         end
     elseif typeof(ex) == SymEntity
+        # use make_coef_name
         return Symbol(make_coef_name(ex));
-    
     end
     
     return ex;
+end
+
+# Turns the generated code string into an Expr block to be put in a generated function.
+function code_string_to_expr(s)
+    e = Expr(:block);
+    lines = split(s, "\n", keepempty=false);
+
+    for i=1:length(lines)
+        tmp = Meta.parse(lines[i]);
+        # a toplevel wrapper might be put around the expression. remove it.
+        if !(tmp === nothing)
+            if tmp.head === :toplevel
+                if length(tmp.args) > 0
+                    tmp = tmp.args[1];
+                else
+                    tmp = nothing;
+                end
+            end
+        end
+        if !(tmp === nothing)
+            push!(e.args, tmp);
+        end
+    end
+    
+    return e;
 end

@@ -126,12 +126,17 @@ function sp_parse(ex, var)
     symex = apply_ops(symex);
     # if debug println("apply ops -> "*string(symex)); end
     log_entry("SP apply ops -> "*string(symex), 3);
-    tmp = "SP apply ops -> [\n";
-    for i=1:length(symex)
-        #tmp *= latexify(string(symex[i])) * "\n";
+    # tmp = "SP apply ops -> [\n";
+    # for i=1:length(symex)
+    #     #tmp *= latexify(string(symex[i])) * "\n";
+    # end
+    # tmp *= "]";
+    # log_entry(tmp, 3);
+    
+    # If the result of this is not in an array, put it in an array
+    if !(typeof(symex) <: Array)
+        symex = [symex];
     end
-    tmp *= "]";
-    log_entry(tmp, 3);
     
     # Expand the expression and separate terms
     sterms = get_sym_terms(symex);
@@ -407,6 +412,10 @@ function get_sym_terms(ex)
     end
     
     # ex is a symbolic expression(not array of them)
+    # if ex is just a number, turn it into a Basic for expand
+    if typeof(ex) <: Number
+       ex = Basic(ex); 
+    end
     # First expand it
     newex = expand(ex);
     #println("expanded = "*string(newex));
@@ -497,7 +506,10 @@ end
 function split_left_right(sterms,sz,var)
     lhs = copy(sterms); # set up the container right
     rhs = copy(sterms);
-    if length(sz) == 1 # vector or scalar
+    if length(sz) == 0 # probably just a number
+        rhs = sterms;
+        lhs = [];
+    elseif length(sz) == 1 # vector or scalar
         for i=1:sz[1]
             lhs[i] = Array{Basic,1}(undef,0);
             rhs[i] = Array{Basic,1}(undef,0);

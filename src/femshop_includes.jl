@@ -15,14 +15,14 @@ catch e
     Pkg.add("SymEngine")
     using SymEngine
 end
-try
-    using Latexify
-catch e
-    println("Latexify is not yet installed. Installing now.");
-    using Pkg
-    Pkg.add("Latexify")
-    using Latexify
-end
+# try
+#     using Latexify
+# catch e
+#     println("Latexify is not yet installed. Installing now.");
+#     using Pkg
+#     Pkg.add("Latexify")
+#     using Latexify
+# end
 ######################
 
 # include these first

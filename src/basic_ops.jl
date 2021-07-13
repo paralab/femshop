@@ -145,30 +145,30 @@ end
 # end
 
 function sym_normal_op()
-    _DGNORMAL_1 = symbols("_DGNORMAL1_1");
-    _DGNORMAL_2 = symbols("_DGNORMAL1_2");
-    _DGNORMAL_3 = symbols("_DGNORMAL1_3");
+    _FACENORMAL_1 = symbols("_FACENORMAL1_1");
+    _FACENORMAL_2 = symbols("_FACENORMAL1_2");
+    _FACENORMAL_3 = symbols("_FACENORMAL1_3");
     d = config.dimension;
     if d==1
-        return [_DGNORMAL_1];
+        return [_FACENORMAL_1];
     elseif d==2
-        return [_DGNORMAL_1, _DGNORMAL_2];
+        return [_FACENORMAL_1, _FACENORMAL_2];
     elseif d==3
-        return [_DGNORMAL_1, _DGNORMAL_2, _DGNORMAL_3];
+        return [_FACENORMAL_1, _FACENORMAL_2, _FACENORMAL_3];
     end
 end
 
 function sym_normal_op(side)
-    _DGNORMAL_1 = symbols("_DGNORMAL"*string(side)*"_1");
-    _DGNORMAL_2 = symbols("_DGNORMAL"*string(side)*"_2");
-    _DGNORMAL_3 = symbols("_DGNORMAL"*string(side)*"_3");
+    _FACENORMAL_1 = symbols("_FACENORMAL"*string(side)*"_1");
+    _FACENORMAL_2 = symbols("_FACENORMAL"*string(side)*"_2");
+    _FACENORMAL_3 = symbols("_FACENORMAL"*string(side)*"_3");
     d = config.dimension;
     if d==1
-        return [_DGNORMAL_1];
+        return [_FACENORMAL_1];
     elseif d==2
-        return [_DGNORMAL_1, _DGNORMAL_2];
+        return [_FACENORMAL_1, _FACENORMAL_2];
     elseif d==3
-        return [_DGNORMAL_1, _DGNORMAL_2, _DGNORMAL_3];
+        return [_FACENORMAL_1, _FACENORMAL_2, _FACENORMAL_3];
     end
 end
 
