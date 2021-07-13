@@ -231,7 +231,7 @@ function generate_code_layer_julia_surface(symex, var, lorr)
         end
         
         for i=1:length(needed_coef)
-            if !(typeof(needed_coef[i]) <: Number || needed_coef[i] === :dt || needed_coef[i] === :DGNORMAL || needed_coef[i] === :DGNORMAL1 || needed_coef[i] === :DGNORMAL2)
+            if !(typeof(needed_coef[i]) <: Number || needed_coef[i] === :dt || needed_coef[i] === :FACENORMAL || needed_coef[i] === :FACENORMAL1 || needed_coef[i] === :FACENORMAL2)
                 cind = get_coef_index(needed_coef[i]);
                 if cind >= 0
                     tag = string(cind);
@@ -1079,19 +1079,19 @@ function process_surface_term_julia(sterm, var, lorr, offset_ind=0)
                 else
                     tag = string(tmp1);
                 end
-                if tmp1 === :DGNORMAL
+                if tmp1 === :FACENORMAL
                     ind = coef_inds[j];
                     tmp1 = :(normal[$ind]);
                     tmp2 = :(-normal[$ind]);
                     tmp3 = :(normal[$ind]);
                     tmp4 = :(-normal[$ind]);
-                elseif tmp1 === :DGNORMAL1
+                elseif tmp1 === :FACENORMAL1
                     ind = coef_inds[j];
                     tmp1 = :(normal[$ind]);
                     tmp2 = :(normal[$ind]);
                     tmp3 = :(-normal[$ind]);
                     tmp4 = :(-normal[$ind]);
-                elseif tmp1 === :DGNORMAL2
+                elseif tmp1 === :FACENORMAL2
                     ind = coef_inds[j];
                     tmp1 = :(-normal[$ind]);
                     tmp2 = :(-normal[$ind]);
