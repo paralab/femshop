@@ -88,8 +88,13 @@ function generate_code_layer(symex, var, lorr, vors, solver, language, framework
             build_derivative_matrices_fun = build_derivative_matrices_cg_julia;
             prepare_needed_values_fun = prepare_needed_values_cg_julia;
             make_elemental_computation_fun = make_elemental_computation_cg_julia;
+            
         elseif solver == DG
-            # TODO
+            handle_input_args_fun = handle_input_args_dg_julia;
+            build_derivative_matrices_fun = build_derivative_matrices_dg_julia;
+            prepare_needed_values_fun = prepare_needed_values_dg_julia;
+            make_elemental_computation_fun = make_elemental_computation_dg_julia;
+            
         elseif solver == FV
             handle_input_args_fun = handle_input_args_fv_julia;
             build_derivative_matrices_fun = build_derivative_matrices_fv_julia;
@@ -99,6 +104,8 @@ function generate_code_layer(symex, var, lorr, vors, solver, language, framework
         
     else
         #TODO
+        printerr("Code generation for external targets is currently offline. Sorry.")
+        return ("", "")
     end
     
     ###### Build the code as a string ####################################################################

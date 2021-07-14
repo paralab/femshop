@@ -21,7 +21,7 @@ import ..Femshop: Femshop_config, Femshop_prob, Variable, Coefficient
 import ..Femshop: log_entry, printerr
 import ..Femshop: config, prob, variables, coefficients, parameters, test_functions
 
-using SymEngine, LinearAlgebra, Latexify
+using SymEngine, LinearAlgebra
 
 #### globals ########################
 # Basic symbolic operators that are included automatically and have precedence

@@ -70,7 +70,7 @@ include("generate_code_layer.jl");
 
 # code gen functions for each solver type and target
 include("generate_code_layer_cg_julia.jl");
-#include("generate_code_layer_dg_julia.jl");
+include("generate_code_layer_dg_julia.jl");
 include("generate_code_layer_fv_julia.jl");
 
 # # target specific code gen functions
@@ -80,7 +80,7 @@ include("generate_code_layer_fv_julia.jl");
 # include("generate_code_layer_cachesim.jl");
 
 # Surface integrals should be handled in the same place TODO
-include("generate_code_layer_surface.jl");
+#include("generate_code_layer_surface.jl");
 
 #Matlab
 include("generate_matlab_utils.jl");

@@ -243,39 +243,39 @@ function tetrahedron_equilateral_to_rst(x,y,z)
     return (RST[1,:], RST[2,:], RST[3,:]);
 end
 
-# From (r,s,t) coordinates in reference tetrahedron to (x,y,z) in tetrahedron with vertices v
-# v is a 3x4 array [x1 x2 x3 x4; y1 y2 y3 y4; z1 z2 z3 z4]
-function tetrahedron_refel_to_xyz(r, s, t, v)
-    d = v[:,1];
-    A = [v[:,2].-d v[:,3].-d v[:,4].-d];
+# # From (r,s,t) coordinates in reference tetrahedron to (x,y,z) in tetrahedron with vertices v
+# # v is a 3x4 array [x1 x2 x3 x4; y1 y2 y3 y4; z1 z2 z3 z4]
+# function tetrahedron_refel_to_xyz(r, s, t, v)
+#     d = v[:,1];
+#     A = [v[:,2].-d v[:,3].-d v[:,4].-d];
     
-    np = length(r);
-    mv = zeros(3,np);
-    for i=1:np
-        tmp = [(r[i]+1)/2, (s[i]+1)/2, (t[i]+1)/2];
-        mv[:,i] = A*tmp + d;
-    end
+#     np = length(r);
+#     mv = zeros(3,np);
+#     for i=1:np
+#         tmp = [(r[i]+1)/2, (s[i]+1)/2, (t[i]+1)/2];
+#         mv[:,i] = A*tmp + d;
+#     end
     
-    x = mv[1,:]
-    y = mv[2,:]
-    z = mv[3,:]
+#     x = mv[1,:]
+#     y = mv[2,:]
+#     z = mv[3,:]
     
-    return (x, y, z);
-end
+#     return (x, y, z);
+# end
 
-function get_face2local_map(r, compare)
-    n = size(r,1);
-    map = zeros(Int,n);
-    nf = 0;
-    for i=1:n
-        if compare(r[i,:])
-            nf = nf+1;
-            map[nf] = i;
-        end
-    end
+# function get_face2local_map(r, compare)
+#     n = size(r,1);
+#     map = zeros(Int,n);
+#     nf = 0;
+#     for i=1:n
+#         if compare(r[i,:])
+#             nf = nf+1;
+#             map[nf] = i;
+#         end
+#     end
     
-    return map[1:nf];
-end
+#     return map[1:nf];
+# end
 
 function tet_snap_to_bdry!(r, s, t, tol)
     n = length(r);

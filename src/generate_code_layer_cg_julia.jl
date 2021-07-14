@@ -8,7 +8,7 @@ function handle_input_args_cg_julia(lorr, vors)
     if vors == "volume"
         code *=
 "var =   args[1]; # unknown variables
-x =     args[2]; # global coords of element's nodes
+nodex =     args[2]; # global coords of element's nodes
 gbl =   args[3]; # global indices of the nodes
 refel = args[4]; # reference element
 wdetj = args[5]; # quadrature weights scaled by detJ
@@ -24,7 +24,7 @@ dt =    args[8]; # dt for time dependent problems
         
     else
         # surface
-        
+        # TODO see DG
     end
     
     return code;
@@ -47,7 +47,7 @@ function build_derivative_matrices_cg_julia(lorr, vors)
             code *= "(RQ1, RD1) = build_deriv_matrix(refel, J);\n";
             code *= "TRQ1 = RQ1';\n"
         else
-            #TODO
+            # TODO see DG
         end
         
     elseif config.dimension == 2
@@ -55,7 +55,7 @@ function build_derivative_matrices_cg_julia(lorr, vors)
             code *= "(RQ1, RQ2, RD1, RD2) = build_deriv_matrix(refel, J);\n";
             code *= "(TRQ1, TRQ2) = (RQ1', RQ2');\n"
         else
-            #TODO
+            # TODO see DG
         end
         
     elseif config.dimension == 3
@@ -63,7 +63,7 @@ function build_derivative_matrices_cg_julia(lorr, vors)
             code *= "(RQ1, RQ2, RQ3, RD1, RD2, RD3) = build_deriv_matrix(refel, J);\n";
             code *= "(TRQ1, TRQ2, TRQ3) = (RQ1', RQ2', RQ3');\n"
         else
-            #TODO
+            # TODO see DG
         end
     end
     
@@ -117,11 +117,11 @@ function prepare_needed_values_cg_julia(entities, var, lorr, vors)
                 #     coef_k_i[coefi] = (Femshop.genfunctions[cval]).func(x[1,coefi], x[2,coefi],x[3,coefi],time);
                 # end
                 ######################################
-                cargs = "(x[coefi], 0, 0, time)";
+                cargs = "(nodex[coefi], 0, 0, time)";
                 if config.dimension == 2
-                    cargs = "(x[1, coefi], x[2, coefi], 0, time)";
+                    cargs = "(nodex[1, coefi], nodex[2, coefi], 0, time)";
                 elseif config.dimension == 3
-                    cargs = "(x[1, coefi], x[2, coefi], x[3, coefi], time)";
+                    cargs = "(nodex[1, coefi], nodex[2, coefi], nodex[3, coefi], time)";
                 end
                 if vors == "volume"
                     code *= cname * " = zeros(refel.Np);\n";

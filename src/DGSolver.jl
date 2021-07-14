@@ -469,12 +469,13 @@ function assemble(var, bilinear, linear, face_bilinear, face_linear, t=0.0, dt=0
             vol_J2 = vol_J[e2]; # and e2
             
             loc2glb = [grid_data.loc2glb[:,e1], grid_data.loc2glb[:,e2]]; # volume local to global
+            nodex = [grid_data.allnodes[:, loc2glb[1]], grid_data.allnodes[:, loc2glb[2]]]; # volume node coords
             
             face_wdetj = refel.surf_wg[1] .* fdetJ;
             #println("face "*string(fid)*" fdetJ "*string(fdetJ)*" wdetj "*string(face_wdetj));
             
-            rhsargs = (var, refel, loc2glb, fid, frefelind, facenodes, face2glb, normal, faceBID, fdetJ, fJ, vol_J1, vol_J2, face_wdetj, RHS, t, dt);
-            lhsargs = (var, refel, loc2glb, fid, frefelind, facenodes, face2glb, normal, faceBID, fdetJ, fJ, vol_J1, vol_J2, face_wdetj, LHS, t, dt);
+            rhsargs = (var, refel, loc2glb, nodex, fid, frefelind, facenodes, face2glb, normal, faceBID, fdetJ, fJ, vol_J1, vol_J2, face_wdetj, t, dt);
+            lhsargs = (var, refel, loc2glb, nodex, fid, frefelind, facenodes, face2glb, normal, faceBID, fdetJ, fJ, vol_J1, vol_J2, face_wdetj, t, dt);
             
             if dofs_per_node == 1
                 linchunk = face_linear.func(rhsargs);  # get the elemental linear part

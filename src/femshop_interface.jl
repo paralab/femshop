@@ -245,7 +245,6 @@ function weakForm(var, wf)
             log_entry("Weak form, before modifying for time: Dt("*string(lhs_expr[1])*") + "*string(lhs_expr[2])*" + surface("*string(lhs_surf_expr)*") = "*string(rhs_expr)*" + surface("*string(rhs_surf_expr)*")");
             
             (newlhs, newrhs, newsurflhs, newsurfrhs) = reformat_for_stepper(lhs_expr, rhs_expr, lhs_surf_expr, rhs_surf_expr, config.stepper);
-            #TODO reformat surface terms
             
             log_entry("Weak form, modified for time stepping: "*string(newlhs)*" + surface("*string(newsurflhs)*") = "*string(newrhs)*" + surface("*string(newsurfrhs)*")");
             
@@ -271,11 +270,16 @@ function weakForm(var, wf)
     # This is an Expr tree that is passed to the code generator.
     if length(result_exprs) == 4 # has surface terms
         (lhs_symexpr, rhs_symexpr, lhs_surf_symexpr, rhs_surf_symexpr) = build_symexpressions(wfvars, lhs_expr, rhs_expr, lhs_surf_expr, rhs_surf_expr);
+        log_entry("lhs volume symexpression:\n"*string(lhs_symexpr));
+        log_entry("lhs surface symexpression:\n"*string(lhs_surf_symexpr));
+        log_entry("rhs volume symexpression:\n"*string(rhs_symexpr));
+        log_entry("rhs surface symexpression:\n"*string(rhs_surf_symexpr));
     else
         (lhs_symexpr, rhs_symexpr) = build_symexpressions(wfvars, lhs_expr, rhs_expr);
+        log_entry("lhs symexpression:\n"*string(lhs_symexpr));
+        log_entry("rhs symexpression:\n"*string(rhs_symexpr));
     end
-    log_entry("lhs symexpression:\n"*string(lhs_symexpr));
-    log_entry("rhs symexpression:\n"*string(rhs_symexpr));
+    
     
     ########## This part simply makes a string for printing #############
     # make a string for the expression
@@ -327,14 +331,14 @@ function weakForm(var, wf)
     (lhs_string, lhs_code) = generate_code_layer(lhs_symexpr, var, LHS, "volume", config.solver_type, JULIA, "none");
     (rhs_string, rhs_code) = generate_code_layer(rhs_symexpr, var, RHS, "volume", config.solver_type, JULIA, "none");
     if length(result_exprs) == 4
-        # lhs_surf_code = generate_code_layer_surface(lhs_surf_expr, var, LHS);
-        # rhs_surf_code = generate_code_layer_surface(rhs_surf_expr, var, RHS);
-        # log_entry("Weak form, code layer: LHS = \n"*string(lhs_string)*"\nsurfaceLHS = \n"*string(lhs_surf_string)*" \nRHS = \n"*string(rhs_string)*"\nsurfaceRHS = \n"*string(rhs_surf_string));
+        (lhs_surf_string, lhs_surf_code) = generate_code_layer(lhs_surf_symexpr, var, LHS, "surface", config.solver_type, JULIA, "none");
+        (rhs_surf_string, rhs_surf_code) = generate_code_layer(rhs_surf_symexpr, var, RHS, "surface", config.solver_type, JULIA, "none");
+        log_entry("Weak form, code layer: LHS = \n"*string(lhs_string)*"\nsurfaceLHS = \n"*string(lhs_surf_string)*" \nRHS = \n"*string(rhs_string)*"\nsurfaceRHS = \n"*string(rhs_surf_string));
     else
         log_entry("Weak form, code layer: LHS = \n"*string(lhs_string)*" \n  RHS = \n"*string(rhs_string));
     end
     
-    log_entry("Julia code Expr: LHS = \n"*string(lhs_code)*" \n  RHS = \n"*string(rhs_code), 3);
+    #log_entry("Julia code Expr: LHS = \n"*string(lhs_code)*" \n  RHS = \n"*string(rhs_code), 3);
     
     if language == JULIA || language == 0
         args = "args";

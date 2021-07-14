@@ -150,25 +150,25 @@ function triangle_equilateral_to_rs(x,y)
     return (r, s);
 end
 
-# From (r,s) coordinates in reference triangle to (x,y) in triangle with vertices v
-# v is a 2x3 array [x1 x2 x3; y1 y2 y3]
-function triangle_refel_to_xy(r, s, v)
-    x = 0.5 .* (-(r+s) .* v[1,1] .+ (1+r) .* v[1,2] .+ (1+s) .* v[1,3]);
-    y = 0.5 .* (-(r+s) .* v[2,1] .+ (1+r) .* v[2,2] .+ (1+s) .* v[2,3]);
+# # From (r,s) coordinates in reference triangle to (x,y) in triangle with vertices v
+# # v is a 2x3 array [x1 x2 x3; y1 y2 y3]
+# function triangle_refel_to_xy(r, s, v)
+#     x = 0.5 .* (-(r+s) .* v[1,1] .+ (1+r) .* v[1,2] .+ (1+s) .* v[1,3]);
+#     y = 0.5 .* (-(r+s) .* v[2,1] .+ (1+r) .* v[2,2] .+ (1+s) .* v[2,3]);
     
-    return (x, y);
-end
+#     return (x, y);
+# end
 
-function get_face2local_map(r, compare)
-    n = size(r,1);
-    map = zeros(Int,n);
-    nf = 0;
-    for i=1:n
-        if compare(r[i,:])
-            nf = nf+1;
-            map[nf] = i;
-        end
-    end
+# function get_face2local_map(r, compare)
+#     n = size(r,1);
+#     map = zeros(Int,n);
+#     nf = 0;
+#     for i=1:n
+#         if compare(r[i,:])
+#             nf = nf+1;
+#             map[nf] = i;
+#         end
+#     end
     
-    return map[1:nf];
-end
+#     return map[1:nf];
+# end

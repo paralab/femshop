@@ -93,10 +93,10 @@ function make_coef_name(c)
     
     tag = "";
     for i=1:length(c.flags)
-        tag *= c.flags[i];
+        tag = c.flags[i] * tag;
     end
     for i=1:length(c.derivs)
-        tag *= "D"*string(c.derivs[i]);
+        tag = "D"*string(c.derivs[i]) * tag;
     end
     
     str = "coef_"*tag*"_"*string(c.name)*"_"*string(c.index);
