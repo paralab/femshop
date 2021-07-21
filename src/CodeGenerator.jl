@@ -3,10 +3,10 @@ Module for code generation
 =#
 module CodeGenerator
 
-export init_codegenerator, finalize_codegenerator, Genfiles, set_custom_target,
-        generate_all_files,
-        generate_main, generate_config, generate_prob, generate_mesh, generate_genfunction, 
-        generate_bilinear, generate_linear, generate_stepper, generate_output,
+export init_code_generator, finalize_code_generator, set_generation_target,
+        generate_all_files, add_generated_file,
+        # generate_main, generate_config, generate_prob, generate_mesh, generate_genfunction, 
+        # generate_bilinear, generate_linear, generate_stepper, generate_output,
         generate_code_layer, generate_code_layer_surface, generate_code_layer_fv
 
 import ..Femshop: JULIA, CPP, MATLAB, DENDRO, HOMG, CUSTOM_GEN_TARGET,
@@ -25,44 +25,47 @@ import ..Femshop: JULIA, CPP, MATLAB, DENDRO, HOMG, CUSTOM_GEN_TARGET,
 import ..Femshop: Femshop_config, Femshop_prob, GenFunction, Variable, Coefficient
 import ..Femshop: log_entry, printerr
 import ..Femshop: config, prob, refel, mesh_data, grid_data, genfunctions, variables, coefficients, 
-        test_functions, linears, bilinears, time_stepper
+        test_functions, linears, bilinears, time_stepper, language, gen_framework
 import ..Femshop: SymExpression, SymEntity
 import ..Femshop: CachesimOut, use_cachesim
 import ..Femshop: custom_gen_funcs
 
 # Holds a set of file streams for generated code
-mutable struct Genfiles
-    main;       # Runs the computation
-    config;     # global configuration
-    problem;    # global problem specification
-    mesh;       # contains the mesh CODE
-    meshdata;   # contains the refel/mesh/grid DATA
-    genfunction;# Generated functions
-    bilinear;   # bilinear function: bilinear(args) returns elemental matrix
-    linear;     # linear function: linear(args) returns elemental vector
-    stepper;    # optional time stepper for time dependent problems
-    output;     # output
+# mutable struct Genfiles
+#     main;       # Runs the computation
+#     config;     # global configuration
+#     problem;    # global problem specification
+#     mesh;       # contains the mesh CODE
+#     meshdata;   # contains the refel/mesh/grid DATA
+#     genfunction;# Generated functions
+#     bilinear;   # bilinear function: bilinear(args) returns elemental matrix
+#     linear;     # linear function: linear(args) returns elemental vector
+#     stepper;    # optional time stepper for time dependent problems
+#     output;     # output
     
-    files;      # an iterable list of these files
+#     files;      # an iterable list of these files
     
-    Genfiles(m,c,p,n,nd,g,b,l,s,o) = new(m,c,p,n,nd,g,b,l,s,o,[m,c,p,n,nd,g,b,l,s,o]);
-end
+#     Genfiles(m,c,p,n,nd,g,b,l,s,o) = new(m,c,p,n,nd,g,b,l,s,o,[m,c,p,n,nd,g,b,l,s,o]);
+# end
 
-language = 0;
-framework = 0;
 genDir = "";
 genFileName = "";
 genFileExtension = "";
 commentChar = "";
 blockCommentChar = [""; ""];
 headerText = "";
-genfiles = nothing;
+genfiles = [];
+external_get_language_elements_function = nothing;
+external_generate_code_layer_function = nothing;
+external_generate_code_files_function = nothing;
 
 # for custom targets
 using_custom_target = false;
-custom_language_element_fun = 0;
-custom_code_layer_fun = 0;
-custom_files_fun = 0;
+# Temporary placeholders for external code gen functions that must be provided.
+# These are reassigned in set_custom_target()
+function default_language_elements_function() return (".jl", "#", ["#=", "=#"]) end;
+function default_code_layer_function(var, entities, terms, lorr, vors) return ("","") end;
+function default_code_files_function(lhs_vol, lhs_surf, rhs_vol, rhs_surf) return 0 end;
 
 # general code generator functions
 include("code_generator_utils.jl");
@@ -90,86 +93,109 @@ include("generate_homg_files.jl");
 include("generate_cpp_utils.jl");
 include("generate_dendro_files.jl");
 
-function set_custom_target(lang_elements, code_layer, file_maker)
-    global custom_language_element_fun = lang_elements;
-    global custom_code_layer_fun = code_layer;
-    global custom_files_fun = file_maker;
-    global using_custom_target = true;
-end
-
-function init_codegenerator(lang, frame, dir, name, header)
-    if lang == JULIA
-        global genFileExtension = ".jl";
-        global commentChar = "#";
-        global blockCommentChar = ["#="; "=#"];
-        log_entry("Set code generation language to Julia.");
-    elseif lang == CPP
-        global genFileExtension = ".cpp";
-        global commentChar = "//";
-        global blockCommentChar = ["/*"; "*/"];
-        log_entry("Set code generation language to C++.");
-    elseif lang == MATLAB
-        global genFileExtension = ".m";
-        global commentChar = "%";
-        global blockCommentChar = ["%{"; "%}"];
-        log_entry("Set code generation language to Matlab.");
-    elseif using_custom_target
-        (ext, com, blo) = custom_language_element_fun();
-        global genFileExtension = ext;
-        global commentChar = com;
-        global blockCommentChar = blo;
-        log_entry("Set code generation language to custom.");
-    else
-        printerr("Invalid language, use JULIA, CPP, MATLAB");
-        return nothing;
-    end
+function init_code_generator(dir, name, header)
+    # if lang == JULIA
+    #     global genFileExtension = ".jl";
+    #     global commentChar = "#";
+    #     global blockCommentChar = ["#="; "=#"];
+    #     log_entry("Set code generation language to Julia.");
+    # elseif lang == CPP
+    #     global genFileExtension = ".cpp";
+    #     global commentChar = "//";
+    #     global blockCommentChar = ["/*"; "*/"];
+    #     log_entry("Set code generation language to C++.");
+    # elseif lang == MATLAB
+    #     global genFileExtension = ".m";
+    #     global commentChar = "%";
+    #     global blockCommentChar = ["%{"; "%}"];
+    #     log_entry("Set code generation language to Matlab.");
+    # elseif using_custom_target
+    #     (ext, com, blo) = external_get_language_elements_function();
+    #     global genFileExtension = ext;
+    #     global commentChar = com;
+    #     global blockCommentChar = blo;
+    #     log_entry("Set code generation language to custom.");
+    # else
+    #     printerr("Invalid language, use JULIA, CPP, MATLAB");
+    #     return nothing;
+    # end
     
-    global language = lang;
-    global framework = frame;
+    global genFileExtension = ".jl";
+    global commentChar = "#";
+    global blockCommentChar = ["#="; "=#"];
     global genDir = dir;
     global genFileName = name;
     global headerText = header;
     
-    src_dir = genDir*"/src";
-    if !isdir(src_dir)
-        mkdir(src_dir);
-    end
-    # inc_dir = genDir*"/include";
-    # if !isdir(inc_dir)
-    #     mkdir(inc_dir);
+    global external_get_language_elements_function = default_language_elements_function;
+    global external_generate_code_layer_function = default_code_layer_function;
+    global external_generate_code_files_function = default_code_files_function;
+
+    # src_dir = genDir*"/src";
+    # if !isdir(src_dir)
+    #     mkdir(src_dir);
     # end
+    # # inc_dir = genDir*"/include";
+    # # if !isdir(inc_dir)
+    # #     mkdir(inc_dir);
+    # # end
     
-    m = open(src_dir*"/"*name*genFileExtension, "w");
-    c = open(src_dir*"/Config"*genFileExtension, "w");
-    p = open(src_dir*"/Problem"*genFileExtension, "w");
-    n = open(src_dir*"/Mesh"*genFileExtension, "w");
-    d = open(src_dir*"/MeshData", "w");
-    g = open(src_dir*"/Genfunction"*genFileExtension, "w");
-    b = open(src_dir*"/Bilinear"*genFileExtension, "w");
-    l = open(src_dir*"/Linear"*genFileExtension, "w");
-    s = open(src_dir*"/Stepper"*genFileExtension, "w");
-    o = open(src_dir*"/Output"*genFileExtension, "w");
+    # m = open(src_dir*"/"*name*genFileExtension, "w");
+    # c = open(src_dir*"/Config"*genFileExtension, "w");
+    # p = open(src_dir*"/Problem"*genFileExtension, "w");
+    # n = open(src_dir*"/Mesh"*genFileExtension, "w");
+    # d = open(src_dir*"/MeshData", "w");
+    # g = open(src_dir*"/Genfunction"*genFileExtension, "w");
+    # b = open(src_dir*"/Bilinear"*genFileExtension, "w");
+    # l = open(src_dir*"/Linear"*genFileExtension, "w");
+    # s = open(src_dir*"/Stepper"*genFileExtension, "w");
+    # o = open(src_dir*"/Output"*genFileExtension, "w");
     
-    global genfiles = Genfiles(m,c,p,n,d,g,b,l,s,o);
+    # global genfiles = Genfiles(m,c,p,n,d,g,b,l,s,o);
     
-    # write headers
-    generate_head(m,headerText);
-    generate_head(c,"Configuration info");
-    generate_head(p,"Problem info");
-    generate_head(n,"Mesh");
-    generate_head(g,"Generated functions");
-    generate_head(b,"Bilinear term");
-    generate_head(l,"Linear term");
-    generate_head(s,"Time stepper");
-    generate_head(o,"Output");
+    # # write headers
+    # generate_head(m,headerText);
+    # generate_head(c,"Configuration info");
+    # generate_head(p,"Problem info");
+    # generate_head(n,"Mesh");
+    # generate_head(g,"Generated functions");
+    # generate_head(b,"Bilinear term");
+    # generate_head(l,"Linear term");
+    # generate_head(s,"Time stepper");
+    # generate_head(o,"Output");
     
-    log_entry("Created code files for: "*name);
-    
-    return genfiles;
+    # log_entry("Created code files for: "*name);
 end
 
-function finalize_codegenerator()
-    for f in genfiles.files
+# Sets the functions to be used during external code generation
+function set_generation_target(lang_elements, code_layer, file_maker)
+    global external_get_language_elements_function = lang_elements;
+    global external_generate_code_layer_function = code_layer;
+    global external_generate_code_files_function = file_maker;
+    global using_custom_target = true;
+end
+
+function add_generated_file(filename; dir="")
+    if length(dir) > 0
+        code_dir = genDir*"/"*dir;
+        if !isdir(code_dir)
+            mkdir(code_dir);
+        end
+    else
+        code_dir = genDir;
+    end
+    newfile = open(code_dir*"/"*filename, "w");
+    push!(genfiles, newfile);
+    return newfile;
+end
+
+# function generate_all_files(lhs_vol, lhs_surf, rhs_vol, rhs_surf)
+#     # This is supplied as one of the target functions
+#     external_generate_code_files_function(lhs_vol, lhs_surf, rhs_vol, rhs_surf);
+# end
+
+function finalize_code_generator()
+    for f in genfiles
         close(f);
     end
     log_entry("Closed generated code files.");
@@ -215,9 +241,9 @@ end
 #     end
 # end
 
-function generate_all_files(bilinex, linex; parameters=0)
+function generate_all_files(lhs_vol, lhs_surf, rhs_vol, rhs_surf; parameters=0)
     if language == CPP
-        if framework == DENDRO
+        if gen_framework == DENDRO
             if parameters == 0
                 parameters = (5, 1, 0.3, 0.000001, 100);#(maxdepth, wavelet_tol, partition_tol, solve_tol, solve_max_iters)
             end
@@ -226,8 +252,8 @@ function generate_all_files(bilinex, linex; parameters=0)
             dendro_prob_file();
             # dendro_mesh_file();
             dendro_genfunction_file();
-            dendro_bilinear_file(bilinex);
-            dendro_linear_file(linex);
+            dendro_bilinear_file(lhs_vol);
+            dendro_linear_file(rhs_vol);
             # dendro_stepper_file();
             dendro_output_file();
         else
@@ -235,14 +261,14 @@ function generate_all_files(bilinex, linex; parameters=0)
         end
         
     elseif language == MATLAB
-        if framework == HOMG
+        if gen_framework == HOMG
             homg_main_file();
             homg_config_file();
             homg_prob_file();
             homg_mesh_file();
             homg_genfunction_file();
-            homg_bilinear_file(bilinex);
-            homg_linear_file(linex);
+            homg_bilinear_file(lhs_vol);
+            homg_linear_file(rhs_vol);
             homg_stepper_file();
             # homg_output_file();
         else
@@ -251,14 +277,14 @@ function generate_all_files(bilinex, linex; parameters=0)
             matlab_prob_file();
             matlab_mesh_file();
             matlab_genfunction_file();
-            matlab_bilinear_file(bilinex);
-            matlab_linear_file(linex);
+            matlab_bilinear_file(lhs_vol);
+            matlab_linear_file(rhs_vol);
             matlab_stepper_file();
             matlab_output_file();
         end
         
     elseif using_custom_target
-        custom_files_fun(bilinex, linex);
+        external_generate_code_files_function(lhs_vol, lhs_surf, rhs_vol, rhs_surf);
         
     end
 end
@@ -321,128 +347,3 @@ function write_binary_struct(f, s)
 end
 
 end # module
-
-#################### don't throw out yet ############################
-
-# # Select the generator functions based on language
-# function generate_main()
-#     if language == CPP
-#         if framework == DENDRO
-#             dendro_main_file();
-#         else
-#             printerr("Plain C++ not ready")
-#         end
-        
-#     elseif language == MATLAB
-#         if framework == HOMG
-#             homg_main_file();
-#         else
-#             matlab_main_file();
-#         end
-        
-#     end
-# end
-# function generate_config(params=(5, 1, 0.3, 0.000001, 100))
-#     if language == CPP
-#         dendro_config_file(params); #params has (maxdepth, wavelet_tol, partition_tol, solve_tol, solve_max_iters)
-#     elseif language == DENDRO
-#         dendro_config_file(params); #params has (maxdepth, wavelet_tol, partition_tol, solve_tol, solve_max_iters)
-#     elseif language == MATLAB
-#         matlab_config_file();
-#     elseif language == HOMG
-#         homg_config_file();
-#     end
-# end
-# function generate_prob()
-#     if language == CPP
-#         dendro_prob_file();
-#     elseif language == DENDRO
-#         dendro_prob_file();
-#     elseif language == MATLAB
-#         matlab_prob_file();
-#     elseif language == HOMG
-#         homg_prob_file();
-#     end
-# end
-# function generate_mesh()
-#     if language == CPP
-#         # dendro_mesh_file();
-#     elseif language == DENDRO
-#         # dendro_mesh_file();
-#     elseif language == MATLAB
-#         matlab_mesh_file();
-#     elseif language == HOMG
-#         homg_mesh_file();
-#     end
-# end
-# function generate_genfunction()
-#     if language == CPP
-#         dendro_genfunction_file();
-#     elseif language == DENDRO
-#         dendro_genfunction_file();
-#     elseif language == MATLAB
-#         matlab_genfunction_file();
-#     elseif language == HOMG
-#         homg_genfunction_file();
-#     end
-# end
-# function generate_bilinear(ex)
-#     if language == CPP
-#         dendro_bilinear_file(ex);
-#     elseif language == DENDRO
-#         dendro_bilinear_file(ex);
-#     elseif language == MATLAB
-#         matlab_bilinear_file(ex);
-#     elseif language == HOMG
-#         homg_bilinear_file(ex);
-#     end
-# end
-# function generate_linear(ex)
-#     if language == CPP
-#         dendro_linear_file(ex);
-#     elseif language == DENDRO
-#         dendro_linear_file(ex);
-#     elseif language == MATLAB
-#         matlab_linear_file(ex);
-#     elseif language == HOMG
-#         homg_linear_file(ex);
-#     end
-# end
-# function generate_stepper()
-#     if language == CPP
-#         # dendro_stepper_file();
-#     elseif language == DENDRO
-#         # dendro_stepper_file();
-#     elseif language == MATLAB
-#         matlab_stepper_file();
-#     elseif language == HOMG
-#         homg_stepper_file();
-#     end
-# end
-# function generate_output()
-#     if language == CPP
-#         dendro_output_file();
-#     elseif language == DENDRO
-#         dendro_output_file();
-#     elseif language == MATLAB
-#         # matlab_output_file();
-#     elseif language == HOMG
-#         # homg_output_file();
-#     end
-# end
-        
-# private ###
-
-# macro comment(file,line)
-#     return esc(quote
-#         println($file, commentChar * $line);
-#     end)
-# end
-
-# macro commentBlock(file,text)
-#     return esc(quote
-#         print($file, "\n"*blockCommentChar[1]*"\n"*text*"\n"*blockCommentChar[2]*"\n");
-#     end)
-# end
-
-

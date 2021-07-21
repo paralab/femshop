@@ -29,7 +29,7 @@ project_name = "unnamedProject";
 output_dir = pwd();
 language = 0;
 gen_framework = 0;
-gen_files = nothing;
+generate_external = false;
 solver = nothing;
 dendro_params = nothing;
 #log
@@ -85,7 +85,7 @@ function init_femshop(name="unnamedProject")
     global project_name = name;
     global language = JULIA;
     global framework = 0;
-    global gen_files = nothing;
+    global generate_external = false;
     global dendro_params = nothing;
     global log_file = "";
     global use_log = false;
@@ -115,25 +115,33 @@ function init_femshop(name="unnamedProject")
 end
 
 # Sets the code generation target
-function set_language(lang, dirpath, name; framework=0, head="")
+function set_included_gen_target(lang, framework, dirpath, name; head="")
+    #TODO
+    println("Premade generation targets currently under construction. Sorry. Reverting to Julia target.");
+    return;
+    
     global language = lang;
     global gen_framework = framework;
     global output_dir = dirpath;
     global project_name = name;
-    global gen_files = CodeGenerator.init_codegenerator(lang, framework, dirpath, name, head);
+    init_codegenerator(dirpath, name, head);
+    
+    # Need to set these three functions
+    
+    set_generation_target(get_external_language_elements, generate_external_code_layer, generate_external_files);
 end
 
 # Setting a custom target requires three functions
-# 1. basic language elements 
-# 2. symbolic layer to code layer generator
-# 3. code file writer
+# 1. get_external_language_elements() - file extensions, comment chars etc.
+# 2. generate_external_code_layer(var, entities, terms, lorr, vors) - Turns symbolic expressions into code
+# 3. generate_external_files(lhs_vol, lhs_surf, rhs_vol, rhs_surf) - Writes all files based on generated code
 function set_custom_gen_target(lang_elements, code_layer, file_maker, dirpath, name; head="")
-    global language = -1;
+    global language = CUSTOM_GEN_TARGET;
     global gen_framework = CUSTOM_GEN_TARGET;
     global output_dir = dirpath;
     global project_name = name;
-    CodeGenerator.set_custom_target(lang_elements, code_layer, file_maker);
-    global gen_files = CodeGenerator.init_codegenerator(language, gen_framework, dirpath, name, head);
+    init_code_generator(dirpath, name, head);
+    set_generation_target(lang_elements, code_layer, file_maker);
 end
 
 # Specific to Dendro. This should go into the Dendro code gen module eventually.

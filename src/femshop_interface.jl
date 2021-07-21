@@ -20,6 +20,10 @@ function generateFor(lang; filename=project_name, header="")
     framew = 0;
     if !in(lang, [CPP,MATLAB,DENDRO,HOMG])
         # lang should be a filename for a custom target
+        # This file must include these three functions:
+        # 1. get_external_language_elements() - file extensions, comment chars etc.
+        # 2. generate_external_code_layer(var, entities, terms, lorr, vors) - Turns symbolic expressions into code
+        # 3. generate_external_files(lhs_vol, lhs_surf, rhs_vol, rhs_surf) - Writes all files based on generated code
         include(lang);
         set_custom_gen_target(get_external_language_elements, generate_external_code_layer, generate_external_files, outputDirPath, filename, head=header);
     else
@@ -29,8 +33,10 @@ function generateFor(lang; filename=project_name, header="")
         elseif lang == HOMG
             framew = HOMG;
             lang = MATLAB;
+        else
+            framew = 0;
         end
-        set_language(lang, outputDirPath, filename, framework=framew, head=header);
+        set_included_gen_target(lang, framew, outputDirPath, filename, head=header);
     end
 end
 
@@ -328,11 +334,11 @@ function weakForm(var, wf)
     ################ string ####################################
     
     # change symbolic layer into code layer
-    (lhs_string, lhs_code) = generate_code_layer(lhs_symexpr, var, LHS, "volume", config.solver_type, JULIA, "none");
-    (rhs_string, rhs_code) = generate_code_layer(rhs_symexpr, var, RHS, "volume", config.solver_type, JULIA, "none");
+    (lhs_string, lhs_code) = generate_code_layer(lhs_symexpr, var, LHS, "volume", config.solver_type, language, gen_framework);
+    (rhs_string, rhs_code) = generate_code_layer(rhs_symexpr, var, RHS, "volume", config.solver_type, language, gen_framework);
     if length(result_exprs) == 4
-        (lhs_surf_string, lhs_surf_code) = generate_code_layer(lhs_surf_symexpr, var, LHS, "surface", config.solver_type, JULIA, "none");
-        (rhs_surf_string, rhs_surf_code) = generate_code_layer(rhs_surf_symexpr, var, RHS, "surface", config.solver_type, JULIA, "none");
+        (lhs_surf_string, lhs_surf_code) = generate_code_layer(lhs_surf_symexpr, var, LHS, "surface", config.solver_type, language, gen_framework);
+        (rhs_surf_string, rhs_surf_code) = generate_code_layer(rhs_surf_symexpr, var, RHS, "surface", config.solver_type, language, gen_framework);
         log_entry("Weak form, code layer: LHS = \n"*string(lhs_string)*"\nsurfaceLHS = \n"*string(lhs_surf_string)*" \nRHS = \n"*string(rhs_string)*"\nsurfaceRHS = \n"*string(rhs_surf_string));
     else
         log_entry("Weak form, code layer: LHS = \n"*string(lhs_string)*" \n  RHS = \n"*string(rhs_string));
@@ -357,16 +363,7 @@ function weakForm(var, wf)
             set_rhs_surface(var);
         end
         
-    elseif language == CPP
-        # Don't need to generate any functions
-        set_lhs(var, lhs_code);
-        set_rhs(var, rhs_code);
-    elseif language == MATLAB
-        # Don't need to generate any functions
-        set_lhs(var, lhs_code);
-        set_rhs(var, rhs_code);
-    elseif language == -1
-        # Don't need to generate any functions
+    else
         set_lhs(var, lhs_code);
         set_rhs(var, rhs_code);
     end
@@ -420,8 +417,8 @@ function flux(var, fex)
     log_entry("flux rhs symexpression:\n"*string(rhs_symexpr));
     
     # change symbolic layer into code layer
-    (lhs_string, lhs_code) = generate_code_layer(lhs_symexpr, var, LHS, "surface", FV, JULIA, "none");
-    (rhs_string, rhs_code) = generate_code_layer(rhs_symexpr, var, RHS, "surface", FV, JULIA, "none");
+    (lhs_string, lhs_code) = generate_code_layer(lhs_symexpr, var, LHS, "surface", FV, language, gen_framework);
+    (rhs_string, rhs_code) = generate_code_layer(rhs_symexpr, var, RHS, "surface", FV, language, gen_framework);
     log_entry("flux, code layer: \n  LHS = "*string(lhs_string)*" \n  RHS = "*string(rhs_string));
     
     if language == JULIA || language == 0
@@ -433,8 +430,8 @@ function flux(var, fex)
         set_rhs_surface(var);
         
     else
-        # not ready
-        println("Not ready to generate FV code for external target.")
+        set_lhs_surface(var, lhs_code);
+        set_rhs_surface(var, rhs_code);
     end
 end
 
@@ -481,8 +478,8 @@ function source(var, sex)
     log_entry("source rhs symexpression:\n"*string(rhs_symexpr));
     
     # change symbolic layer into code code_layer
-    (lhs_string, lhs_code) = generate_code_layer(lhs_symexpr, var, LHS, "volume", FV, JULIA, "none");
-    (rhs_string, rhs_code) = generate_code_layer(rhs_symexpr, var, RHS, "volume", FV, JULIA, "none");
+    (lhs_string, lhs_code) = generate_code_layer(lhs_symexpr, var, LHS, "volume", FV, language, gen_framework);
+    (rhs_string, rhs_code) = generate_code_layer(rhs_symexpr, var, RHS, "volume", FV, language, gen_framework);
     log_entry("source, code layer: \n  LHS = "*string(lhs_string)*" \n  RHS = "*string(rhs_string));
     
     if language == JULIA || language == 0
@@ -494,8 +491,8 @@ function source(var, sex)
         set_rhs(var);
         
     else
-        # not ready
-        println("Not ready to generate FV code for external target.")
+        set_lhs(var, lhs_code);
+        set_rhs(var, rhs_code);
     end
 end
 
@@ -634,13 +631,13 @@ function solve(var, nlvar=nothing; nonlinear=false)
     global time_stepper; # This should not be necessary. It will go away eventually
     
     # Generate files or solve directly
-    if !(gen_files === nothing && (language == JULIA || language == 0)) # if an external code gen target is ready
-        # generate_main();
-        if !(dendro_params === nothing)
-            generate_all_files(bilinears[1], linears[1], parameters=dendro_params);
+    if !(generate_external && (language == JULIA || language == 0)) # if an external code gen target is ready
+        if typeof(var) <: Array
+            varind = var[1].index;
         else
-            generate_all_files(bilinears[1], linears[1]);
+            varind = var.index;
         end
+        generate_all_files(bilinears[varind], face_bilinears[varind], linears[varind], face_linears[varind]);
         
     else
         if typeof(var) <: Array
@@ -792,7 +789,7 @@ end
 
 # When using cachesim, this will be used to simulate the solve.
 function cachesimSolve(var, nlvar=nothing; nonlinear=false)
-    if !(gen_files === nothing && (language == JULIA || language == 0))
+    if !(generate_external && (language == JULIA || language == 0))
         printerr("Cachesim solve is only ready for Julia direct solve");
     else
         if typeof(var) <: Array
@@ -842,9 +839,7 @@ end
 
 function finalize_femshop()
     # Finalize generation
-    if gen_files != nothing
-        finalize_codegenerator();
-    end
+    finalize_code_generator();
     if use_cachesim
         CachesimOut.finalize();
     end

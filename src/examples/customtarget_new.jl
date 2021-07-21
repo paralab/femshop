@@ -1,0 +1,1231 @@
+#=
+This contains all of the pieces needed to add a new code gen target.
+The following three functions must be provided.
+
+1. get_external_language_elements() - file extensions, comment chars etc.
+2. generate_external_code_layer(var, entities, terms, lorr, vors) - Turns symbolic expressions into code
+3. generate_external_files(lhs_vol, lhs_surf, rhs_vol, rhs_surf) - Writes all files based on generated code
+
+You will have access to anything in the Femshop module scope because this file will be included there.
+structs:
+Femshop_config, Femshop_prob, GenFunction, Variable, Coefficient, 
+SymExpression, SymEntity, ...
+
+functions:
+log_entry, printerr, ...
+
+variables:
+[any constants in femshop_constants.jl],
+config, prob, refel, mesh_data, grid_data, genfunctions, variables, coefficients, 
+test_functions, linears, bilinears, time_stepper,
+CodeGenerator.genDir, CodeGenerator.genfiles, ...
+=#
+
+function get_external_language_elements()
+    file_extension = ".m";
+    comment_char = "%";
+    block_comment = ["%{"; "%}"];
+    # I imagine there could be more here in the future. Maybe not.
+    
+    return (file_extension, comment_char, block_comment);
+end
+
+#=
+Translate the symbolic layer into code for the elemental assembly.
+var - unknown variable or array of variables.
+entities - leaf nodes of the computational graph. Type is SymEntity(see symexpression.jl) or number.
+terms - array of additive terms, separated for convenience. [t1, t2, t3] for expression t1+t2+t3 (see note below)
+lorr - LHS or RHS will have constant values LHS or RHS which are "lhs", "rhs"
+vors - volume or surface will have values "volume" or "surface"
+
+Note on terms: Each term is a SymExpression(see symexpression.jl) which is essentially a Julia Expr and list of entities.
+The Expr holds the computational graph for each term. LHS and RHS are determined by separating terms that involve 
+unknowns from those that don't. Also, in well formed FEM problems each term should be multiplied by a test function,
+and thus quadrature can be done for each term separately.
+=#
+function generate_external_code_layer(var, entities, terms, lorr, vors)
+    # This can be divided up into smaller functions however you wish.
+    # The whole body of code is stored in a string that will be inserted in the 
+    # appropriate function during file writing.
+    code = "";
+    
+    # Determine if derivative matrices will be required
+    need_derivs = false;
+    for i=1:length(entities)
+        if length(entities[i].derivs) > 0
+            need_derivs = true;
+            break;
+        end
+    end
+    if need_derivs
+        code *= customtarget_build_derivative_matrices(lorr, vors);
+        code *= "\n";
+    end
+    
+    # Allocate/Evaluate or fetch the values for each needed entity.
+    # Note: This could be staged and interleaved with the calculation part for complex problems. TODO
+    code *= customtarget_prepare_needed_values(entities, var, lorr, vors);
+    code *= "\n";
+    
+    # Form the final elemental calculation
+    code *= customtarget_make_elemental_computation(terms, var, lorr, vors);
+    
+    return code;
+end
+
+# Create all of the code files.
+# The input are code strings generated above. They will be inserted into their appropriate files.
+function generate_external_files(lhs_vol, lhs_surf, rhs_vol, rhs_surf)
+    # Again, this can be split up into smaller functions as you wish.
+    custom_utils_file();
+    custom_main_file();
+    custom_config_file();
+    custom_prob_file();
+    custom_mesh_file();
+    custom_genfunction_file();
+    custom_bilinear_file(lhs_vol);
+    custom_linear_file(rhs_vol);
+    # custom_stepper_file(); # TODO
+    custom_output_file();
+end
+
+#########################################################
+# code writing utilities
+#########################################################
+
+# numbers: 2 -> "2"
+# strings: "thing" -> "'thing'"
+# arrays: [1 2; 3 4] -> "[1 2; 3 4]"
+function custom_gen_string(v)
+    if typeof(v) == String
+        return "'"*v*"'";
+        
+    elseif typeof(v) <: Number
+        return string(v);
+        
+    elseif typeof(v) <: Array
+        if ndims(v) == 1 # "[a; b; c]"
+            n = length(v);
+            str = "[";
+            for i=1:n
+                str = str*custom_gen_string(v[i]);
+                if i < n
+                    str = str*"; ";
+                end
+            end
+            str = str*"]";
+        elseif ndims(v) == 2 # "[a b ; c d]
+            (n,m) = size(v);
+            str = "[";
+            for i=1:n
+                for j=1:m
+                    str = str*custom_gen_string(v[i,j])*" ";
+                end
+                if i < n
+                    str = str*"; ";
+                end
+            end
+            str = str*"]";
+        end
+        return str;
+        
+    elseif typeof(v) == GenFunction
+        return v.name;
+    else
+        return string(v);
+    end
+end
+
+# Returns a string like "fread(f, [3, 15], 'double')" for an array with size (3,15) and type Float64
+function custom_fread(A)
+    if typeof(A) <: Array
+        if length(A) == 0
+            return "0";
+        end
+        if typeof(A[1]) == Int
+            typ = "\'int64\'";
+        else
+            typ = "\'double\'";
+        end
+        if length(size(A)) == 1
+            sz = "["*string(length(A))*",1]";
+        else
+            sz = "["*string(size(A,1))*","*string(size(A,2))*"]";
+        end
+        return "fread(f, "*sz*", "*typ*")"
+    else
+        if typeof(A) == Int64
+            typ = "\'int64\'";
+        else
+            typ = "\'double\'";
+        end
+        return "fread(f, [1], "*typ*")"
+    end
+end
+
+# produces code to read a binary struct into custom
+# The struct is labeled with the name and has the same fieldnames as s
+function custom_struct_reader(name, s)
+    code = "";
+    for fn in fieldnames(typeof(s))
+        f = getfield(s,fn);
+        if typeof(f) <: Array && length(f) > 0 && typeof(f[1]) <: Array
+            code = code * name * "." * string(fn) * " = cell([" * string(length(f)) * ", 1]);\n";
+            for i=1:length(f)
+                code = code * name * "." * string(fn) * "{" * string(i) * "} = " * custom_fread(f[i]) * ";\n";
+            end
+        else
+            code = code * name * "." * string(fn) * " = " * custom_fread(f) * ";\n";
+        end
+    end
+    return code;
+end
+
+#######################################################
+# Write code files
+#######################################################
+
+function custom_main_file()
+    file = add_generated_file(project_name*".m", dir="src");
+    
+    println(file, "clear;");
+    println(file, "");
+    # These are always included
+    println(file, "");
+    println(file, "Utils;");
+    println(file, "Config;");
+    println(file, "Mesh;");
+    println(file, "Genfunction;");
+    println(file, "Problem;");
+    println(file, "Bilinear;");
+    println(file, "Linear;");
+    println(file, "");
+    
+    # This should be generated by solve()
+    # Just for testing:
+    # println(file, "u = LHS\\RHS;");
+    println(file, "u = Utils.default_linear_solve(LHS,RHS);");
+    println(file, "");
+    
+    println(file, "Output;");
+    
+end
+
+# This is a class containing various utility functions like tensor math, geometric factors, linear solve
+function custom_utils_file()
+    utilsfile = add_generated_file("Utils.m", dir="src");
+    
+    content = "
+classdef Utils
+    
+    methods(Static)
+        % 2D routines
+        function y = tensor_IAX (A, x)
+            N = size (A, 1);
+            y = A * reshape(x, N, N);
+            y = y(:);
+        end
+
+        function y = tensor_AIX (A, x)
+            N = size (A, 1);
+            y = A * reshape(x, N, N)';
+            y = y'; 
+            y = y(:);
+        end
+
+        % 3D routines
+        function y = tensor_IIAX (A, x)
+            N = size (A, 1);
+            y = A * reshape(x, N, N*N);
+            y = y(:);
+        end
+
+        function y = tensor_IAIX (A, x)
+            N = size (A, 1);
+            q = reshape(x, N, N, N);
+            y = zeros(N,N,N);
+            for i=1:N
+                y(i,:,:) = A * squeeze( q(i,:,:) );
+            end
+            y = y(:);
+        end
+
+        function y = tensor_AIIX (A, x)
+            N = size (A, 1);
+            y = reshape(x, N*N, N) * A';
+            y = y(:);
+        end
+
+        function du = tensor_grad(refel, u)
+            du = zeros(length(u), refel.dim);
+            if (refel.dim == 2)
+                du(:,1) = Utils.tensor_IAX (refel.Dr, u);
+                du(:,2) = Utils.tensor_AIX (refel.Dr, u);
+            else
+                du(:,1) = Utils.tensor_IIAX (refel.Dr, u);
+                du(:,2) = Utils.tensor_IAIX (refel.Dr, u);
+                du(:,3) = Utils.tensor_AIIX (refel.Dr, u);
+            end
+        end
+
+        function [dx, dy] = tensor_grad2(A, x)
+            dx = Utils.tensor_IAX (A, x);
+            dy = Utils.tensor_AIX (A, x);
+        end
+
+        function [dx, dy, dz] = tensor_grad3(A, x)
+            dx = Utils.tensor_IIAX (A, x);
+            dy = Utils.tensor_IAIX (A, x);
+            dz = Utils.tensor_AIIX (A, x);
+        end
+
+
+        function [J, D] = geometric_factors(refel, pts)
+
+            if (refel.dim == 0)
+                xr  = [1];
+                J = xr;
+            elseif (refel.dim == 1)
+                xr  = refel.Dr*pts;
+                J = xr;
+            elseif (refel.dim == 2)
+                if refel.Nfaces == 3 % triangle
+                    xr = refel.Ddr*pts(1,:)';
+                    xs = refel.Dds*pts(1,:)';
+                    yr = refel.Ddr*pts(2,:)';
+                    ys = refel.Dds*pts(2,:)';
+                    J = -xs.*yr + xr.*ys;
+                    J = J(1); 
+                else % quad
+                    [xr, xs] = Utils.tensor_grad2 (refel.Dg, pts(1,:));
+                    [yr, ys] = Utils.tensor_grad2 (refel.Dg, pts(2,:));
+
+                    J = -xs.*yr + xr.*ys;
+                end
+
+            else
+                [xr, xs, xt] = Utils.tensor_grad3 (refel.Dg, pts(1,:));
+                [yr, ys, yt] = Utils.tensor_grad3 (refel.Dg, pts(2,:));
+                [zr, zs, zt] = Utils.tensor_grad3 (refel.Dg, pts(3,:));
+
+                J = xr.*(ys.*zt-zs.*yt) - yr.*(xs.*zt-zs.*xt) + zr.*(xs.*yt-ys.*xt);
+            end
+
+            if (nargout > 1)
+                if (refel.dim == 1)
+                    D.rx = 1./J;
+                elseif (refel.dim == 2)
+                    if refel.Nfaces == 3 % triangle
+                        D.rx =  ys./J;
+                        D.sx = -yr./J;
+                        D.ry = -xs./J;
+                        D.sy =  xr./J;
+                    else % quad
+                        D.rx =  ys./J;
+                        D.sx = -yr./J;
+                        D.ry = -xs./J;
+                        D.sy =  xr./J;
+                    end
+
+                else
+                    D.rx =  (ys.*zt - zs.*yt)./J;
+                    D.ry = -(xs.*zt - zs.*xt)./J;
+                    D.rz =  (xs.*yt - ys.*xt)./J;
+
+                    D.sx = -(yr.*zt - zr.*yt)./J;
+                    D.sy =  (xr.*zt - zr.*xt)./J;
+                    D.sz = -(xr.*yt - yr.*xt)./J;
+
+                    D.tx =  (yr.*zs - zr.*ys)./J;
+                    D.ty = -(xr.*zs - zr.*xs)./J;
+                    D.tz =  (xr.*ys - yr.*xs)./J;
+                end
+
+            end
+        end
+        
+        % pack and unpack variables into a global vector
+        % packed vars are in a vector, unpacked are in a cell table
+        function pk = pack_vars(upk, pk)
+            for i=1:Nvars
+                pk(i:Nvars:length(pk)) = upk{i};
+            end
+        end
+        
+        function upk = unpack_vars(pk)
+            upk = cell(Nvars,1);
+            for i=1:Nvars
+                upk{i} = pk(i:Nvars:length(pk));
+            end
+        end
+        
+        function x = default_linear_solve(A,b)
+            x = A\\b;
+        end
+    end
+end
+
+"
+    println(utilsfile, content);
+end
+
+function custom_config_file()
+    file = add_generated_file("Config.m", dir="src");
+    # Duplicate the config struct
+    for f in fieldnames(Femshop.Femshop_config)
+        println(file, "config."*string(f)*" = "*custom_gen_string(getfield(Femshop.config, f))*";");
+    end
+    println(file, "order = config.basis_order_min;");
+end
+
+function custom_prob_file()
+    file = add_generated_file("Problem.m", dir="src");
+    # Duplicate the prob struct
+    for f in fieldnames(Femshop.Femshop_prob)
+        println(file, "prob."*string(f)*" = "*custom_gen_string(getfield(Femshop.prob, f))*";");
+    end
+end
+
+#=
+The mesh file contains any code related to setting up the mesh.
+The meshdata file contains all of the data from the Refel, MeshData and Grid structs
+These are to be read into custom by a custom custom function in the mesh file.
+=#
+function custom_mesh_file()
+    file = add_generated_file("Mesh.m", dir="src");
+    
+    println(file, "f = fopen('MeshData','r');");
+    println(file, "% Reference element");
+    println(file, custom_struct_reader("refel", refel));
+    println(file, "% mesh data");
+    println(file, custom_struct_reader("mesh_data", mesh_data));
+    println(file, "% grid data");
+    println(file, custom_struct_reader("grid_data", grid_data));
+    println(file, "fclose(f);");
+    
+    datfile = add_generated_file("MeshData", dir="src");
+    # refel
+    Femshop.CodeGenerator.write_binary_struct(datfile, refel);
+    # mesh_data
+    Femshop.CodeGenerator.write_binary_struct(datfile, mesh_data);
+    # grid_data
+    Femshop.CodeGenerator.write_binary_struct(datfile, grid_data);
+end
+
+# Functions for boundary conditions, coeficients, etc.
+function custom_genfunction_file()
+    file = add_generated_file("Genfunction.m", dir="src");
+    
+    for i = 1:length(genfunctions)
+        println(file, genfunctions[i].name*"_fun = @(x,y,z,t) ("*genfunctions[i].str*");");
+        # Evaluate them at grid points and make them vectors. Make sense???
+        println(file, genfunctions[i].name*" = evaluate_genfun("*genfunctions[i].name*"_fun, grid_data.allnodes, 0);");
+    end
+    
+    # assign variable and coefficient symbols to these vectors
+    nvars = 0
+    for v in variables
+        println(file, string(v.symbol)*" = '"*string(v.symbol)*"';");
+        nvars += size(v.values,1);
+    end
+    println(file, "Nvars = " * string(nvars) * ";");
+    for v in coefficients
+        if typeof(v.value[1]) == GenFunction
+            println(file, string(v.symbol)*" = "*v.value[1].name*";");
+        else
+            println(file, string(v.symbol)*" = "*string(v.value[1])*";");
+        end
+    end
+    
+    evalgenfun = 
+"""
+function u = evaluate_genfun(genfun, pts, t)
+    n = size(pts,2);
+    dim = size(pts,1);
+    u = zeros(n,1);
+    x = 0;
+    y = 0;
+    z = 0;
+    for i=1:n
+        x = pts(1,i);
+        if dim > 1
+            y = pts(2,i);
+            if dim > 2
+                z = pts(3,i);
+            end
+        end
+        u(i) = genfun(x,y,z,t);
+    end
+end
+"""
+    println(file, evalgenfun);
+    
+end
+
+# This is the matrix assembly loop.
+# It requires code that was generated for this target.
+function custom_bilinear_file(code)
+    file = add_generated_file("Bilinear.m", dir="src");
+    # insert the code part into this skeleton
+    content = 
+"
+dof = size(grid_data.allnodes,2);
+ne  = mesh_data.nel;
+Np = refel.Np;
+I = zeros(ne * Np*Np, 1);
+J = zeros(ne * Np*Np, 1);
+val = zeros(ne * Np*Np, 1);
+
+%temporary
+time = 0;
+dt = 1;
+var = 0;
+
+% loop over elements
+for e=1:ne
+    gbl = grid_data.loc2glb(:,e)\';
+    nodex = grid_data.allnodes(:,gbl);
+    [detJ, Jac]  = Utils.geometric_factors(refel, nodex);
+    wdetj = refel.wg .* detJ;
+    
+    ind1 = repmat(gbl,Np,1);
+    ind2 = reshape(repmat(gbl',Np,1),Np*Np,1);
+    st = (e-1)*Np*Np+1;
+    en = e*Np*Np;
+    I(st:en) = ind1;
+    J(st:en) = ind2;
+    
+    "*code*";
+    
+    val(st:en) = element_matrix(:);
+end
+LHS = sparse(I,J,val,dof,dof);";
+    println(file, content);
+    
+    # boundary condition
+    println(file, "
+for i=1:length(grid_data.bdry)
+    LHS(grid_data.bdry{i},:) = 0;
+    LHS((size(LHS,1)+1)*(grid_data.bdry{i}-1)+1) = 1;
+end"); # dirichlet bc
+    
+end
+
+# This is the vector assembly loop.
+# It requires code that was generated for this target.
+function custom_linear_file(code)
+    file = add_generated_file("Linear.m", dir="src");
+    # insert the code part into this skeleton
+    content = 
+"
+dof = size(grid_data.allnodes,2);
+ne  = mesh_data.nel;
+Np = refel.Np;
+RHS = zeros(dof,1);
+
+%temporary
+time = 0;
+dt = 1;
+var = 0;
+
+% loop over elements
+for e=1:ne
+    gbl = grid_data.loc2glb(:,e)\';
+    nodex = grid_data.allnodes(:,gbl);
+    [detJ, Jac]  = Utils.geometric_factors(refel, nodex);
+    wdetj = refel.wg .* detJ;
+    
+    "*code*";
+    
+    RHS(gbl) = element_vector;
+end
+";
+    println(file, content);
+    
+    # boundary condition
+    println(file, "
+for i=1:length(grid_data.bdry)
+    RHS(grid_data.bdry{i}) = prob.bc_func(grid_data.bdry{i});
+end"); # dirichlet bc
+    
+end
+
+# Nothing here yet. TODO: time stepper
+function custom_stepper_file()
+    file = add_generated_file("Stepper.m", dir="src");
+end
+
+# Right now this just tries to plot
+function custom_output_file()
+    file = add_generated_file("Output.m", dir="src");
+    
+    content = "
+gxy = grid_data.allnodes';
+
+X = gxy(:,1);
+Y = gxy(:,2);
+
+DT = delaunay(gxy);
+Tu = triangulation(DT, X, Y, u);
+
+figure();
+trisurf(Tu, 'edgecolor', 'none')
+view(2);
+"
+    println(file, content)
+    println(file, "");
+end
+
+###########################################################################################################
+# Symbolic to code generation
+###########################################################################################################
+
+# If needed, build derivative matrices
+function customtarget_build_derivative_matrices(lorr, vors)
+    code = 
+"
+% Note on derivative matrices:
+% RQn are vandermond matrices for the derivatives of the basis functions
+% with Jacobian factors. They are made like this.
+% |RQ1|   | rx sx tx || Qx |
+% |RQ2| = | ry sy ty || Qy |
+% |RQ3|   | rz sz tz || Qz |
+
+"
+    if config.dimension == 1
+        if vors == "volume"
+            code *= "RQ1 = diag(Jac.rx) * refel.Qr;\n";
+            code *= "RD1 = diag(Jac.rx) * refel.Ddr;\n";
+            code *= "TRQ1 = RQ1';\n"
+        else
+            # TODO see DG
+        end
+        
+    elseif config.dimension == 2
+        if vors == "volume"
+            code *= "RQ1 = [diag(Jac.rx) diag(Jac.sx)] * [refel.Qr; refel.Qs];\n";
+            code *= "RQ2 = [diag(Jac.ry) diag(Jac.sy)] * [refel.Qr; refel.Qs];\n";
+            code *= "RD1 = [diag(Jac.rx) diag(Jac.sx)] * [refel.Ddr; refel.Dds];\n";
+            code *= "RD2 = [diag(Jac.ry) diag(Jac.sy)] * [refel.Ddr; refel.Dds];\n";
+            code *= "TRQ1 = RQ1';\n"
+            code *= "TRQ2 = RQ2';\n"
+        else
+            # TODO see DG
+        end
+        
+    elseif config.dimension == 3
+        if vors == "volume"
+            code *= "RQ1 = [diag(Jac.rx) diag(Jac.sx) diag(Jac.tx)] * [refel.Qr; refel.Qs; refel.Qt];\n";
+            code *= "RQ2 = [diag(Jac.ry) diag(Jac.sy) diag(Jac.ty)] * [refel.Qr; refel.Qs; refel.Qt];\n";
+            code *= "RQ3 = [diag(Jac.rz) diag(Jac.sz) diag(Jac.tz)] * [refel.Qr; refel.Qs; refel.Qt];\n";
+            code *= "RD1 = [diag(Jac.rx) diag(Jac.sx) diag(Jac.tx)] * [refel.Ddr; refel.Dds; refel.Ddt];\n";
+            code *= "RD2 = [diag(Jac.ry) diag(Jac.sy) diag(Jac.ty)] * [refel.Ddr; refel.Dds; refel.Ddt];\n";
+            code *= "RD3 = [diag(Jac.rz) diag(Jac.sz) diag(Jac.tz)] * [refel.Ddr; refel.Dds; refel.Ddt];\n";
+            code *= "TRQ1 = RQ1';\n"
+            code *= "TRQ2 = RQ2';\n"
+            code *= "TRQ3 = RQ3';\n"
+        else
+            # TODO see DG
+        end
+    end
+    
+    return code;
+end
+
+# Allocate, compute, or fetch all needed values
+function customtarget_prepare_needed_values(entities, var, lorr, vors)
+    code = "";
+    for i=1:length(entities)
+        cname = CodeGenerator.make_coef_name(entities[i]);
+        if CodeGenerator.is_test_function(entities[i])
+            # Assign it a transpose quadrature matrix
+            if length(entities[i].derivs) > 0
+                xyzchar = ["x","y","z"];
+                for di=1:length(entities[i].derivs)
+                    code *= cname * " = TRQ"*string(entities[i].derivs[di])*"; % d/d"*xyzchar[entities[i].derivs[di]]*" of test function\n";
+                end
+            else
+                code *= cname * " = refel.Q'; % test function.\n";
+            end
+        elseif CodeGenerator.is_unknown_var(entities[i], var) && lorr == LHS
+            if length(entities[i].derivs) > 0
+                xyzchar = ["x","y","z"];
+                for di=1:length(entities[i].derivs)
+                    code *= cname * " = RQ"*string(entities[i].derivs[di])*"; % d/d"*xyzchar[entities[i].derivs[di]]*" of trial function\n";
+                end
+            else
+                code *= cname * " = refel.Q; % trial function.\n";
+            end
+        else
+            # Is coefficient(number or function) or variable(array)?
+            (ctype, cval) = CodeGenerator.get_coef_val(entities[i]);
+            if ctype == -1
+                # It was a special symbol like dt
+            elseif ctype == 0
+                # It was a number, do nothing?
+            elseif ctype == 1 # a constant wrapped in a coefficient
+                # This generates something like: coef_k_i = 4;
+                if length(entities[i].derivs) > 0
+                    code *= cname * " = 0; % NOTE: derivative applied to constant coefficient = 0\n";
+                else
+                    code *= cname * " = " * string(cval) * ";\n";
+                end
+                
+            elseif ctype == 2 # a coefficient function
+                # This generates something like:
+                ######################################
+                # coef_n_i = zeros(refel.Np);
+                # for coefi = 1:refel.Np
+                #     coef_k_i[coefi] = func(x[1,coefi], x[2,coefi],x[3,coefi],time);
+                # end
+                ######################################
+                cargs = "(nodex(coefi), 0, 0, time)";
+                if config.dimension == 2
+                    cargs = "(nodex(1, coefi), nodex(2, coefi), 0, time)";
+                elseif config.dimension == 3
+                    cargs = "(nodex(1, coefi), nodex(2, coefi), nodex(3, coefi), time)";
+                end
+                if vors == "volume"
+                    code *= cname * " = zeros(refel.Np,1);\n";cname*" = "*genfunctions[cval].name*"(idx);\n";
+                    code *= "for coefi = 1:refel.Np \n" * cname * "(coefi) = "*genfunctions[cval].name*"_fun" * cargs * ";\n end\n";
+                    # Apply any needed derivative operators. Interpolate at quadrature points.
+                    if length(entities[i].derivs) > 0
+                        xyzchar = ["x","y","z"];
+                        for di=1:length(entities[i].derivs)
+                            code *= cname * " = RQ"*string(entities[i].derivs[di])*" * " * cname * 
+                                    "; % Apply d/d"*xyzchar[entities[i].derivs[di]]*" and interpolate at quadrature points.\n";
+                        end
+                    else
+                        code *= cname * " = refel.Q * " * cname * "; % Interpolate at quadrature points.\n";
+                    end
+                else
+                    #TODO surface
+                end
+                
+            elseif ctype == 3 # a known variable value
+                # This generates something like: coef_u_1 = copy((Femshop.variables[1]).values[1, gbl])
+                if vors == "volume"
+                    code *= cname * " = variables("*string(cval)*")("*string(entities[i].index)*", gbl);\n";
+                    # Apply any needed derivative operators.
+                    if length(entities[i].derivs) > 0
+                        xyzchar = ["x","y","z"];
+                        for di=1:length(entities[i].derivs)
+                            code *= cname * " = RQ"*string(entities[i].derivs[di])*" * " * cname * 
+                                    "; % Apply d/d"*xyzchar[entities[i].derivs[di]]*"\n";
+                        end
+                    else
+                        code *= cname * " = refel.Q * " * cname * "; % Interpolate at quadrature points.\n";
+                    end
+                else
+                    #TODO surface
+                end
+                
+            end
+        end # if coefficient
+    end # entity loop
+    
+    return code;
+end
+
+function customtarget_make_elemental_computation(terms, var, lorr, vors)
+    # Here is where I make some assumption about the form of the expression.
+    # Since it was expanded by the parser it should look like a series of terms: t1 + t2 + t3...
+    # Where each term is multiplied by one test function component, and if LHS, involves one unknown component.
+    # The submatrix modified by a term is determined by these, so go through the terms and divide them
+    # into their submatrix expressions. 
+    # Each term will look something like 
+    # LHS: test_part * diagm(weight_part .* coef_part) * trial_part
+    # RHS: test_part * (weight_part .* coef_part)
+    
+    # find some useful numbers
+    dofsper = 0;
+    offset_ind = [0];
+    if typeof(var) <:Array
+        offset_ind = zeros(Int, varcount);
+        dofsper = length(var[1].symvar.vals);
+        for i=2:length(var)
+            offset_ind[i] = dofsper;
+            dofsper = dofsper + length(var[i].symvar.vals);
+        end
+    else
+        dofsper = length(var.symvar.vals);
+    end
+    
+    code = "";
+    
+    # Allocate the vector or matrix to be returned if needed
+    if dofsper > 1
+        if lorr == RHS
+            code *= "element_vector = zeros(refel.Np * "*string(dofsper)*", 1); % Allocate the returned vector.\n"
+        else
+            code *= "element_matrix = zeros(refel.Np * "*string(dofsper)*", refel.Np * "*string(dofsper)*"); % Allocate the returned matrix.\n"
+        end
+    end
+    
+    # Separate the factors of each term into test, trial, coef and form the calculation
+    if dofsper > 1
+        # Submatrices or subvectors for each component
+        if lorr == LHS
+            submatrices = Array{String, 2}(undef, dofsper, dofsper);
+        else # RHS
+            submatrices = Array{String, 1}(undef, dofsper);
+        end
+        for smi=1:length(submatrices)
+            submatrices[smi] = "";
+        end
+        
+        if typeof(var) <: Array
+            for vi=1:length(var) # variables
+                # Process the terms for this variable
+                for ci=1:length(terms[vi]) # components
+                    for i=1:length(terms[vi][ci])
+                        (term_result, test_ind, trial_ind) = customtarget_generate_term_calculation(terms[vi][ci][i], var, lorr);
+                        
+                        # println(terms)
+                        # println(terms[vi])
+                        # println(terms[vi][ci])
+                        # println(terms[vi][ci][i])
+                        # println(term_result * " : "*string(test_ind)*", "*string(trial_ind))
+                        
+                        # Find the appropriate submatrix for this term
+                        submati = offset_ind[vi] + test_ind;
+                        submatj = trial_ind;
+                        if lorr == LHS
+                            submat_ind = submati + dofsper * (submatj-1);
+                        else
+                            submat_ind = submati;
+                        end
+                        
+                        
+                        if length(submatrices[submat_ind]) > 1
+                            submatrices[submat_ind] *= " .+ " * term_result;
+                        else
+                            submatrices[submat_ind] = term_result;
+                        end
+                    end
+                end
+                
+            end # vi
+            
+        else # only one variable
+            # Process the terms for this variable
+            for ci=1:length(terms) # components
+                for i=1:length(terms[ci])
+                    (term_result, test_ind, trial_ind) = customtarget_generate_term_calculation(terms[ci][i], var, lorr);
+                    
+                    # Find the appropriate submatrix for this term
+                    if lorr == LHS
+                        submat_ind = test_ind + dofsper * (trial_ind-1);
+                    else
+                        submat_ind = test_ind;
+                    end
+                    
+                    if length(submatrices[submat_ind]) > 1
+                        submatrices[submat_ind] *= " .+ " * term_result;
+                    else
+                        submatrices[submat_ind] = term_result;
+                    end
+                end
+            end
+            
+        end
+        
+        # Put the submatrices together into element_matrix or element_vector
+        if lorr == LHS
+            for emi=1:dofsper
+                for emj=1:dofsper
+                    if length(submatrices[emi, emj]) > 1
+                        rangei = "("*string(emi-1)*"*refel.Np + 1):("*string(emi)*"*refel.Np)";
+                        rangej = "("*string(emj-1)*"*refel.Np + 1):("*string(emj)*"*refel.Np)";
+                        code *= "element_matrix("*rangei*", "*rangej*") = " * submatrices[emi,emj] * "\n";
+                    end
+                end
+            end
+            code *= "return element_matrix;\n"
+            
+        else # RHS
+            for emi=1:dofsper
+                if length(submatrices[emi]) > 1
+                    rangei = "(("*string(emi)*"-1)*refel.Np + 1):("*string(emi)*"*refel.Np)";
+                    code *= "element_vector("*rangei*") = " * submatrices[emi] * "\n";
+                end
+            end
+        end
+        #code *= "return element_vector;\n"
+        
+    else # one dof
+        terms = terms[1];
+        if lorr == LHS
+            result = "zeros(refel.Np, refel.Np)";
+        else
+            result = "zeros(refel.Np,1)";
+        end
+        
+        #process each term
+        for i=1:length(terms)
+            (term_result, test_ind, trial_ind) = customtarget_generate_term_calculation(terms[i], var, lorr);
+            
+            if i > 1
+                result *= " + " * term_result;
+            else
+                result = term_result;
+            end
+        end
+        if lorr == LHS
+            code *= "element_matrix = " * result;
+        else
+            code *= "element_vector = " * result;
+        end
+        #code *= "return " * result * ";\n";
+    end
+    
+    return code;
+end
+
+function customtarget_generate_term_calculation(term, var, lorr)
+    result = "";
+    
+    if lorr == LHS
+        (test_part, trial_part, coef_part, test_ind, trial_ind) = CodeGenerator.separate_factors(term, var);
+        # LHS: test_part * diagm(weight_part .* coef_part) * trial_part
+        if !(coef_part === nothing)
+            result = string(CodeGenerator.replace_entities_with_symbols(test_part)) * " * diag(wdetj .* " * 
+                    string(CodeGenerator.replace_entities_with_symbols(coef_part)) * ") * " * 
+                    string(CodeGenerator.replace_entities_with_symbols(trial_part));
+        else # no coef_part
+            result = string(CodeGenerator.replace_entities_with_symbols(test_part)) * " * diag(wdetj) * " * 
+                    string(CodeGenerator.replace_entities_with_symbols(trial_part));
+        end
+    else
+        (test_part, trial_part, coef_part, test_ind, trial_ind) = CodeGenerator.separate_factors(term);
+        # RHS: test_part * (weight_part .* coef_part)
+        if !(coef_part === nothing)
+            result = string(CodeGenerator.replace_entities_with_symbols(test_part)) * " * (wdetj .* " * 
+                    string(CodeGenerator.replace_entities_with_symbols(coef_part)) * ")";
+        else
+            result = string(CodeGenerator.replace_entities_with_symbols(test_part)) * " * (wdetj)";
+        end
+    end
+    
+    return (result, test_ind, trial_ind);
+end
+
+# # This is the same as matlab
+# function generate_code_layer_custom(var, entities, terms, lorr, vors)
+#     code = ""; # the code will be in this string
+    
+#     need_derivative = false;
+#     term_derivative = [];
+#     needed_coef = [];
+#     needed_coef_ind = [];
+#     test_ind = [];
+#     trial_ind = [];
+    
+#     # symex is an array of arrays of symengine terms
+#     # turn each one into an Expr
+#     terms = [];
+#     sz = size(symex);
+#     if length(sz) == 1 # scalar or vector
+#         for i=1:length(symex)
+#             for ti=1:length(symex[i])
+#                 push!(terms, Meta.parse(string(symex[i][ti])));
+#             end
+#         end
+#     elseif length(sz) == 2 # matrix
+#         #TODO
+#     end
+    
+#     # Process the terms turning them into the code layer
+#     code_terms = [];
+#     for i=1:length(terms)
+#         (codeterm, der, coe, coeind, testi, trialj) = process_term_custom(terms[i], var, lorr);
+#         if coeind == -1
+#             # processing failed due to nonlinear term
+#             printerr("term processing failed for: "*string(terms[i]));
+#             return nothing;
+#         end
+#         need_derivative = need_derivative || der;
+#         append!(needed_coef, coe);
+#         append!(needed_coef_ind, coeind);
+#         # change indices into one number
+        
+#         push!(test_ind, testi);
+#         push!(trial_ind, trialj);
+#         push!(code_terms, codeterm);
+#     end
+    
+#     # If coefficients need to be computed, do so
+#     # # First remove duplicates
+#     unique_coef = [];
+#     unique_coef_ind = [];
+#     for i=1:length(needed_coef)
+#         already = false;
+#         for j=1:length(unique_coef)
+#             if unique_coef[j] === needed_coef[i] && unique_coef_ind[j] == needed_coef_ind[i]
+#                 already = true;
+#             end
+#         end
+#         if !already
+#             push!(unique_coef, needed_coef[i]);
+#             push!(unique_coef_ind, needed_coef_ind[i]);
+#         end
+#     end
+#     needed_coef = unique_coef;
+#     needed_coef_ind = unique_coef_ind;
+    
+#     # For constant coefficients, this generates something like:
+#     ######################################
+#     # coef_n = 3;
+#     ######################################
+    
+#     # For variable coefficients, this generates something like:
+#     ######################################
+#     # coef_n = genfunction_n
+#     ######################################
+#     coef_alloc = "";
+#     coef_loop = "";
+#     if length(needed_coef) > 0
+#         for i=1:length(needed_coef)
+#             if !(typeof(needed_coef[i]) <: Number || needed_coef[i] === :dt)
+#                 cind = Femshop.CodeGenerator.get_coef_index(needed_coef[i]);
+#                 if cind < 0
+#                     # probably a variable
+#                     cind = string(needed_coef[i]);
+#                     # This presents a problem in dendro. TODO
+#                     printerr("custom not yet available for multivariate problems. Expect an error.");
+#                 end
+#                 # The string name for this coefficient
+#                 cname = "coef_"*string(cind)*"_"*string(needed_coef_ind[i]);
+                
+#                 (ctype, cval) = Femshop.CodeGenerator.get_coef_val(needed_coef[i], needed_coef_ind[i]);
+                
+#                 if ctype == 1
+#                     # constant coefficient -> coef_n_i = cval
+#                     coef_alloc *= cname*" = "*string(cval)*";\n";
+                    
+#                 elseif ctype == 2
+#                     # genfunction coefficients -> coef_n_i = coef(idx)
+#                     coef_loop *= cname*" = "*genfunctions[cval].name*"(idx);\n";
+                    
+#                 elseif ctype == 3
+#                     # variable values -> coef_n = variable.values
+#                     #TODO THIS IS AN ERROR. multivariate support needed.
+#                 end
+                
+#             end
+#         end
+#     end
+    
+#     dofsper = 1;
+#     if typeof(var) <: Array
+#         for vi=1:length(var)
+#             dofsper += length(var[vi].symvar.vals); # The number of components for this variable
+#         end
+#     elseif !(var.type == SCALAR)
+#         dofsper = length(var.symvar.vals);
+#     end
+#     # Not ready
+#     if dofsper > 1
+#         printerr("custom not ready for multi dofs per node. Expect errors");
+#     end
+    
+#     # Put the pieces together
+#     code = coef_loop*"\n";
+#     if lorr == LHS
+#         code *= "elMat = "*code_terms[1];
+#         for i=2:length(code_terms)
+#             code *= " + "*code_terms[i];
+#         end
+#         code *= ";\n";
+#     else
+#         code *= "elVec = "*code_terms[1];
+#         for i=2:length(code_terms)
+#             code *= " + "*code_terms[i];
+#         end
+#         code *= ";\n";
+#     end
+    
+#     return code;
+# end
+
+# # Changes the symbolic layer term into a code layer term
+# # also records derivative and coefficient needs
+# function process_term_custom(sterm, var, lorr)
+#     term = copy(sterm);
+#     need_derivative = false;
+#     needed_coef = [];
+#     needed_coef_ind = [];
+    
+#     test_part = "";
+#     trial_part = "";
+#     coef_part = "";
+#     test_component = 0;
+#     trial_component = 0;
+#     deriv_dir = 0;
+    
+#     # extract each of the factors.
+#     factors = Femshop.CodeGenerator.separate_factors(term);
+    
+#     # strip off all negatives, combine and reattach at the end
+#     neg = false;
+#     for i=1:length(factors)
+#         if typeof(factors[i]) == Expr && factors[i].args[1] === :- && length(factors[i].args) == 2
+#             neg = !neg;
+#             factors[i] = factors[i].args[2];
+#         end
+#     end
+    
+#     # Separate factors into test/trial/coefficient parts
+#     coef_facs = [];
+#     coef_inds = [];
+#     for i=1:length(factors)
+#         (index, v, mods) = Femshop.CodeGenerator.extract_symbols(factors[i]);
+        
+#         if Femshop.CodeGenerator.is_test_func(v)
+#             test_component = index; # the vector index
+#             if length(mods) > 0
+#                 # TODO more than one derivative mod
+#                 need_derivative = true;
+#                 deriv_dir = parse(Int, mods[1][2]);
+#                 if deriv_dir == 1
+#                     if config.dimension == 1
+#                         test_part = "(diag(Jac.rx) * refel.Qr)\'";
+#                     elseif config.dimension == 2
+#                         test_part = "([diag(Jac.rx) diag(Jac.sx)] * [refel.Qr; refel.Qs])\'";
+#                     else
+#                         test_part = "([diag(Jac.rx) diag(Jac.sx) diag(Jac.tx)] * [refel.Qr; refel.Qs; refel.Qt])\'";
+#                     end
+#                 elseif deriv_dir == 2
+#                     if config.dimension == 2
+#                         test_part = "([diag(Jac.ry) diag(Jac.sy)] * [refel.Qr; refel.Qs])\'";
+#                     else
+#                         test_part = "([diag(Jac.ry) diag(Jac.sy) diag(Jac.ty)] * [refel.Qr; refel.Qs; refel.Qt])\'";
+#                     end
+#                 elseif deriv_dir == 3
+#                     if config.dimension == 2
+#                         test_part = "([diag(Jac.rz) diag(Jac.sz)] * [refel.Qr; refel.Qs])\'";
+#                     else
+#                         test_part = "([diag(Jac.rz) diag(Jac.sz) diag(Jac.tz)] * [refel.Qr; refel.Qs; refel.Qt])\'";
+#                     end
+#                 elseif deriv_dir == 4
+#                     # This will eventually be a time derivative
+#                     printerr("Derivative index problem in "*string(factors[i]));
+#                 else
+#                     printerr("Derivative index problem in "*string(factors[i]));
+#                 end
+#             else
+#                 # no derivative mods
+#                 test_part = "refel.Q\'";
+#             end
+#         elseif Femshop.CodeGenerator.is_unknown_var(v, var)
+#             if !(trial_part == "")
+#                 # Two unknowns multiplied in this term. Nonlinear. abort.
+#                 printerr("Nonlinear term. Code layer incomplete.");
+#                 return (-1, -1, -1, -1, -1, -1);
+#             end
+#             trial_component = index;
+#             if length(mods) > 0
+#                 # TODO more than one derivative mod
+#                 need_derivative = true;
+#                 deriv_dir = parse(Int, mods[1][2]);
+#                 if deriv_dir == 1
+#                     if config.dimension == 1
+#                         trial_part = "diag(Jac.rx) * refel.Qr";
+#                     elseif config.dimension == 2
+#                         trial_part = "[diag(Jac.rx) diag(Jac.sx)] * [refel.Qr; refel.Qs]";
+#                     else
+#                         trial_part = "[diag(Jac.rx) diag(Jac.sx) diag(Jac.tx)] * [refel.Qr; refel.Qs; refel.Qt]";
+#                     end
+#                 elseif deriv_dir == 2
+#                     if config.dimension == 2
+#                         trial_part = "[diag(Jac.ry) diag(Jac.sy)] * [refel.Qr; refel.Qs]";
+#                     else
+#                         trial_part = "[diag(Jac.ry) diag(Jac.sy) diag(Jac.ty)] * [refel.Qr; refel.Qs; refel.Qt]";
+#                     end
+#                 elseif deriv_dir == 3
+#                     if config.dimension == 2
+#                         trial_part = "[diag(Jac.rz) diag(Jac.sz)] * [refel.Qr; refel.Qs]";
+#                     else
+#                         trial_part = "[diag(Jac.rz) diag(Jac.sz) diag(Jac.tz)] * [refel.Qr; refel.Qs; refel.Qt]";
+#                     end
+#                 elseif deriv_dir == 4
+#                     # This will eventually be a time derivative
+#                     printerr("Derivative index problem in "*string(factors[i]));
+#                 else
+#                     printerr("Derivative index problem in "*string(factors[i]));
+#                 end
+#             else
+#                 # no derivative mods
+#                 trial_part = "refel.Q";
+#             end
+#         else
+#             if length(index) == 1
+#                 ind = index[1];
+#             end
+#             push!(coef_facs, v);
+#             push!(coef_inds, ind);
+#         end
+#     end
+    
+#     # If rhs, change var into var.values and treat as a coefficient
+#     if lorr == RHS && !(trial_part === nothing)
+#         # tmpv = :(a.values[gbl]);
+#         # tmpv.args[1].args[1] = var.symbol; #TODO, will not work for var=array
+#         # push!(coef_facs, tmpv);
+#         # push!(coef_inds, trial_component);
+#     end
+    
+#     # If there was no trial part, it's an RHS and we need to finish the quadrature with this
+#     if trial_part == ""
+#         trial_part = "refel.Q";
+#     end
+    
+#     # build weight/coefficient parts
+#     weight_part = "refel.wg .* detJ";
+    
+#     # If term is negative, apply it here
+#     if neg
+#         weight_part = "-"*weight_part;
+#     end
+    
+#     # coefficients
+#     if length(coef_facs) > 0
+#         for j=1:length(coef_facs)
+#             tmp = coef_facs[j];
+#             if typeof(tmp) == Symbol && !(tmp ===:dt)
+#                 push!(needed_coef, tmp);
+#                 push!(needed_coef_ind, coef_inds[j]);
+#                 ind = Femshop.CodeGenerator.get_coef_index(coef_facs[j]);
+#                 if ind >= 0
+#                     tmp = "coef_"*string(ind)*"_"*string(coef_inds[j]);
+#                 else
+#                     tmp = "coef_"*string(tmp)*"_"*string(coef_inds[j]);
+#                 end
+#             else
+#                 tmp = string(tmp);
+#             end
+#             if j>1
+#                 coef_part = coef_part*".*"*tmp;
+#             else
+#                 coef_part = coef_part*tmp;
+#             end
+#         end
+#     end
+    
+#     # Put the pieces togetherd
+#     if !(coef_part === "")
+#         if lorr == LHS
+#             weight_part = weight_part*" .* "*coef_part;
+#             weight_part = "diag("*weight_part*")";
+#             term = test_part * " * " *  weight_part * " * " *  trial_part;
+#         else # RHS
+#             weight_part = "diag("*weight_part*")";
+#             term = test_part * " * " *  weight_part * " * (" *  trial_part *" * "* coef_part *")";
+#         end
+#     else
+#         weight_part = "diag("*weight_part*")";
+#         term = test_part * " * " *  weight_part * " * " *  trial_part;
+#     end
+    
+#     return (term, need_derivative, needed_coef, needed_coef_ind, test_component, trial_component);
+# end

@@ -67,8 +67,16 @@ function generate_code_layer(symex, var, lorr, vors, solver, language, framework
     
     # Determine if derivative matrices will be required
     need_derivs = false;
+    need_deriv_matrix_for_fv = false;
     for i=1:length(entities)
         if length(entities[i].derivs) > 0
+            # FV only needs the matrices for coefficient derivatives
+            if config.solver_type == FV
+                (ctype, cval) = get_coef_val(entities[i]);
+                if ctype == 2 # a coefficient with a function
+                    need_deriv_matrix_for_fv = true;
+                end
+            end
             need_derivs = true;
         end
     end
@@ -81,7 +89,6 @@ function generate_code_layer(symex, var, lorr, vors, solver, language, framework
     # println(terms)
     
     ###### Below are target specific code generation functions ############################################
-    
     if language == JULIA || language == 0
         if solver == CG
             handle_input_args_fun = handle_input_args_cg_julia;
@@ -102,38 +109,40 @@ function generate_code_layer(symex, var, lorr, vors, solver, language, framework
             make_elemental_computation_fun = make_elemental_computation_fv_julia;
         end
         
-    else
-        #TODO
-        printerr("Code generation for external targets is currently offline. Sorry.")
-        return ("", "")
-    end
-    
-    ###### Build the code as a string ####################################################################
-    
-    # The whole body of code is stored in this string.
-    code = "";
-    
-    # Handle input arguments
-    code *= handle_input_args_fun(lorr, vors);
-    code *= "\n";
-    
-    # If needed, compute derivative matrices
-    if need_derivs
-        code *= build_derivative_matrices_fun(lorr, vors);
+        ### Build the code as a string ###
+        
+        # The whole body of code is stored in this string.
+        code = "";
+        
+        # Handle input arguments
+        code *= handle_input_args_fun(lorr, vors);
         code *= "\n";
-    end
-    
-    # Evaluate or fetch the values for each needed entity.
-    code *= prepare_needed_values_fun(entities, var, lorr, vors);
-    code *= "\n";
-    
-    # Form the final elemental calculation
-    code *= make_elemental_computation_fun(terms, var, dofsper, offset_ind, lorr, vors);
-    
-    # For Julia, return both the generated string and a parsed Expr block of code.
-    if language == JULIA
+        
+        # If needed, compute derivative matrices
+        if need_derivs
+            if config.solver_type == FV
+                code *= build_derivative_matrices_fun(lorr, vors, need_deriv_matrix_for_fv);
+            else
+                code *= build_derivative_matrices_fun(lorr, vors);
+            end
+            code *= "\n";
+        end
+        
+        # Evaluate or fetch the values for each needed entity.
+        code *= prepare_needed_values_fun(entities, var, lorr, vors);
+        code *= "\n";
+        
+        # Form the final elemental calculation
+        code *= make_elemental_computation_fun(terms, var, dofsper, offset_ind, lorr, vors);
+        
+        # For Julia, return both the generated string and a parsed Expr block of code.
         return (code, code_string_to_expr(code));
+        
+    ### External targets ##############################################################
     else
-        return (code, code);
+        code_string = external_generate_code_layer_function(var, entities, terms, lorr, vors);
+        return (code_string, code_string);
     end
+    
+    
 end

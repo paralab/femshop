@@ -42,6 +42,8 @@ vol_J2 =     args[14]; # geometric factor for el2
 face_wgdetj =args[15]; # quadrature weights*detJ
 time =       args[16]; # time for time dependent coefficients
 dt =         args[17]; # dt for time dependent problems
+
+Nfp = refel.Nfp[frefelind[1]]]; # number of face nodes
 "
     end
     
@@ -280,8 +282,8 @@ function prepare_needed_values_dg_julia(entities, var, lorr, vors)
                         end
                         
                     else # no derivatives, only need surface nodes
-                        code *= cname * " = zeros(refel.Nfp[frefelind[1]]);\n";
-                        code *= "for coefi = 1:refel.Nfp[frefelind[1]] " * cname * "[coefi] = (Femshop.genfunctions["*string(cval)*"]).func" * cargsf * " end\n";
+                        code *= cname * " = zeros(Nfp);\n";
+                        code *= "for coefi = 1:Nfp " * cname * "[coefi] = (Femshop.genfunctions["*string(cval)*"]).func" * cargsf * " end\n";
                     end
                     
                     # Interpolate at surface quadrature points
@@ -392,17 +394,29 @@ function make_elemental_computation_dg_julia(terms, var, dofsper, offset_ind, lo
     code = "";
     
     # Allocate the vector or matrix to be returned if needed
+    # There will be four pieces for LHS and two for RHS.
     if dofsper > 1
-        if lorr == RHS
-            code *= "element_vector = zeros(refel.Np * "*string(dofsper)*"); # Allocate the returned vector.\n"
-        else
-            code *= "element_matrix = zeros(refel.Np * "*string(dofsper)*", refel.Np * "*string(dofsper)*"); # Allocate the returned matrix.\n"
+        if vors == "volume"
+            if lorr == RHS
+                code *= "element_vectorL = zeros(refel.Np * "*string(dofsper)*"); # Allocate the returned vector.\n"
+            else
+                code *= "element_matrix = zeros(refel.Np * "*string(dofsper)*", refel.Np * "*string(dofsper)*"); # Allocate the returned matrix.\n"
+            end
+        else # surface
+            if lorr == RHS
+                code *= "element_vectorL = zeros(Nfp * "*string(dofsper)*"); # Allocate return vector for element 1.\n"
+                code *= "element_vectorR = zeros(Nfp * "*string(dofsper)*"); # Allocate return vector for element 2.\n"
+            else
+                code *= "element_matrixLL = zeros(Nfp * "*string(dofsper)*", Nfp * "*string(dofsper)*"); # Allocate return matrix for LL.\n"
+                code *= "element_matrixLR = zeros(Nfp * "*string(dofsper)*", Nfp * "*string(dofsper)*"); # Allocate return matrix for LR.\n"
+                code *= "element_matrixRL = zeros(Nfp * "*string(dofsper)*", Nfp * "*string(dofsper)*"); # Allocate return matrix for RL.\n"
+                code *= "element_matrixRR = zeros(Nfp * "*string(dofsper)*", Nfp * "*string(dofsper)*"); # Allocate return matrix for RR.\n"
+            end
         end
     end
     
     # Separate the factors of each term into test, trial, coef and form the calculation
-    if dofsper > 1
-        # Submatrices or subvectors for each component
+    if vors == "volume"
         if lorr == LHS
             submatrices = Array{String, 2}(undef, dofsper, dofsper);
         else # RHS
@@ -411,21 +425,37 @@ function make_elemental_computation_dg_julia(terms, var, dofsper, offset_ind, lo
         for smi=1:length(submatrices)
             submatrices[smi] = "";
         end
-        
-        if typeof(var) <: Array
-            for vi=1:length(var) # variables
-                # Process the terms for this variable
-                for ci=1:length(terms[vi]) # components
-                    for i=1:length(terms[vi][ci])
-                        (term_result, test_ind, trial_ind) = generate_term_calculation_cg_julia(terms[vi][ci][i], var, lorr);
-                        
-                        # println(terms)
-                        # println(terms[vi])
-                        # println(terms[vi][ci])
-                        # println(terms[vi][ci][i])
-                        # println(term_result * " : "*string(test_ind)*", "*string(trial_ind))
-                        
-                        # Find the appropriate submatrix for this term
+    else # surface
+        if lorr == LHS
+            submatricesll = Array{String, 2}(undef, dofsper, dofsper);
+            submatriceslr = Array{String, 2}(undef, dofsper, dofsper);
+            submatricesrl = Array{String, 2}(undef, dofsper, dofsper);
+            submatricesrr = Array{String, 2}(undef, dofsper, dofsper);
+            submatrices = [submatricesll, submatriceslr, submatricesrl, submatricesrr];
+        else # RHS
+            submatricesl = Array{String, 1}(undef, dofsper);
+            submatricesr = Array{String, 1}(undef, dofsper);
+            submatrices = [submatricesl, submatricesr];
+        end
+        for smi=1:length(submatrices)
+            for smj=1:length(submatrices[smi])
+                submatrices[smi][smj] = "";
+            end
+        end
+    end
+    
+    if typeof(var) <: Array # multiple variables
+        for vi=1:length(var) # variables
+            # Process the terms for this variable
+            for ci=1:length(terms[vi]) # components
+                for i=1:length(terms[vi][ci])
+                    (term_result, test_ind, trial_ind) = generate_term_calculation_dg_julia(terms[vi][ci][i], var, lorr, vors);
+                    
+                    # println(terms[vi][ci][i])
+                    # println(term_result * " : "*string(test_ind)*", "*string(trial_ind))
+                    
+                    # Find the appropriate submatrix for this term
+                    if vors == "volume"
                         submati = offset_ind[vi] + test_ind;
                         submatj = trial_ind;
                         if lorr == LHS
@@ -434,24 +464,43 @@ function make_elemental_computation_dg_julia(terms, var, dofsper, offset_ind, lo
                             submat_ind = submati;
                         end
                         
-                        
                         if length(submatrices[submat_ind]) > 1
                             submatrices[submat_ind] *= " .+ " * term_result;
                         else
                             submatrices[submat_ind] = term_result;
                         end
+                        
+                    else # surface
+                        submati = offset_ind[vi] + test_ind;
+                        submatj = trial_ind;
+                        if lorr == LHS
+                            submat_ind = submati + dofsper * (submatj-1);
+                            smparts = 4;
+                        else
+                            submat_ind = submati;
+                            smparts = 2;
+                        end
+                        
+                        for smi=1:smparts
+                            if length(submatrices[smi][submat_ind]) > 1
+                                submatrices[smi][submat_ind] *= " .+ " * term_result;
+                            else
+                                submatrices[smi][submat_ind] = term_result;
+                            end
+                        end
                     end
                 end
+            end
+        end # vi
+        
+    else # only one variable
+        # Process the terms for this variable
+        for ci=1:length(terms) # components
+            for i=1:length(terms[ci])
+                (term_result, test_ind, trial_ind) = generate_term_calculation_dg_julia(terms[ci][i], var, lorr, vors);
                 
-            end # vi
-            
-        else # only one variable
-            # Process the terms for this variable
-            for ci=1:length(terms) # components
-                for i=1:length(terms[ci])
-                    (term_result, test_ind, trial_ind) = generate_term_calculation_cg_julia(terms[ci][i], var, lorr);
-                    
-                    # Find the appropriate submatrix for this term
+                # Find the appropriate submatrix for this term
+                if vors == "volume"
                     if lorr == LHS
                         submat_ind = test_ind + dofsper * (trial_ind-1);
                     else
@@ -463,13 +512,31 @@ function make_elemental_computation_dg_julia(terms, var, dofsper, offset_ind, lo
                     else
                         submatrices[submat_ind] = term_result;
                     end
+                    
+                else # surface
+                    if lorr == LHS
+                        submat_ind = test_ind + dofsper * (trial_ind-1);
+                        smparts = 4;
+                    else
+                        submat_ind = test_ind;
+                        smparts = 2;
+                    end
+                    
+                    for smi=1:smparts
+                        if length(submatrices[smi][submat_ind]) > 1
+                            submatrices[smi][submat_ind] *= " .+ " * term_result;
+                        else
+                            submatrices[smi][submat_ind] = term_result;
+                        end
+                    end
                 end
             end
-            
         end
-        
-        # Put the submatrices together into element_matrix or element_vector
-        if lorr == LHS
+    end
+    
+    # Put the submatrices together into element_matrix or element_vector
+    if lorr == LHS
+        if vors == "volume"
             for emi=1:dofsper
                 for emj=1:dofsper
                     if length(submatrices[emi, emj]) > 1
@@ -480,65 +547,160 @@ function make_elemental_computation_dg_julia(terms, var, dofsper, offset_ind, lo
                 end
             end
             code *= "return element_matrix;\n"
-            
-        else # RHS
+             
+        else # surface
+            mat_tags = ["LL", "LR", "RL", "RR"];
+            for emi=1:dofsper
+                for emj=1:dofsper
+                    for smpart=1:4
+                        if length(submatrices[smpart][emi, emj]) > 1
+                            rangei = "(("*string(emi)*"-1)*refel.Np + 1):("*string(emi)*"*refel.Np)";
+                            rangej = "(("*string(emj)*"-1)*refel.Np + 1):("*string(emj)*"*refel.Np)";
+                            code *= "element_matrix"*mat_tags[smpart]*"["*rangei*", "*rangej*"] = " * submatrices[smpart][emi,emj] * "\n";
+                        end
+                    end
+                end
+            end
+            code *= "return [element_matrixLL, element_matrixLR, element_matrixRL, element_matrixRR];\n"
+        end
+        
+    else # RHS
+        if vors == "volume"
             for emi=1:dofsper
                 if length(submatrices[emi]) > 1
                     rangei = "(("*string(emi)*"-1)*refel.Np + 1):("*string(emi)*"*refel.Np)";
                     code *= "element_vector["*rangei*"] = " * submatrices[emi] * "\n";
                 end
             end
-        end
-        code *= "return element_vector;\n"
-        
-    else # one dof
-        terms = terms[1];
-        if lorr == LHS
-            result = "zeros(refel.Np, refel.Np)";
-        else
-            result = "zeros(refel.Np)";
-        end
-        
-        #process each term
-        for i=1:length(terms)
-            (term_result, test_ind, trial_ind) = generate_term_calculation_cg_julia(terms[i], var, lorr);
+            code *= "return element_vector;\n"
             
-            if i > 1
-                result *= " .+ " * term_result;
-            else
-                result = term_result;
+        else # surface
+            mat_tags = ["L", "R"];
+            for emi=1:dofsper
+                for smpart=1:2
+                    if length(submatrices[smpart][emi]) > 1
+                        rangei = "(("*string(emi)*"-1)*refel.Np + 1):("*string(emi)*"*refel.Np)";
+                        code *= "element_vector"*mat_tags[smpart]*"["*rangei*"] = " * submatrices[smpart][emi] * "\n";
+                    end
+                end
             end
+            code *= "return [element_vectorL, element_vectorR];\n"
         end
-        code *= "return " * result * ";\n";
     end
     
     return code;
 end
 
-function generate_term_calculation_dg_julia(term, var, lorr)
+function generate_term_calculation_dg_julia(term, var, lorr, vors)
     result = "";
     
-    if lorr == LHS
-        (test_part, trial_part, coef_part, test_ind, trial_ind) = separate_factors(term, var);
-        # LHS: test_part * diagm(weight_part .* coef_part) * trial_part
-        if !(coef_part === nothing)
-            result = string(replace_entities_with_symbols(test_part)) * " * diagm(wdetj .* " * 
-                    string(replace_entities_with_symbols(coef_part)) * ") * " * 
-                    string(replace_entities_with_symbols(trial_part));
-        else # no coef_part
-            result = string(replace_entities_with_symbols(test_part)) * " * diagm(wdetj) * " * 
-                    string(replace_entities_with_symbols(trial_part));
-        end
-    else
-        (test_part, trial_part, coef_part, test_ind, trial_ind) = separate_factors(term);
-        # RHS: test_part * (weight_part .* coef_part)
-        if !(coef_part === nothing)
-            result = string(replace_entities_with_symbols(test_part)) * " * (wdetj .* " * 
-                    string(replace_entities_with_symbols(coef_part)) * ")";
+    if vors == "volume"
+        if lorr == LHS
+            (test_part, trial_part, coef_part, test_ind, trial_ind) = separate_factors(term, var);
+            # LHS: test_part * diagm(weight_part .* coef_part) * trial_part
+            if !(coef_part === nothing)
+                result = string(replace_entities_with_symbols(test_part)) * " * diagm(wdetj .* " * 
+                        string(replace_entities_with_symbols(coef_part)) * ") * " * 
+                        string(replace_entities_with_symbols(trial_part));
+            else # no coef_part
+                result = string(replace_entities_with_symbols(test_part)) * " * diagm(wdetj) * " * 
+                        string(replace_entities_with_symbols(trial_part));
+            end
         else
-            result = string(replace_entities_with_symbols(test_part)) * " * (wdetj)";
+            (test_part, trial_part, coef_part, test_ind, trial_ind) = separate_factors(term);
+            # RHS: test_part * (weight_part .* coef_part)
+            if !(coef_part === nothing)
+                result = string(replace_entities_with_symbols(test_part)) * " * (wdetj .* " * 
+                        string(replace_entities_with_symbols(coef_part)) * ")";
+            else
+                result = string(replace_entities_with_symbols(test_part)) * " * (wdetj)";
+            end
+        end
+        
+    else # surface
+        if lorr == LHS
+            result = ["","","",""];
+            (test_part, trial_part, coef_part, test_ind, trial_ind) = separate_factors(term, var);
+            
+            
+            #### TODO 
+            
+            
+            scoef_part = string(replace_entities_with_symbols(coef_part))
+            # Determine which result, LL, LR, RL, RR to add to based on test and trial parts.
+            # For example, SIDE1 test -> L and SIDE2 trial -> R will contribute to LR.
+            # If there's no SIDE flag, diagonals are possible.
+            test_side = 0;
+            trial_side = 0;
+            if "DGSIDE1" in test_part.flags
+                test_side = 1;
+            elseif "DGSIDE2" in test_part.flags
+                test_side = 2;
+            end
+            if "DGSIDE1" in trial_part.flags
+                trial_side = 1;
+            elseif "DGSIDE2" in trial_part.flags
+                trial_side = 2;
+            end
+            
+            # LHS: test_part * diagm(weight_part .* coef_part) * trial_part
+            if test_side == 1
+                if trial_side == 1
+                    # LL only
+                    if !(coef_part === nothing)
+                        result[1] = string(replace_entities_with_symbols(test_part)) * " * diagm(wdetj .* " * 
+                                string(replace_entities_with_symbols(coef_part)) * ") * " * 
+                                string(replace_entities_with_symbols(trial_part));
+                    else # no coef_part
+                        result[1] = string(replace_entities_with_symbols(test_part)) * " * diagm(wdetj) * " * 
+                                string(replace_entities_with_symbols(trial_part));
+                    end
+                    
+                elseif trial_side == 2
+                    # LR only
+                    if !(coef_part === nothing)
+                        result[2] = string(replace_entities_with_symbols(test_part)) * " * diagm(wdetj .* " * 
+                                string(replace_entities_with_symbols(coef_part)) * ") * " * 
+                                string(replace_entities_with_symbols(trial_part));
+                    else # no coef_part
+                        result[2] = string(replace_entities_with_symbols(test_part)) * " * diagm(wdetj) * " * 
+                                string(replace_entities_with_symbols(trial_part));
+                    end
+                    
+                else
+                    # LL only and must change trial symbols to side1
+                    if !(coef_part === nothing)
+                        oldsym = Symbol(make_coef_name(trial_part));
+                        newsym = Symbol("DGSIDE1"*make_coef_name(trial_part));
+                        result[1] = string(replace_entities_with_symbols(test_part)) * " * diagm(wdetj .* " * 
+                                string(replace_entities_with_symbols(coef_part)) * ") * " * 
+                                string(resplace_specific_symbol(replace_entities_with_symbols(trial_part)), oldsym, newsym);
+                    else # no coef_part
+                        result[1] = string(replace_entities_with_symbols(test_part)) * " * diagm(wdetj) * " * 
+                                string(resplace_specific_symbol(replace_entities_with_symbols(trial_part)), oldsym, newsym);
+                    end
+                end
+                
+                
+            elseif test_side == 2
+                
+            else
+                
+            end
+            
+        else
+            result = ["",""];
+            (test_part, trial_part, coef_part, test_ind, trial_ind) = separate_factors(term);
+            # RHS: test_part * (weight_part .* coef_part)
+            if !(coef_part === nothing)
+                result = string(replace_entities_with_symbols(test_part)) * " * (wdetj .* " * 
+                        string(replace_entities_with_symbols(coef_part)) * ")";
+            else
+                result = string(replace_entities_with_symbols(test_part)) * " * (wdetj)";
+            end
         end
     end
+    
     
     return (result, test_ind, trial_ind);
 end

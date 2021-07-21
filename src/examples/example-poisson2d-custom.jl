@@ -6,37 +6,31 @@ if !@isdefined(Femshop)
     include("../Femshop.jl");
     using .Femshop
 end
-init_femshop("poisson2dcustom");
+init_femshop("poisson2dcustomnew");
 
 # Try making an optional log
-@useLog("poisson2dcustomlog")
+useLog("poisson2dcustomnewlog")
 
 # Generate for the target in customtarget.jl
-@generateFor("customtarget.jl")
+generateFor("customtarget_new.jl")
 
 # Set up the configuration (order doesn't matter)
-@domain(2, SQUARE, UNSTRUCTURED)    # dimension, geometry, decomposition
-@solver(CG)                         # DG, CG, etc.
-@functionSpace(LEGENDRE, 2)         # function, order (or use testFunction and trialFunction)
-@nodes(LOBATTO)                     # elemental node arrangement
+domain(2)
+functionSpace(order=2)
 
 # Specify the problem
-@mesh(QUADMESH, 30)                   # .msh file or generate our own
+mesh(QUADMESH, elsperdim=30)
 
-@variable(u)                        # same as @variable(u, SCALAR)
+u = variable("u")
 
-@testSymbol(v)                    # sets the symbol for a test function
+testSymbol("v")
 
-@boundary(u, 1, DIRICHLET, "sin(3*pi*x)")
+boundary(u, 1, DIRICHLET, "sin(3*pi*x)")
 
 # Write the weak form 
-@coefficient(f, "-2*pi*pi*sin(pi*x)*sin(pi*y)")
-@weakForm(u, "-dot(grad(u),grad(v)) - f*v")
+coefficient("f", "-2*pi*pi*sin(pi*x)*sin(pi*y)")
+weakForm(u, "-dot(grad(u),grad(v)) - f*v")
 
 solve(u);
 
-# check
-log_dump_config(Femshop.config);
-log_dump_prob(Femshop.prob);
-
-@finalize()
+finalize_femshop()

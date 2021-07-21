@@ -45,8 +45,9 @@ dt =         args[15]; # dt for time dependent problems
 end
 
 # If needed, build derivative matrices
-function build_derivative_matrices_fv_julia(lorr, vors)
-    code = 
+function build_derivative_matrices_fv_julia(lorr, vors, need_matrix)
+    if need_matrix
+        code = 
 "
 # Note on derivative matrices:
 # RQn are vandermond matrices for the derivatives of the basis functions
@@ -56,35 +57,39 @@ function build_derivative_matrices_fv_julia(lorr, vors)
 # |RQ3|   | rz sz tz || Qz |
 
 "
-    if config.dimension == 1
-        if vors == "volume"
-            code *= "(RQ1, RD1) = build_deriv_matrix(refel, J);\n";
-            code *= "TRQ1 = RQ1';\n"
-        else
-            #TODO
+        if config.dimension == 1
+            if vors == "volume"
+                code *= "(RQ1, RD1) = build_deriv_matrix(refel, J);\n";
+                code *= "TRQ1 = RQ1';\n"
+            else
+                #TODO
+            end
+            
+        elseif config.dimension == 2
+            if vors == "volume"
+                code *= "(RQ1, RQ2, RD1, RD2) = build_deriv_matrix(refel, J);\n";
+                code *= "(TRQ1, TRQ2) = (RQ1', RQ2');\n"
+            else
+                #TODO
+            end
+            
+        elseif config.dimension == 3
+            if vors == "volume"
+                code *= "(RQ1, RQ2, RQ3, RD1, RD2, RD3) = build_deriv_matrix(refel, J);\n";
+                code *= "(TRQ1, TRQ2, TRQ3) = (RQ1', RQ2', RQ3');\n"
+            else
+                #TODO
+            end
         end
         
-    elseif config.dimension == 2
-        if vors == "volume"
-            code *= "(RQ1, RQ2, RD1, RD2) = build_deriv_matrix(refel, J);\n";
-            code *= "(TRQ1, TRQ2) = (RQ1', RQ2');\n"
-        else
-            #TODO
-        end
-        
-    elseif config.dimension == 3
-        if vors == "volume"
-            code *= "(RQ1, RQ2, RQ3, RD1, RD2, RD3) = build_deriv_matrix(refel, J);\n";
-            code *= "(TRQ1, TRQ2, TRQ3) = (RQ1', RQ2', RQ3');\n"
-        else
-            #TODO
-        end
+    else
+        code = ""
     end
     
+    # This is computed for all
     if vors == "surface"
         code *= "dxyz = norm(cellx[2] - cellx[1]) .* normal; # normal scaled by distance between cell centers\n"
     end
-    
     
     return code;
 end
@@ -213,7 +218,7 @@ function prepare_needed_values_fv_julia(entities, var, lorr, vors)
                 else
                     if length(entities[i].derivs) > 0
                         code *= cname * " = Femshop.variables["*string(cval)*"].values["*string(entities[i].index)*", els[2]] - Femshop.variables["*string(cval)*"].values["*string(entities[i].index)*", els[1]];\n";
-                        code *= cname * " = (els[1] != els[2] && abs(normal["*string(entities[i].derivs[1])*"]) > 1e-10) ? "*cname*" ./ dxyz["*string(entities[i].derivs[1])*"] : 0\n"
+                        code *= cname * " = (els[1] != els[2] && abs(normal["*string(entities[i].derivs[1])*"]) > 1e-10) ? "*cname*" ./ dxyz["*string(entities[i].derivs[1])*"]  : 0\n"
                     else
                         code *= cname * " = Femshop.variables["*string(cval)*"].values["*string(entities[i].index)*", "*l2gsymbol*"];\n";
                     end

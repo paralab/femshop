@@ -336,6 +336,38 @@ function replace_entities_with_symbols(ex)
     return ex;
 end
 
+# Searches for any of the specified ents(strings matching entity.name) and adds a flag to entity.flags
+function apply_flag_to_entities(ex, ents, flag)
+    if typeof(ex) == Expr
+        for i=1:length(ex.args)
+            ex.args[i] = apply_flag_to_entities(ex, ents, flag);
+        end
+        
+    elseif typeof(ex) == SymEntity
+        if ex.name in ents
+            push!(ex.flags, flag);
+        end
+    end
+    
+    return ex;
+end
+
+# Traverses the Expr replacing a specific symbol
+function replace_specific_symbol(ex, old_symbol, new_symbol)
+    if typeof(ex) == Expr
+        for i=1:length(ex.args)
+            ex.args[i] = replace_specific_symbol(ex.args[i], old_symbol, new_symbol);
+        end
+        
+    elseif typeof(ex) == Symbol
+        if ex === old_symbol
+            return new_symbol;
+        end
+    end
+    
+    return ex;
+end
+
 # Turns the generated code string into an Expr block to be put in a generated function.
 function code_string_to_expr(s)
     e = Expr(:block);
