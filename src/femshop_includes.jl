@@ -15,6 +15,14 @@ catch e
     Pkg.add("SymEngine")
     using SymEngine
 end
+try
+    using WriteVTK
+catch e
+    println("WriteVTK is not yet installed. Installing now.");
+    using Pkg
+    Pkg.add("WriteVTK")
+    using WriteVTK
+end
 # try
 #     using Latexify
 # catch e

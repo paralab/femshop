@@ -692,9 +692,10 @@ function solve(var, nlvar=nothing; nonlinear=false)
                     for vi=1:length(var)
                         components = length(var[vi].symvar.vals);
                         for compi=1:components
+                            #println("putting result "*string(compi+tmp)*":"*string(totalcomponents)*":end in var["*string(vi)*"].values["*string(compi)*"]")
                             var[vi].values[compi,:] = result[(compi+tmp):totalcomponents:end];
-                            tmp = tmp + 1;
                         end
+                        tmp = tmp + components;
                     end
                 elseif length(result) > 1
                     components = length(var.symvar.vals);
@@ -815,26 +816,26 @@ end
 # Writes the values for each variable to filename in the given format.
 function output_values(vars, filename; format="raw", ascii=false)
     available_formats = ["raw", "csv", "vtk"];
-    filename *= "."*format;
-    file = open(filename, "w");
-    log_entry("Writing values to file: "*filename);
-    
-    if format == "raw"
-        output_values_raw(vars, file)
-    elseif format == "csv"
-        output_values_csv(vars, file)
-    elseif format == "vtk"
-        if ascii
-            output_values_vtk(vars, file, "ASCII")
-        else
-            output_values_vtk(vars, file, "BINARY")
-        end
+    if format == "vtk"
+        output_values_vtk(vars, filename, ascii)
+        log_entry("Writing values to file: "*filename*".vtu");
+        
     else
-        println("Unknown output file format("*string(format)*"). Choose from: "*string(available_formats));
+        filename *= "."*format;
+        file = open(filename, "w");
+        log_entry("Writing values to file: "*filename);
+        
+        if format == "raw"
+            output_values_raw(vars, file)
+        elseif format == "csv"
+            output_values_csv(vars, file)
+        else
+            println("Unknown output file format("*string(format)*"). Choose from: "*string(available_formats));
+        end
+        log_entry("Finished writing to "*filename);
+        
+        close(file);
     end
-    log_entry("Finished writing to "*filename);
-    
-    close(file);
 end
 
 function finalize_femshop()

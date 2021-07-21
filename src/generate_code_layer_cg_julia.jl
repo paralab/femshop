@@ -258,8 +258,8 @@ function make_elemental_computation_cg_julia(terms, var, dofsper, offset_ind, lo
             for emi=1:dofsper
                 for emj=1:dofsper
                     if length(submatrices[emi, emj]) > 1
-                        rangei = "(("*string(emi)*"-1)*refel.Np + 1):("*string(emi)*"*refel.Np)";
-                        rangej = "(("*string(emj)*"-1)*refel.Np + 1):("*string(emj)*"*refel.Np)";
+                        rangei = "("*string(emi-1)*"*refel.Np + 1):("*string(emi)*"*refel.Np)";
+                        rangej = "("*string(emj-1)*"*refel.Np + 1):("*string(emj)*"*refel.Np)";
                         code *= "element_matrix["*rangei*", "*rangej*"] = " * submatrices[emi,emj] * "\n";
                     end
                 end
@@ -269,7 +269,7 @@ function make_elemental_computation_cg_julia(terms, var, dofsper, offset_ind, lo
         else # RHS
             for emi=1:dofsper
                 if length(submatrices[emi]) > 1
-                    rangei = "(("*string(emi)*"-1)*refel.Np + 1):("*string(emi)*"*refel.Np)";
+                    rangei = "("*string(emi-1)*"*refel.Np + 1):("*string(emi)*"*refel.Np)";
                     code *= "element_vector["*rangei*"] = " * submatrices[emi] * "\n";
                 end
             end

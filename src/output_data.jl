@@ -113,19 +113,61 @@ function output_values_csv(vars, file)
     end
 end
 
-function output_values_vtk(vars, file, format="BINARY")
-    # This is not ready
-    printerr("vtk output format not ready")
+function output_values_vtk(vars, file, ascii)
+    # Use the WriteVTK package.
+    # First build MeshCell array
+    nel = size(grid_data.loc2glb,2);
+    if config.dimension == 1
+        np_to_type = Dict([(2,3)]); # line
+    elseif config.dimension == 2
+        np_to_type = Dict([(3,5),(4,9)]); # triangle, quad
+    else
+        np_to_type = Dict([(4,10),(8,12)]); # tet, hex
+    end
     
-    # N = size(vars[1].values, 2); # number of points
-    # ncells = size(grid_data.loc2glb, 2); # number of elements
+    cells = Array{WriteVTK.MeshCell,1}(undef, nel);
+    for ei=1:nel
+        nvertex = 0;
+        for vi=1:length(grid_data.glbvertex[:,ei])
+            if grid_data.glbvertex[vi,ei] > 0
+                nvertex = nvertex+1;
+            else
+                break;
+            end
+        end
+        if nvertex < 2
+            printerr("Found element with too few vertices when writing VTK output: el="*string(ei)*", vertexmap="*string(grid_data.glbvertex[:,ei]));
+            return;
+        end
+        cell_type = np_to_type[nvertex];
+        cells[ei] = WriteVTK.MeshCell(VTKCellType(cell_type), grid_data.glbvertex[:,ei]);
+    end
     
-    # file.println("# vtk DataFile Version 3.0");
-    # file.println("Output from Femshop");
-    # file.println(format);
-    # file.println("DATASET STRUCTURED_GRID");
-    # s
-    # file.println("POINTS "*string(N)*" double");
+    # Initialize the file
+    vtkfile = vtk_grid(file, grid_data.allnodes, cells, ascii=ascii);
     
-    # file.println("CELLS "*string(ncells)*" double");
+    # Add values
+    if typeof(vars) <: Array
+        for vi=1:length(vars)
+            if length(vars[vi].symvar.vals) > 1
+                for ci=1:length(vars[vi].symvar.vals)
+                    compname = string(vars[vi].symbol) * "_" * string(ci);
+                    vtkfile[compname] = vars[vi].values[ci,:];
+                end
+            else
+                vtkfile[string(vars[vi].symbol)] = vars[vi].values;
+            end
+        end
+    else
+        if length(vars.symvar.vals) > 1
+            for ci=1:length(vars.symvar.vals)
+                compname = string(vars.symbol) * "_" * string(ci);
+                vtkfile[compname] = vars.values[ci,:];
+            end
+        else
+            vtkfile[string(vars.symbol)] = vars[vi].values;
+        end
+    end
+    
+    return vtk_save(vtkfile);
 end
