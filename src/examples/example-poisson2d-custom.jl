@@ -12,7 +12,7 @@ init_femshop("poisson2dcustomnew");
 useLog("poisson2dcustomnewlog")
 
 # Generate for the target in customtarget.jl
-generateFor("customtarget_new.jl")
+generateFor("customtarget.jl")
 
 # Set up the configuration (order doesn't matter)
 domain(2)

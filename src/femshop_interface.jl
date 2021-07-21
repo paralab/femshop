@@ -631,7 +631,7 @@ function solve(var, nlvar=nothing; nonlinear=false)
     global time_stepper; # This should not be necessary. It will go away eventually
     
     # Generate files or solve directly
-    if !(generate_external && (language == JULIA || language == 0)) # if an external code gen target is ready
+    if !(!generate_external && (language == JULIA || language == 0)) # if an external code gen target is ready
         if typeof(var) <: Array
             varind = var[1].index;
         else
@@ -789,7 +789,7 @@ end
 
 # When using cachesim, this will be used to simulate the solve.
 function cachesimSolve(var, nlvar=nothing; nonlinear=false)
-    if !(generate_external && (language == JULIA || language == 0))
+    if !(!generate_external && (language == JULIA || language == 0))
         printerr("Cachesim solve is only ready for Julia direct solve");
     else
         if typeof(var) <: Array

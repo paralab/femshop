@@ -124,6 +124,7 @@ function set_included_gen_target(lang, framework, dirpath, name; head="")
     global gen_framework = framework;
     global output_dir = dirpath;
     global project_name = name;
+    global generate_external = true;
     init_codegenerator(dirpath, name, head);
     
     # Need to set these three functions
@@ -140,6 +141,7 @@ function set_custom_gen_target(lang_elements, code_layer, file_maker, dirpath, n
     global gen_framework = CUSTOM_GEN_TARGET;
     global output_dir = dirpath;
     global project_name = name;
+    global generate_external = true;
     init_code_generator(dirpath, name, head);
     set_generation_target(lang_elements, code_layer, file_maker);
 end
