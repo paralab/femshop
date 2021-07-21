@@ -135,7 +135,7 @@ end
 # Setting a custom target requires three functions
 # 1. get_external_language_elements() - file extensions, comment chars etc.
 # 2. generate_external_code_layer(var, entities, terms, lorr, vors) - Turns symbolic expressions into code
-# 3. generate_external_files(lhs_vol, lhs_surf, rhs_vol, rhs_surf) - Writes all files based on generated code
+# 3. generate_external_files(var, lhs_vol, lhs_surf, rhs_vol, rhs_surf) - Writes all files based on generated code
 function set_custom_gen_target(lang_elements, code_layer, file_maker, dirpath, name; head="")
     global language = CUSTOM_GEN_TARGET;
     global gen_framework = CUSTOM_GEN_TARGET;

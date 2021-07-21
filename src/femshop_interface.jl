@@ -23,7 +23,7 @@ function generateFor(lang; filename=project_name, header="")
         # This file must include these three functions:
         # 1. get_external_language_elements() - file extensions, comment chars etc.
         # 2. generate_external_code_layer(var, entities, terms, lorr, vors) - Turns symbolic expressions into code
-        # 3. generate_external_files(lhs_vol, lhs_surf, rhs_vol, rhs_surf) - Writes all files based on generated code
+        # 3. generate_external_files(var, lhs_vol, lhs_surf, rhs_vol, rhs_surf) - Writes all files based on generated code
         include(lang);
         set_custom_gen_target(get_external_language_elements, generate_external_code_layer, generate_external_files, outputDirPath, filename, head=header);
     else
@@ -637,7 +637,7 @@ function solve(var, nlvar=nothing; nonlinear=false)
         else
             varind = var.index;
         end
-        generate_all_files(bilinears[varind], face_bilinears[varind], linears[varind], face_linears[varind]);
+        generate_all_files(var, bilinears[varind], face_bilinears[varind], linears[varind], face_linears[varind]);
         
     else
         if typeof(var) <: Array

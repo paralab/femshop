@@ -30,24 +30,6 @@ import ..Femshop: SymExpression, SymEntity
 import ..Femshop: CachesimOut, use_cachesim
 import ..Femshop: custom_gen_funcs
 
-# Holds a set of file streams for generated code
-# mutable struct Genfiles
-#     main;       # Runs the computation
-#     config;     # global configuration
-#     problem;    # global problem specification
-#     mesh;       # contains the mesh CODE
-#     meshdata;   # contains the refel/mesh/grid DATA
-#     genfunction;# Generated functions
-#     bilinear;   # bilinear function: bilinear(args) returns elemental matrix
-#     linear;     # linear function: linear(args) returns elemental vector
-#     stepper;    # optional time stepper for time dependent problems
-#     output;     # output
-    
-#     files;      # an iterable list of these files
-    
-#     Genfiles(m,c,p,n,nd,g,b,l,s,o) = new(m,c,p,n,nd,g,b,l,s,o,[m,c,p,n,nd,g,b,l,s,o]);
-# end
-
 genDir = "";
 genFileName = "";
 genFileExtension = "";
@@ -65,7 +47,7 @@ using_custom_target = false;
 # These are reassigned in set_custom_target()
 function default_language_elements_function() return (".jl", "#", ["#=", "=#"]) end;
 function default_code_layer_function(var, entities, terms, lorr, vors) return ("","") end;
-function default_code_files_function(lhs_vol, lhs_surf, rhs_vol, rhs_surf) return 0 end;
+function default_code_files_function(var, lhs_vol, lhs_surf, rhs_vol, rhs_surf) return 0 end;
 
 # general code generator functions
 include("code_generator_utils.jl");
@@ -241,7 +223,7 @@ end
 #     end
 # end
 
-function generate_all_files(lhs_vol, lhs_surf, rhs_vol, rhs_surf; parameters=0)
+function generate_all_files(var, lhs_vol, lhs_surf, rhs_vol, rhs_surf; parameters=0)
     if language == CPP
         if gen_framework == DENDRO
             if parameters == 0
@@ -284,7 +266,7 @@ function generate_all_files(lhs_vol, lhs_surf, rhs_vol, rhs_surf; parameters=0)
         end
         
     elseif using_custom_target
-        external_generate_code_files_function(lhs_vol, lhs_surf, rhs_vol, rhs_surf);
+        external_generate_code_files_function(var, lhs_vol, lhs_surf, rhs_vol, rhs_surf);
         
     end
 end
