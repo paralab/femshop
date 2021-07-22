@@ -165,7 +165,7 @@ function output_values_vtk(vars, file, ascii)
                 vtkfile[compname] = vars.values[ci,:];
             end
         else
-            vtkfile[string(vars.symbol)] = vars[vi].values;
+            vtkfile[string(vars.symbol)] = vars.values;
         end
     end
     

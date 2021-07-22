@@ -5,7 +5,8 @@ Many of them simply call corresponding functions in jl.
 export generateFor, useLog, domain, solverType, functionSpace, trialSpace, testSpace, 
         nodeType, timeStepper, setSteps, matrixFree, customOperator, customOperatorFile,
         mesh, exportMesh, variable, coefficient, parameter, testSymbol, boundary, addBoundaryID,
-        referencePoint, timeInterval, initial, weakForm, fluxAndSource, flux, source, exportCode, importCode,
+        referencePoint, timeInterval, initial, weakForm, fluxAndSource, flux, source, 
+        exportCode, importCode, printLatex,
         solve, cachesimSolve, finalize_femshop, cachesim, output_values,
         morton_nodes, hilbert_nodes, tiled_nodes, morton_elements, hilbert_elements, 
         tiled_elements, ef_nodes, random_nodes, random_elements
@@ -275,63 +276,78 @@ function weakForm(var, wf)
     # Here we build a SymExpression for each of the pieces. 
     # This is an Expr tree that is passed to the code generator.
     if length(result_exprs) == 4 # has surface terms
-        (lhs_symexpr, rhs_symexpr, lhs_surf_symexpr, rhs_surf_symexpr) = build_symexpressions(wfvars, lhs_expr, rhs_expr, lhs_surf_expr, rhs_surf_expr);
-        log_entry("lhs volume symexpression:\n"*string(lhs_symexpr));
-        log_entry("lhs surface symexpression:\n"*string(lhs_surf_symexpr));
-        log_entry("rhs volume symexpression:\n"*string(rhs_symexpr));
-        log_entry("rhs surface symexpression:\n"*string(rhs_surf_symexpr));
+        (lhs_symexpr, rhs_symexpr, lhs_surf_symexpr, rhs_surf_symexpr) = build_symexpressions(wfvars, lhs_expr, rhs_expr, lhs_surf_expr, rhs_surf_expr, remove_zeros=true);
+        set_symexpressions(var, lhs_symexpr, LHS, "volume");
+        set_symexpressions(var, lhs_surf_symexpr, LHS, "surface");
+        set_symexpressions(var, rhs_symexpr, RHS, "volume");
+        set_symexpressions(var, rhs_surf_symexpr, RHS, "surface");
+        
+        log_entry("lhs volume symexpression:\n\t"*string(lhs_symexpr));
+        log_entry("lhs surface symexpression:\n\t"*string(lhs_surf_symexpr));
+        log_entry("rhs volume symexpression:\n\t"*string(rhs_symexpr));
+        log_entry("rhs surface symexpression:\n\t"*string(rhs_surf_symexpr));
+        
+        log_entry("Latex equation:\n\t\t \\int_{K}"*symexpression_to_latex(lhs_symexpr)*
+                    " dx + \\int_{\\partialK}"*symexpression_to_latex(lhs_surf_symexpr)*
+                    " ds = \\int_{K}"*symexpression_to_latex(rhs_symexpr)*
+                    " dx + \\int_{\\partialK}"*symexpression_to_latex(rhs_surf_symexpr)*" ds");
     else
-        (lhs_symexpr, rhs_symexpr) = build_symexpressions(wfvars, lhs_expr, rhs_expr);
-        log_entry("lhs symexpression:\n"*string(lhs_symexpr));
-        log_entry("rhs symexpression:\n"*string(rhs_symexpr));
+        (lhs_symexpr, rhs_symexpr) = build_symexpressions(wfvars, lhs_expr, rhs_expr, remove_zeros=true);
+        set_symexpressions(var, lhs_symexpr, LHS, "volume");
+        set_symexpressions(var, rhs_symexpr, RHS, "volume");
+        
+        log_entry("lhs symexpression:\n\t"*string(lhs_symexpr));
+        log_entry("rhs symexpression:\n\t"*string(rhs_symexpr));
+        
+        log_entry("Latex equation:\n\t\t\$ \\int_{K}"*symexpression_to_latex(lhs_symexpr)*
+                    " dx = \\int_{K}"*symexpression_to_latex(rhs_symexpr)*" dx");
     end
     
-    
-    ########## This part simply makes a string for printing #############
-    # make a string for the expression
-    if typeof(lhs_expr[1]) <: Array
-        lhsstring = "";
-        rhsstring = "";
-        for i=1:length(lhs_expr)
-            lhsstring = lhsstring*"lhs"*string(i)*" = "*string(lhs_expr[i][1]);
-            rhsstring = rhsstring*"rhs"*string(i)*" = "*string(rhs_expr[i][1]);
-            for j=2:length(lhs_expr[i])
-                lhsstring = lhsstring*" + "*string(lhs_expr[i][j]);
-            end
-            for j=2:length(rhs_expr[i])
-                rhsstring = rhsstring*" + "*string(rhs_expr[i][j]);
-            end
-            if length(result_exprs) == 4
-                for j=1:length(lhs_surf_expr)
-                    lhsstring = lhsstring*" + surface("*string(lhs_surf_expr[j])*")";
-                end
-                for j=1:length(rhs_surf_expr)
-                    rhsstring = rhsstring*" + surface("*string(rhs_surf_expr[j])*")";
-                end
-            end
-            lhsstring = lhsstring*"\n";
-            rhsstring = rhsstring*"\n";
-        end
-    else
-        lhsstring = "lhs = "*string(lhs_expr[1]);
-        rhsstring = "rhs = "*string(rhs_expr[1]);
-        for j=2:length(lhs_expr)
-            lhsstring = lhsstring*" + "*string(lhs_expr[j]);
-        end
-        for j=2:length(rhs_expr)
-            rhsstring = rhsstring*" + "*string(rhs_expr[j]);
-        end
-        if length(result_exprs) == 4
-            for j=1:length(lhs_surf_expr)
-                lhsstring = lhsstring*" + surface("*string(lhs_surf_expr[j])*")";
-            end
-            for j=1:length(rhs_surf_expr)
-                rhsstring = rhsstring*" + surface("*string(rhs_surf_expr[j])*")";
-            end
-        end
-    end
-    log_entry("Weak form, symbolic layer:\n"*string(lhsstring)*"\n"*string(rhsstring));
-    ################ string ####################################
+    # ########## This part simply makes a string for printing #############
+    # # make a string for the expression
+    # if typeof(lhs_expr[1]) <: Array
+    #     lhsstring = "";
+    #     rhsstring = "";
+    #     for i=1:length(lhs_expr)
+    #         lhsstring = lhsstring*"lhs"*string(i)*" = "*string(lhs_expr[i][1]);
+    #         rhsstring = rhsstring*"rhs"*string(i)*" = "*string(rhs_expr[i][1]);
+    #         for j=2:length(lhs_expr[i])
+    #             lhsstring = lhsstring*" + "*string(lhs_expr[i][j]);
+    #         end
+    #         for j=2:length(rhs_expr[i])
+    #             rhsstring = rhsstring*" + "*string(rhs_expr[i][j]);
+    #         end
+    #         if length(result_exprs) == 4
+    #             for j=1:length(lhs_surf_expr)
+    #                 lhsstring = lhsstring*" + surface("*string(lhs_surf_expr[j])*")";
+    #             end
+    #             for j=1:length(rhs_surf_expr)
+    #                 rhsstring = rhsstring*" + surface("*string(rhs_surf_expr[j])*")";
+    #             end
+    #         end
+    #         lhsstring = lhsstring*"\n";
+    #         rhsstring = rhsstring*"\n";
+    #     end
+    # else
+    #     lhsstring = "lhs = "*string(lhs_expr[1]);
+    #     rhsstring = "rhs = "*string(rhs_expr[1]);
+    #     for j=2:length(lhs_expr)
+    #         lhsstring = lhsstring*" + "*string(lhs_expr[j]);
+    #     end
+    #     for j=2:length(rhs_expr)
+    #         rhsstring = rhsstring*" + "*string(rhs_expr[j]);
+    #     end
+    #     if length(result_exprs) == 4
+    #         for j=1:length(lhs_surf_expr)
+    #             lhsstring = lhsstring*" + surface("*string(lhs_surf_expr[j])*")";
+    #         end
+    #         for j=1:length(rhs_surf_expr)
+    #             rhsstring = rhsstring*" + surface("*string(rhs_surf_expr[j])*")";
+    #         end
+    #     end
+    # end
+    # log_entry("Weak form, symbolic layer:\n\t"*string(lhsstring)*"\n"*string(rhsstring));
+    # ################ string ####################################
     
     # change symbolic layer into code layer
     (lhs_string, lhs_code) = generate_code_layer(lhs_symexpr, var, LHS, "volume", config.solver_type, language, gen_framework);
@@ -411,10 +427,14 @@ function flux(var, fex)
     
     # Here we build a SymExpression for each of the pieces. 
     # This is passed to the code generator.
-    (lhs_symexpr, rhs_symexpr) = build_symexpressions(symvars, flhs_expr, frhs_expr);
+    (lhs_symexpr, rhs_symexpr) = build_symexpressions(symvars, flhs_expr, frhs_expr, remove_zeros=true);
+    set_symexpressions(var, lhs_symexpr, LHS, "surface");
+    set_symexpressions(var, rhs_symexpr, RHS, "surface");
     
-    log_entry("flux lhs symexpression:\n"*string(lhs_symexpr));
-    log_entry("flux rhs symexpression:\n"*string(rhs_symexpr));
+    log_entry("flux lhs symexpression:\n\t"*string(lhs_symexpr));
+    log_entry("flux rhs symexpression:\n\t"*string(rhs_symexpr));
+    log_entry("Latex flux equation:\n\t\t \\int_{\\partialK}"*symexpression_to_latex(lhs_symexpr)*
+                    " ds - \\int_{\\partialK}"*symexpression_to_latex(rhs_symexpr)*" ds");
     
     # change symbolic layer into code layer
     (lhs_string, lhs_code) = generate_code_layer(lhs_symexpr, var, LHS, "surface", FV, language, gen_framework);
@@ -472,10 +492,14 @@ function source(var, sex)
     
     # Here we build a SymExpression for each of the pieces. 
     # This is passed to the code generator.
-    (lhs_symexpr, rhs_symexpr) = build_symexpressions(symvars, slhs_expr, srhs_expr);
+    (lhs_symexpr, rhs_symexpr) = build_symexpressions(symvars, slhs_expr, srhs_expr, remove_zeros=true);
+    set_symexpressions(var, lhs_symexpr, LHS, "volume");
+    set_symexpressions(var, rhs_symexpr, RHS, "volume");
     
-    log_entry("source lhs symexpression:\n"*string(lhs_symexpr));
-    log_entry("source rhs symexpression:\n"*string(rhs_symexpr));
+    log_entry("source lhs symexpression:\n\t"*string(lhs_symexpr));
+    log_entry("source rhs symexpression:\n\t"*string(rhs_symexpr));
+    log_entry("Latex source equation:\n\t\t \\int_{K} -"*symexpression_to_latex(lhs_symexpr)*
+                    " dx + \\int_{K}"*symexpression_to_latex(rhs_symexpr)*" dx");
     
     # change symbolic layer into code code_layer
     (lhs_string, lhs_code) = generate_code_layer(lhs_symexpr, var, LHS, "volume", FV, language, gen_framework);
@@ -619,6 +643,108 @@ function importCode(filename)
     else
         # TODO non-julia
     end
+end
+
+# Prints a Latex string for the equation for a variable
+function printLatex(var)
+    if typeof(var) <: Array
+        var = var[1];
+        varname = "["*string(var[1].symbol);
+        for i=2:length(var)
+            varname *= ", "*string(var[i].symbol);
+        end
+        varname *= "]";
+    else
+        varname = string(var.symbol);
+    end
+    println("Latex equation for "*varname*":");
+    
+    if config.solver_type == FV
+        result = raw"$" * " \\frac{d}{dt}"*string(var.symbol);
+        if !(symexpressions[1][var.index] === nothing)
+            result *= " + \\int_{K}"*symexpression_to_latex(symexpressions[1][var.index])*" dx";
+        end
+        if !(symexpressions[2][var.index] === nothing)
+            result *= " + \\int_{\\partialK}"*symexpression_to_latex(symexpressions[2][var.index])*" ds";
+        end
+        result *= " = ";
+        if !(symexpressions[3][var.index] === nothing)
+            result *= "\\int_{K}"*symexpression_to_latex(symexpressions[3][var.index])*" dx";
+        end
+        if !(symexpressions[4][var.index] === nothing)
+            if !(symexpressions[3][var.index] === nothing)
+                result *= " + ";
+            end
+            result *= "\\int_{\\partialK}"*symexpression_to_latex(symexpressions[4][var.index])*" ds";
+        end
+        if symexpressions[3][var.index] === nothing && symexpressions[4][var.index] === nothing
+            result *= "0";
+        end
+        result *= raw"$";
+    else
+        if prob.time_dependent
+            result = raw"$ \left[";
+            if !(symexpressions[1][var.index] === nothing)
+                result *= "\\int_{K}"*symexpression_to_latex(symexpressions[1][var.index])*" dx";
+            end
+            if !(symexpressions[2][var.index] === nothing)
+                if !(symexpressions[1][var.index] === nothing)
+                    result *= " + ";
+                end
+                result *= "\\int_{\\partialK}"*symexpression_to_latex(symexpressions[2][var.index])*" ds";
+            end
+            if symexpressions[1][var.index] === nothing && symexpressions[2][var.index] === nothing
+                result *= "0";
+            end
+            result *= "\\right]_{t+dt} = \\left[";
+            if !(symexpressions[3][var.index] === nothing)
+                result *= "\\int_{K}"*symexpression_to_latex(symexpressions[3][var.index])*" dx";
+            end
+            if !(symexpressions[4][var.index] === nothing)
+                if !(symexpressions[3][var.index] === nothing)
+                    result *= " + ";
+                end
+                result *= "\\int_{\\partialK}"*symexpression_to_latex(symexpressions[4][var.index])*" ds";
+            end
+            if symexpressions[3][var.index] === nothing && symexpressions[4][var.index] === nothing
+                result *= "0";
+            end
+            result *= raw"\right]_{t} $";
+            
+        else
+            result = raw"$";
+            if !(symexpressions[1][var.index] === nothing)
+                result *= "\\int_{K}"*symexpression_to_latex(symexpressions[1][var.index])*" dx";
+            end
+            if !(symexpressions[2][var.index] === nothing)
+                if !(symexpressions[1][var.index] === nothing)
+                    result *= " + ";
+                end
+                result *= "\\int_{\\partialK}"*symexpression_to_latex(symexpressions[2][var.index])*" ds";
+            end
+            if symexpressions[1][var.index] === nothing && symexpressions[2][var.index] === nothing
+                result *= "0";
+            end
+            result *= " = ";
+            if !(symexpressions[3][var.index] === nothing)
+                result *= "\\int_{K}"*symexpression_to_latex(symexpressions[3][var.index])*" dx";
+            end
+            if !(symexpressions[4][var.index] === nothing)
+                if !(symexpressions[3][var.index] === nothing)
+                    result *= " + ";
+                end
+                result *= "\\int_{\\partialK}"*symexpression_to_latex(symexpressions[4][var.index])*" ds";
+            end
+            if symexpressions[3][var.index] === nothing && symexpressions[4][var.index] === nothing
+                result *= "0";
+            end
+            result *= raw"$";
+        end
+    end
+    println(result);
+    println("");
+    
+    return result;
 end
 
 # This will either solve the problem or generate the code for an external target.

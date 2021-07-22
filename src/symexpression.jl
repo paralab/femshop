@@ -48,11 +48,154 @@ function symentity_string(a::SymEntity)
     return result;
 end
 
-function build_symexpressions(var, lhsvol, rhsvol, lhssurf=nothing, rhssurf=nothing)
-    lhsvolsym = build_symexpression(var, lhsvol, "L", "V");
-    rhsvolsym = build_symexpression(var, rhsvol, "R", "V");
-    lhssurfsym = build_symexpression(var, lhssurf, "L", "S");
-    rhssurfsym = build_symexpression(var, rhssurf, "R", "S");
+# Make a Latex string for the expression
+# Recursively traverses the tree turning each piece into latex.
+function symexpression_to_latex(ex)
+    result = "";
+    
+    if typeof(ex) <: Array
+        if length(ex) < 1
+            return "";
+        end
+        
+        if typeof(ex[1]) <: Array
+            result = "\\left[";
+            for i=1:length(ex)
+                if i > 1
+                    result *= ", ";
+                end
+                result *= symexpression_to_latex(ex[i]);
+            end
+            result *= "\\right]";
+            
+        else # The innermost array is an array of added terms
+            result = symexpression_to_latex(ex[1]);
+            for i=2:length(ex)
+                result *= " + " * symexpression_to_latex(ex[i]);
+            end
+        end
+        
+    elseif typeof(ex) == SymExpression
+        result = symexpression_to_latex(ex.tree);
+        
+    elseif typeof(ex) == Expr
+        if ex.head === :call
+            if ex.args[1] in [:+, :.+, :-, :.-, :*, .*] && length(ex.args) > 2
+                if typeof(ex.args[2]) == Expr
+                    result *= "\\left(";
+                end
+                result *= symexpression_to_latex(ex.args[2]);
+                if typeof(ex.args[2]) == Expr
+                    result *= "\\right)";
+                end
+                for i=3:length(ex.args)
+                    result *= " "*string(ex.args[1])[end] * " ";
+                    if typeof(ex.args[i]) == Expr
+                        result *= "\\left(";
+                    end
+                    result *= symexpression_to_latex(ex.args[i]);
+                    if typeof(ex.args[i]) == Expr
+                        result *= "\\right)";
+                    end
+                end
+                
+            elseif ex.args[1] in [:-, :.-] && length(ex.args) == 2 # negative
+                result *= "-";
+                if typeof(ex.args[2]) == Expr
+                    result *= "\\left(";
+                end
+                result *= symexpression_to_latex(ex.args[2]);
+                if typeof(ex.args[2]) == Expr
+                    result *= "\\right)";
+                end
+                
+            elseif ex.args[1] in [:/, :./]
+                top = symexpression_to_latex(ex.args[2]);
+                if length(ex.args) > 3
+                    # multiply them first
+                    newex = :(a*b);
+                    newex.args = [:*];
+                    append!(newex.args, ex.args[3:end]);
+                    bottom = symexpression_to_latex(newex);
+                else
+                    bottom = symexpression_to_latex(ex.args[3]);
+                end
+                
+                result = "\\frac{" * top * "}{" * bottom * "}";
+                
+            elseif ex.args[1] in [:^, :.^]
+                bottom = symexpression_to_latex(ex.args[2]);
+                power = symexpression_to_latex(ex.args[3]);
+                result = bottom * "^{" * power * "}";
+                
+            elseif ex.args[1] in [:sqrt]
+                result = "\\sqrt{" * symexpression_to_latex(ex.args[2]) * "}";
+                
+            elseif ex.args[1] in [:sin, :cos, :tan]
+                result = "\\"*string(ex.args[1]) * "\\left(" * symexpression_to_latex(ex.args[2]) * "\\right)";
+                
+            elseif ex.args[1] === :abs
+                result = "\\left|" * symexpression_to_latex(ex.args[2]) * "\\right|";
+                
+            else
+                result = string(ex.args[1]) * "\\left(" * symexpression_to_latex(ex.args[2]) * "\\right)";
+            end
+            
+        elseif ex.head === :.
+            # This is a broadcast symbol. args[1] is the operator, args[2] is a tuple for the operator
+            # eg. change :(sin.(a)) to :(sin(a))
+            newex = Expr(:call, ex.args[1]);
+            append!(newex.args, ex.args[2].args);
+            result = symexpression_to_latex(newex);
+            
+        else
+            # There are some other possible symbols, but they could be ignored
+            result = symexpression_to_latex(ex.args[1]);
+        end
+        
+    elseif typeof(ex) == SymEntity
+        # Apply derivatives
+        dimchars = ["x","y","z"];
+        name = ex.name;
+        if name == "FACENORMAL1"
+            name = "normal";
+        elseif name == "FACENORMAL2"
+            name = "-normal";
+        end
+        if ex.index > 0
+            result = name * "_{"*string(ex.index);
+            if length(ex.derivs) > 0
+                result *= ","
+                for i=1:length(ex.derivs)
+                    result *= dimchars[ex.derivs[i]];
+                end
+            end
+            result *= "}";
+        else
+            result = name;
+        end
+        if "DGSIDE1" in ex.flags
+            result *= "^{+}";
+        elseif "DGSIDE2" in ex.flags
+            result *= "^{-}";
+        end
+        
+    elseif typeof(ex) <: Number
+        result = string(ex);
+        
+    else
+        result = string(ex);
+    end
+    
+    return result;
+end
+
+# Builds all of them one at a time.
+function build_symexpressions(var, lhsvol, rhsvol, lhssurf=nothing, rhssurf=nothing; remove_zeros=false)
+    lhsvolsym = build_symexpression(var, lhsvol, "L", "V", remove_zero_in_array=remove_zeros);
+    rhsvolsym = build_symexpression(var, rhsvol, "R", "V", remove_zero_in_array=remove_zeros);
+    lhssurfsym = build_symexpression(var, lhssurf, "L", "S", remove_zero_in_array=remove_zeros);
+    rhssurfsym = build_symexpression(var, rhssurf, "R", "S", remove_zero_in_array=remove_zeros);
     
     if lhssurf === nothing && rhssurf === nothing
         return (lhsvolsym, rhsvolsym);
@@ -61,7 +204,8 @@ function build_symexpressions(var, lhsvol, rhsvol, lhssurf=nothing, rhssurf=noth
     end
 end
 
-function build_symexpression(var, ex, lorr, vors)
+# Builds one symexpression from a SymEngine object
+function build_symexpression(var, ex, lorr, vors; remove_zero_in_array=false)
     if ex === nothing
         return nothing
     end
@@ -69,7 +213,9 @@ function build_symexpression(var, ex, lorr, vors)
     if typeof(ex) <: Array
         exarray = [];
         for i=1:length(ex)
-            push!(exarray, build_symexpression(var, ex[i], lorr, vors));
+            if !(remove_zero_in_array && ex[i] == 0)
+                push!(exarray, build_symexpression(var, ex[i], lorr, vors, remove_zero_in_array=remove_zero_in_array));
+            end
         end
         return exarray;
         

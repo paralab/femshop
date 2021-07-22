@@ -12,7 +12,8 @@ export @generateFor, @domain, @mesh, @solver, @stepper, @setSteps, @functionSpac
 export init_femshop, set_language, set_custom_gen_target, dendro, set_solver, set_stepper, set_specified_steps, set_matrix_free,
         reformat_for_stepper, reformat_for_stepper_fv,
         add_mesh, output_mesh, add_boundary_ID, add_test_function, 
-        add_initial_condition, add_boundary_condition, add_reference_point, set_rhs, set_lhs, set_lhs_surface, set_rhs_surface
+        add_initial_condition, add_boundary_condition, add_reference_point, set_rhs, set_lhs, set_lhs_surface, set_rhs_surface,
+        set_symexpressions
 export build_cache_level, build_cache, build_cache_auto
 export sp_parse
 export generate_code_layer, generate_code_layer_surface, generate_code_layer_fv
@@ -58,6 +59,8 @@ face_linears = [];
 #lhs
 bilinears = [];
 face_bilinears = [];
+#symbolic layer
+symexpressions = [[],[],[],[]];
 #time stepper
 time_stepper = nothing;
 specified_dt = 0;
@@ -107,6 +110,7 @@ function init_femshop(name="unnamedProject")
     global bilinears = [];
     global face_linears = [];
     global face_bilinears = [];
+    global symexpressions = [[],[],[],[]];
     global time_stepper = nothing;
     global specified_dt = 0;
     global specified_Nsteps = 0;
@@ -282,6 +286,10 @@ function add_variable(var)
     global bilinears = [bilinears; nothing];
     global face_linears = [face_linears; nothing];
     global face_bilinears = [face_bilinears; nothing];
+    global symexpressions[1] = [symexpressions[1]; nothing];
+    global symexpressions[2] = [symexpressions[2]; nothing];
+    global symexpressions[3] = [symexpressions[3]; nothing];
+    global symexpressions[4] = [symexpressions[4]; nothing];
 
     log_entry("Added variable: "*string(var.symbol)*" of type: "*var.type*", location: "*var.location, 2);
 end
@@ -562,6 +570,36 @@ function set_lhs_surface(var, code="")
         else
             face_bilinears[var.index] = code;
         end
+    end
+end
+
+function set_symexpressions(var, ex, lorr, vors)
+    # If the ex is empty, don't set anything
+    if ex == [] || ex == [[]]
+        return;
+    end
+    
+    if typeof(var) <:Array
+        for i=1:length(var)
+            set_symexpressions(var[i], ex, lorr, vors);
+        end
+        
+    else
+        global symexpressions;
+        if lorr == LHS
+            if vors == "volume"
+                ind = 1;
+            else
+                ind = 2;
+            end
+        else # rhs
+            if vors == "volume"
+                ind = 3;
+            else
+                ind = 4;
+            end
+        end
+        symexpressions[ind][var.index] = ex;
     end
 end
 
