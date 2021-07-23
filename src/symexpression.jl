@@ -137,8 +137,19 @@ function symexpression_to_latex(ex)
             elseif ex.args[1] === :abs
                 result = "\\left|" * symexpression_to_latex(ex.args[2]) * "\\right|";
                 
+            elseif ex.args[1] === :conditional_function
+                result =  "conditional\\left(" * symexpression_to_latex(ex.args[2]);
+                for i=3:length(ex.args)
+                    result *= ", " * symexpression_to_latex(ex.args[i]);
+                end
+                result *= "\\right)";
+                
             else
-                result = string(ex.args[1]) * "\\left(" * symexpression_to_latex(ex.args[2]) * "\\right)";
+                result = string(ex.args[1]) * "\\left(" * symexpression_to_latex(ex.args[2]);
+                for i=3:length(ex.args)
+                    result *= ", " * symexpression_to_latex(ex.args[i]);
+                end
+                result *= "\\right)";
             end
             
         elseif ex.head === :.
@@ -164,6 +175,11 @@ function symexpression_to_latex(ex)
         end
         if ex.index > 0
             result = name * "_{"*string(ex.index);
+            if "DGSIDE1" in ex.flags
+                result *= "+";
+            elseif "DGSIDE2" in ex.flags
+                result *= "-";
+            end
             if length(ex.derivs) > 0
                 result *= ","
                 for i=1:length(ex.derivs)
@@ -174,11 +190,7 @@ function symexpression_to_latex(ex)
         else
             result = name;
         end
-        if "DGSIDE1" in ex.flags
-            result *= "^{+}";
-        elseif "DGSIDE2" in ex.flags
-            result *= "^{-}";
-        end
+        
         
     elseif typeof(ex) <: Number
         result = string(ex);
@@ -227,8 +239,8 @@ function build_symexpression(var, ex, lorr, vors; remove_zero_in_array=false)
         # Then traverse it to find SymTerm leaves and build a SymExpression
         (newex, sents) = extract_symentities(var, jex);
         
-        # Change all math operators to broadcast(dot) versions
-        newex = broadcast_all_ops(newex);
+        # Replace some special operators with their real expressions
+        newex = replace_special_ops(newex);
         
         # If using FEM, reorder factors for easier generation
         if config.solver_type == CG || config.solver_type == DG
@@ -392,17 +404,47 @@ function get_derivative_mods(mods)
     return (derivs, others);
 end
 
-# changes all ops to broadcast versions (:+ -> :.+, sqrt(a) -> Expr(:., :sqrt, :((a,))))
-function broadcast_all_ops(ex)
+# changes special operators into the intended expressions
+function replace_special_ops(ex)
     if typeof(ex) == Expr
         newex = copy(ex);
+        for i=1:length(ex.args)
+            newex.args[i] = replace_special_ops(newex.args[i]);
+        end
         
+        # # turn conditional(a,b,c) into a ? b : c
+        # if newex.args[1] === :conditional && length(newex.args) == 4
+        #     # ifexpr = :(a ? b : c);
+        #     # ifexpr.args[1] = newex.args[2];
+        #     # ifexpr.args[2] = newex.args[3];
+        #     # ifexpr.args[3] = newex.args[4];
+        #     # newex = ifexpr;
+        #     newex.args[1] = :conditional_function; # See function below
+        # end
         
+    elseif typeof(ex) == Symbol
+        # check against these special ones that need to be replaced
+        # This will eventually contain more complex things and conditionals.
+        specials = [:symbolmin, :symbolmax, :isgreaterthan, :islessthan, :conditional];
+        replacements = Dict([(:symbolmin, :min), (:symbolmax, :max), (:isgreaterthan, :>), (:islessthan, :<), (:conditional, :conditional_function)]);
+        if ex in specials
+            newex = replacements[ex];
+        else
+            newex = ex;
+        end
     else
         newex = ex;
     end
     
     return newex;
+end
+
+function conditional_function(a, b, c)
+    if a
+        return b;
+    else
+        return c;
+    end
 end
 
 # Order the factors in each term so that the test function is first and the unknown(when present) is second

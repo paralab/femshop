@@ -37,6 +37,14 @@ include("symtype.jl");
 include("symoperator.jl");
 include("basic_ops.jl");
 
+# These are special function symbols that need to be defined.
+# They can be used in operators.
+@funs(conditional)
+@funs(symbolmin)
+@funs(symbolmax)
+@funs(isgreaterthan)
+@funs(islessthan)
+
 # a special operator for dealing with scalar multiplication when the scalar is in an array
 import Base.*
 function *(a::Array{Basic,1}, b::Array{Basic,1})
@@ -48,14 +56,9 @@ function *(a::Array{Basic,1}, b::Array{Basic,1})
         # This should be an error, but I will treat it as a dot product for lazy people
         return [transpose(a) * b];
     else
-        # un oh... How do I redirect this to the symengine method?
-        # This will be an error until I figure it out.
+        return SymEngine.*(a,b);
     end
 end
-# import Base.sqrt
-# function sqrt(a::Array{Basic,1})
-#     return a .^ (1//2);
-# end
 
 # Adds a single custom operator
 function add_custom_op(s, handle)
@@ -111,13 +114,11 @@ function sp_parse(ex, var)
     symex = insert_parameters(symex);
     # if debug println("insert parameters -> "*string(symex)); end
     log_entry("SP insert parameters -> "*string(symex), 3);
-    #log_entry("SP insert parameters -> \n"*latexify(symex), 3);
     
     # Replace symbols for variables, coefficients, test functions, and special operators
     symex = replace_symbols(symex);
     # if debug println("replace symbols -> "*string(symex)); end
     log_entry("SP replace symbols -> "*string(symex), 3);
-    #log_entry("SP replace symbols -> \n"*latexify(string(symex)), 3);
     
     # change some operators like ^ and / to broadcast versions .^ ./
     symex = broadcast_ops(symex);
@@ -126,12 +127,6 @@ function sp_parse(ex, var)
     symex = apply_ops(symex);
     # if debug println("apply ops -> "*string(symex)); end
     log_entry("SP apply ops -> "*string(symex), 3);
-    # tmp = "SP apply ops -> [\n";
-    # for i=1:length(symex)
-    #     #tmp *= latexify(string(symex[i])) * "\n";
-    # end
-    # tmp *= "]";
-    # log_entry(tmp, 3);
     
     # If the result of this is not in an array, put it in an array
     if !(typeof(symex) <: Array)
@@ -140,9 +135,7 @@ function sp_parse(ex, var)
     
     # Expand the expression and separate terms
     sterms = get_sym_terms(symex);
-    # if debug println("sterms = "*string(sterms)); end
     log_entry("SP sterms = "*string(sterms), 3);
-    #log_entry("SP sterms = \n"*latexify(string(sterms)), 3);
     
     # Check for time derivatives
     timederiv = check_for_dt(sterms);
@@ -691,6 +684,23 @@ function apply_negative(ex)
             return negex;
         end
     end
+end
+
+# Applies a string flag to all free_symbols in ex
+function apply_flag_to_all_symbols(flag, ex)
+    if typeof(ex) <: Array
+        for i=1:length(ex)
+            ex[i] = apply_flag_to_all_symbols(flag, ex[i]);
+        end
+        
+    elseif typeof(ex) <: Basic
+        symbs = free_symbols(ex);
+        for i=1:length(symbs)
+            ex = subs(ex, symbs[i], symbols(flag*"_"*string(symbs[i])));
+        end
+    end
+    
+    return ex;
 end
 
 end # module
