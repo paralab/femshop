@@ -43,7 +43,7 @@ face_wgdetj =args[15]; # quadrature weights*detJ
 time =       args[16]; # time for time dependent coefficients
 dt =         args[17]; # dt for time dependent problems
 
-Nfp = refel.Nfp[frefelind[1]]]; # number of face nodes
+Nfp = refel.Nfp[frefelind[1]]; # number of face nodes
 "
     end
     

@@ -270,10 +270,13 @@ function add_variable(var; var_array_size=[1], transpose_vals=false)
             val_size = (1, N);
         elseif var.type == VECTOR
             val_size = (config.dimension, N);
+            var_array_size = [config.dimension];
         elseif var.type == TENSOR
             val_size = (config.dimension*config.dimension, N);
+            var_array_size = [config.dimension, config.dimension];
         elseif var.type == SYM_TENSOR
             val_size = (Int((config.dimension*(config.dimension+1))/2), N);
+            var_array_size = [val_size[1]];
         elseif var.type == VAR_ARRAY
             push!(var_array_size, N);
             val_size = tuple(var_array_size);
@@ -294,7 +297,7 @@ function add_variable(var; var_array_size=[1], transpose_vals=false)
     end
     
     # make symbolic layer variable symbols
-    var.symvar = sym_var(string(var.symbol), var.type, config.dimension);
+    var.symvar = sym_var(string(var.symbol), var.type, config.dimension, array_size=var.array_size);
 
     global variables = [variables; var];
 

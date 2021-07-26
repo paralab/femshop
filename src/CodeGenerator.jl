@@ -68,40 +68,20 @@ include("generate_code_layer_fv_julia.jl");
 #include("generate_code_layer_surface.jl");
 
 #Matlab
-include("generate_matlab_utils.jl");
-include("generate_matlab_files.jl");
-include("generate_homg_files.jl");
-#C++
-include("generate_cpp_utils.jl");
-include("generate_dendro_files.jl");
+# include("generate_matlab_utils.jl");
+# include("generate_matlab_files.jl");
+# include("generate_homg_files.jl");
+# #C++
+# include("generate_cpp_utils.jl");
+# include("generate_dendro_files.jl");
+
+
+#### Note
+# default Dendro parameters
+# parameters = (5, 1, 0.3, 0.000001, 100);#(maxdepth, wavelet_tol, partition_tol, solve_tol, solve_max_iters)
+####
 
 function init_code_generator(dir, name, header)
-    # if lang == JULIA
-    #     global genFileExtension = ".jl";
-    #     global commentChar = "#";
-    #     global blockCommentChar = ["#="; "=#"];
-    #     log_entry("Set code generation language to Julia.");
-    # elseif lang == CPP
-    #     global genFileExtension = ".cpp";
-    #     global commentChar = "//";
-    #     global blockCommentChar = ["/*"; "*/"];
-    #     log_entry("Set code generation language to C++.");
-    # elseif lang == MATLAB
-    #     global genFileExtension = ".m";
-    #     global commentChar = "%";
-    #     global blockCommentChar = ["%{"; "%}"];
-    #     log_entry("Set code generation language to Matlab.");
-    # elseif using_custom_target
-    #     (ext, com, blo) = external_get_language_elements_function();
-    #     global genFileExtension = ext;
-    #     global commentChar = com;
-    #     global blockCommentChar = blo;
-    #     log_entry("Set code generation language to custom.");
-    # else
-    #     printerr("Invalid language, use JULIA, CPP, MATLAB");
-    #     return nothing;
-    # end
-    
     global genFileExtension = ".jl";
     global commentChar = "#";
     global blockCommentChar = ["#="; "=#"];
@@ -112,41 +92,6 @@ function init_code_generator(dir, name, header)
     global external_get_language_elements_function = default_language_elements_function;
     global external_generate_code_layer_function = default_code_layer_function;
     global external_generate_code_files_function = default_code_files_function;
-
-    # src_dir = genDir*"/src";
-    # if !isdir(src_dir)
-    #     mkdir(src_dir);
-    # end
-    # # inc_dir = genDir*"/include";
-    # # if !isdir(inc_dir)
-    # #     mkdir(inc_dir);
-    # # end
-    
-    # m = open(src_dir*"/"*name*genFileExtension, "w");
-    # c = open(src_dir*"/Config"*genFileExtension, "w");
-    # p = open(src_dir*"/Problem"*genFileExtension, "w");
-    # n = open(src_dir*"/Mesh"*genFileExtension, "w");
-    # d = open(src_dir*"/MeshData", "w");
-    # g = open(src_dir*"/Genfunction"*genFileExtension, "w");
-    # b = open(src_dir*"/Bilinear"*genFileExtension, "w");
-    # l = open(src_dir*"/Linear"*genFileExtension, "w");
-    # s = open(src_dir*"/Stepper"*genFileExtension, "w");
-    # o = open(src_dir*"/Output"*genFileExtension, "w");
-    
-    # global genfiles = Genfiles(m,c,p,n,d,g,b,l,s,o);
-    
-    # # write headers
-    # generate_head(m,headerText);
-    # generate_head(c,"Configuration info");
-    # generate_head(p,"Problem info");
-    # generate_head(n,"Mesh");
-    # generate_head(g,"Generated functions");
-    # generate_head(b,"Bilinear term");
-    # generate_head(l,"Linear term");
-    # generate_head(s,"Time stepper");
-    # generate_head(o,"Output");
-    
-    # log_entry("Created code files for: "*name);
 end
 
 # Sets the functions to be used during external code generation
@@ -168,13 +113,15 @@ function add_generated_file(filename; dir="")
     end
     newfile = open(code_dir*"/"*filename, "w");
     push!(genfiles, newfile);
+    generate_head(newfile, headerText);
     return newfile;
 end
 
-# function generate_all_files(lhs_vol, lhs_surf, rhs_vol, rhs_surf)
-#     # This is supplied as one of the target functions
-#     external_generate_code_files_function(lhs_vol, lhs_surf, rhs_vol, rhs_surf);
-# end
+function generate_all_files(var, lhs_vol, lhs_surf, rhs_vol, rhs_surf; parameters=0)
+    if using_custom_target
+        external_generate_code_files_function(var, lhs_vol, lhs_surf, rhs_vol, rhs_surf);
+    end
+end
 
 function finalize_code_generator()
     for f in genfiles
@@ -183,93 +130,7 @@ function finalize_code_generator()
     log_entry("Closed generated code files.");
 end
 
-############# Don't delete yet ####################
-# # This is the primary code gen function that calls functions in the appropriate files
-# function generate_code_layer(ex, var, lorr, vors)
-#     if config.solver_type == FV
-#         return generate_code_layer_fv(ex, var, lorr, vors, language, framework);
-#     elseif config.solver_type == CG
-#         return generate_code_layer_cg(ex, var, lorr, vors, language, framework);
-#     elseif config.solver_type == DG
-#         return generate_code_layer_dg(ex, var, lorr, vors, language, framework);
-#     end
-    
-#     if use_cachesim
-#         if language == 0 || language == JULIA
-#             return generate_code_layer_cachesim(ex, var, lorr);
-#         else
-#             printerr("Using cachesim. Not generating code to solve.")
-#         end
-#     else
-#         if language == 0 || language == JULIA
-#             return generate_code_layer_julia(ex, var, lorr, vors);
-#         elseif language == CPP
-#             if framework == DENDRO
-#                 return generate_code_layer_dendro(ex, var, lorr);
-#             else
-#                 printerr("Plain C++ is not ready for code layer gen.")
-#             end
-            
-#         elseif language == MATLAB
-#             if framework == HOMG
-#                 return generate_code_layer_homg(ex, var, lorr);
-#             else
-#                 return generate_code_layer_matlab(ex, var, lorr);
-#             end
-            
-#         elseif framework == CUSTOM_GEN_TARGET
-#             return custom_code_layer_fun(ex, var, lorr);
-#         end
-#     end
-# end
-
-function generate_all_files(var, lhs_vol, lhs_surf, rhs_vol, rhs_surf; parameters=0)
-    if language == CPP
-        if gen_framework == DENDRO
-            if parameters == 0
-                parameters = (5, 1, 0.3, 0.000001, 100);#(maxdepth, wavelet_tol, partition_tol, solve_tol, solve_max_iters)
-            end
-            dendro_main_file();
-            dendro_config_file(parameters);
-            dendro_prob_file();
-            # dendro_mesh_file();
-            dendro_genfunction_file();
-            dendro_bilinear_file(lhs_vol);
-            dendro_linear_file(rhs_vol);
-            # dendro_stepper_file();
-            dendro_output_file();
-        else
-            printerr("Plain C++ not ready")
-        end
-        
-    elseif language == MATLAB
-        if gen_framework == HOMG
-            homg_main_file();
-            homg_config_file();
-            homg_prob_file();
-            homg_mesh_file();
-            homg_genfunction_file();
-            homg_bilinear_file(lhs_vol);
-            homg_linear_file(rhs_vol);
-            homg_stepper_file();
-            # homg_output_file();
-        else
-            matlab_main_file();
-            matlab_config_file();
-            matlab_prob_file();
-            matlab_mesh_file();
-            matlab_genfunction_file();
-            matlab_bilinear_file(lhs_vol);
-            matlab_linear_file(rhs_vol);
-            matlab_stepper_file();
-            matlab_output_file();
-        end
-        
-    elseif using_custom_target
-        external_generate_code_files_function(var, lhs_vol, lhs_surf, rhs_vol, rhs_surf);
-        
-    end
-end
+#### Utilities ####
 
 function comment(file,line)
     println(file, commentChar * line);
