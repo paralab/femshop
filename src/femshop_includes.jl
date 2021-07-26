@@ -53,8 +53,6 @@ include("ef_ordering.jl");
 include("bad_ordering.jl");
 
 include("function_utils.jl");
-include("symtype.jl");
-include("symoperator.jl");
 include("symexpression.jl");
 include("variables.jl");
 include("coefficient.jl");

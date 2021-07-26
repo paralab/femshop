@@ -59,7 +59,7 @@ function newton(nl,formjac, formfunc, nlvar, t=0, dt=0)
 
 		if typeof(nl.var) <: Array
 			# for vi=1:length(nl.var)
-			# 	components = length(nl.var[vi].symvar.vals);
+			# 	components = length(nl.var[vi].symvar);
 			# 	for compi=1:components
 			# 		nl.var[vi].values[compi,:] = nl.var[vi].values[compi,:]+delta[:];
 			# 	end
@@ -67,11 +67,11 @@ function newton(nl,formjac, formfunc, nlvar, t=0, dt=0)
 			tmp = 0;
 			totalcomponents = 0;
 			for vi=1:length(nl.var)
-				totalcomponents = totalcomponents + length(nl.nlvar[vi].symvar.vals);
+				totalcomponents = totalcomponents + length(nl.nlvar[vi].symvar);
 				#@show(totalcomponents)
 			end
 			for vi=1:length(nl.var)
-				components = length(nl.var[vi].symvar.vals);
+				components = length(nl.var[vi].symvar);
 				#@show(components)
 				for compi=1:components
 					nl.var[vi].values[compi,:] = delta[(compi+tmp):totalcomponents:end];
@@ -81,10 +81,10 @@ function newton(nl,formjac, formfunc, nlvar, t=0, dt=0)
 			end
 		else
 			#print("\nHERE\n");
-			components = length(nl.var.symvar.vals);
+			components = length(nl.var.symvar);
 			#print("\ncomponents = ", components, "\n");
 			#print("\nsymvar = ", nl.var.symvar, "\n");
-			#print("\nvals = ", nl.var.symvar.vals, "\n");
+			#print("\nvals = ", nl.var.symvar, "\n");
 			for compi=1:components
 				nl.var.values[compi,:] =  delta[compi:components:end];
 				nl.nlvar.values[compi,:] =  nl.nlvar.values[compi,:]+delta[compi:components:end];

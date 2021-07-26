@@ -13,13 +13,13 @@ function generate_code_layer(symex, var, lorr, vors, solver, language, framework
     if multivar
         varcount = length(var);
         offset_ind = zeros(Int, varcount);
-        dofsper = length(var[1].symvar.vals);
+        dofsper = length(var[1].symvar);
         for i=2:length(var)
             offset_ind[i] = dofsper;
-            dofsper = dofsper + length(var[i].symvar.vals);
+            dofsper = dofsper + length(var[i].symvar);
         end
     else
-        dofsper = length(var.symvar.vals);
+        dofsper = length(var.symvar);
     end
     
     # symex is an array of arrays of SymExpressions which are Expr trees with SymEntities as leaves. (array for variable components, terms)
@@ -84,6 +84,7 @@ function generate_code_layer(symex, var, lorr, vors, solver, language, framework
     # To make things easier, separate the terms and work with them separately
     terms = process_terms(symex);
     
+    log_entry("Terms being sent to the code generator:\n\t\t" * string(terms), 3)
     # println(symex)
     # println(" -> ")
     # println(terms)

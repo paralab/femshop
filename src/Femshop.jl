@@ -256,7 +256,7 @@ function add_test_function(v, type)
 end
 
 # Adds a variable and allocates everything associated with it.
-function add_variable(var)
+function add_variable(var; var_array_size=[1], transpose_vals=false)
     global var_count += 1;
     if language == JULIA || language == 0
         # adjust values arrays
@@ -267,18 +267,34 @@ function add_variable(var)
         end
         
         if var.type == SCALAR
-            var.values = zeros(1, N);
+            val_size = (1, N);
         elseif var.type == VECTOR
-            var.values = zeros(config.dimension, N);
+            val_size = (config.dimension, N);
         elseif var.type == TENSOR
-            var.values = zeros(config.dimension*config.dimension, N);
+            val_size = (config.dimension*config.dimension, N);
         elseif var.type == SYM_TENSOR
-            var.values = zeros(Int((config.dimension*(config.dimension+1))/2), N);
+            val_size = (Int((config.dimension*(config.dimension+1))/2), N);
+        elseif var.type == VAR_ARRAY
+            push!(var_array_size, N);
+            val_size = tuple(var_array_size);
         end
+        if transpose_vals
+            var_array_size = [val_size[end]];
+            append!(var_array_size, val_size[2:(end-1)]);
+            val_size = tuple(var_array_size);
+            var.transposed = true;
+        end
+        
+        var.values = zeros(val_size);
+        var.array_size = [val_size[1]];
+        for i=2:length(val_size)
+            push!(var.array_size, val_size[i]);
+        end
+        
     end
-    # make SymType
-    symvar = sym_var(string(var.symbol), var.type, config.dimension);
-    var.symvar = symvar;
+    
+    # make symbolic layer variable symbols
+    var.symvar = sym_var(string(var.symbol), var.type, config.dimension);
 
     global variables = [variables; var];
 
@@ -454,7 +470,7 @@ function add_reference_point(var, pos, val)
         pos = pos*ones(config.dimension);
     end
     if typeof(val) <: Number
-        val = val*ones(length(var.symvar.vals));
+        val = val*ones(length(var.symvar));
     end
     
     # Find the closest vertex to pos

@@ -8,37 +8,41 @@ end
 init_femshop("vector");
 
 # Try making an optional log
-@useLog("vectorlog")
+useLog("vectorlog")
 
 # Set up the configuration
-@domain(2, SQUARE, UNSTRUCTURED)    # dimension, geometry, decomposition
-@solver(CG)                         # DG, CG, etc.
-@functionSpace(LEGENDRE, 3)         # function, order (or use testFunction and trialFunction)
-@nodes(LOBATTO)                     # elemental node arrangement
+domain(2)
+functionSpace(order = 3)
 
 # Specify the problem
-@mesh(QUADMESH, 20)                 # .msh file or generate our own
+mesh(QUADMESH, elsperdim=20)
 
-@variable(u, VECTOR)
+u = variable("u", VECTOR)
+p = variable("p")
 
-@testSymbol(v, VECTOR)
+testSymbol("v", VECTOR)
+testSymbol("w")
 
-@boundary(u, 1, DIRICHLET, [0, 0])
+boundary(u, 1, DIRICHLET, [0, 0])
+boundary(p, 1, DIRICHLET, 0)
 
 # Write the weak form
-@coefficient(f, VECTOR, ["-25*pi*pi*sin(pi*x)*sin(2*pi*y)", "-125*pi*pi*sin(3*pi*x)*sin(4*pi*y)"])
-@coefficient(a, 5)
+coefficient("f", ["-25*pi*pi*sin(pi*x)*sin(2*pi*y)", "-125*pi*pi*sin(3*pi*x)*sin(4*pi*y)"], VECTOR)
+coefficient("g", "-2*pi*pi*sin(pi*x)*sin(pi*y)")
+coefficient("a", 5)
 
-@weakForm(u, "-a*inner(grad(u), grad(v)) - dot(f,v)")
+weakForm([u,p], ["-a*inner(grad(u), grad(v)) - dot(f,v)", "-dot(grad(p), grad(w)) - g*w"])
 
-solve(u);
+solve([u,p]);
 
 # # exact solution is [sin(pi*x)*sin(2*pi*y), sin(3*pi*x)*sin(4*pi*y)]
 # # check error
 erroru = zeros(size(u.values));
 maxerru = 0
+maxerrp = 0
 exactu1(x,y) = sin(pi*x)*sin(2*pi*y);
 exactu2(x,y) = sin(3*pi*x)*sin(4*pi*y);
+exactp(x,y) = sin(pi*x)*sin(pi*y);
 
 for i=1:size(Femshop.grid_data.allnodes,2)
     x = Femshop.grid_data.allnodes[1,i];
@@ -49,16 +53,20 @@ for i=1:size(Femshop.grid_data.allnodes,2)
         global maxerru;
         maxerru = max(abs(erroru[j,i]),maxerru);
     end
-    
+    global maxerrp;
+    maxerrp = max(abs(p.values[i] - exactp(x,y)),maxerrp);
 end
 println("u max error = "*string(maxerru));
+println("p max error = "*string(maxerrp));
 
 # using Plots
 # pyplot();
 # display(plot(Femshop.grid_data.allnodes[1,:], Femshop.grid_data.allnodes[2,:], u.values[1,:], st=:surface))
 
 # check
-log_dump_config();
-log_dump_prob();
+# log_dump_config();
+# log_dump_prob();
 
-@finalize()
+output_values([u,p], "vector2d", format="vtk");
+
+finalize_femshop();

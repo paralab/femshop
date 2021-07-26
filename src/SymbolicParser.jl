@@ -2,7 +2,7 @@
 # A set of tools for parsing the variational forms into symEngine expressions.
 =#
 module SymbolicParser
-export sp_parse, add_custom_op, add_custom_op_file
+export sp_parse, add_custom_op, add_custom_op_file, sym_var
 
 import ..Femshop: JULIA, CPP, MATLAB, DENDRO, HOMG, CUSTOM_GEN_TARGET,
             SQUARE, IRREGULAR, UNIFORM_GRID, TREE, UNSTRUCTURED, 
@@ -23,6 +23,12 @@ import ..Femshop: config, prob, variables, coefficients, parameters, test_functi
 
 using SymEngine, LinearAlgebra
 
+# An operator struct that ties a symbol to a function.
+struct SymOperator
+    symbol::Symbol      # The name used in the input expression
+    op                  # Function handle for the operator
+end
+
 #### globals ########################
 # Basic symbolic operators that are included automatically and have precedence
 op_names = [];
@@ -33,8 +39,6 @@ custom_op_names = [];
 custom_ops = [];
 #####################################
 
-include("symtype.jl");
-include("symoperator.jl");
 include("basic_ops.jl");
 
 # These are special function symbols that need to be defined.
@@ -77,6 +81,39 @@ function add_custom_op_file(file)
         add_custom_op(_names[i], _handles[i]);
         log_entry("Added custom operator: "*string(_names[i]));
     end
+end
+
+# Builds an array of symbolic layer symbols
+function sym_var(name, type, dim; array_size=[1])
+    components = 1;
+    if type == SCALAR
+        components = 1;
+    elseif type == VECTOR
+        components = dim;
+    elseif type == TENSOR
+        components = dim*dim;
+    elseif type == SYM_TENSOR
+        if dim == 1
+            components = 1;
+        elseif dim == 2
+            components = 3;
+        elseif dim == 3
+            components = 6;;
+        elseif dim == 4
+            components = 10;
+        end
+    elseif type == VAR_ARRAY
+        components=1;
+        for i=1:length(array_size)
+            components = components * array_size[i];
+        end
+    end
+    symvar = [symbols("_"*name*"_1")];
+    for i=2:components
+        push!(symvar, symbols("_"*name*"_"*string(i)));
+    end
+    
+    return symvar;
 end
 
 # Parses a variational form expression into a SymEngine Basic expression 
@@ -276,7 +313,7 @@ function replace_symbols(ex)
         # variable?
         for v in variables
             if ex === v.symbol
-                return v.symvar.vals;
+                return v.symvar;
             end
         end
         # coefficient?
@@ -286,7 +323,7 @@ function replace_symbols(ex)
                 if c.type == SCALAR && typeof(c.value[1]) <: Number
                     return [Basic(c.value[1])];
                 end
-                return c.symvar.vals;
+                return c.symvar;
             end
         end
         # operator?
@@ -305,7 +342,7 @@ function replace_symbols(ex)
         # test function?
         for c in test_functions
             if ex === c.symbol
-                return c.symvar.vals;
+                return c.symvar;
             end
         end
         # none of them?

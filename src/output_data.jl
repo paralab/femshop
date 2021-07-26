@@ -149,8 +149,8 @@ function output_values_vtk(vars, file, ascii)
     # Add values
     if typeof(vars) <: Array
         for vi=1:length(vars)
-            if length(vars[vi].symvar.vals) > 1
-                for ci=1:length(vars[vi].symvar.vals)
+            if length(vars[vi].symvar) > 1
+                for ci=1:length(vars[vi].symvar)
                     compname = string(vars[vi].symbol) * "_" * string(ci);
                     vtkfile[compname] = vars[vi].values[ci,:];
                 end
@@ -159,8 +159,8 @@ function output_values_vtk(vars, file, ascii)
             end
         end
     else
-        if length(vars.symvar.vals) > 1
-            for ci=1:length(vars.symvar.vals)
+        if length(vars.symvar) > 1
+            for ci=1:length(vars.symvar)
                 compname = string(vars.symbol) * "_" * string(ci);
                 vtkfile[compname] = vars.values[ci,:];
             end

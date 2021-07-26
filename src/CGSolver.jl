@@ -282,13 +282,13 @@ function assemble(var, bilinear, linear, t=0.0, dt=0.0; rhs_only = false, keep_g
         var_to_dofs = [];
         for vi=1:length(var)
             tmp = dofs_per_node;
-            dofs_per_node += length(var[vi].symvar.vals);
+            dofs_per_node += length(var[vi].symvar);
             push!(var_to_dofs, (tmp+1):dofs_per_node);
             maxvarindex = max(maxvarindex,var[vi].index);
         end
     else
         # one variable
-        dofs_per_node = length(var.symvar.vals);
+        dofs_per_node = length(var.symvar);
         maxvarindex = var.index;
     end
     Nn = dofs_per_node * N1;
@@ -427,7 +427,7 @@ function assemble(var, bilinear, linear, t=0.0, dt=0.0; rhs_only = false, keep_g
         if multivar
             dofind = 0;
             for vi=1:length(var)
-                for compo=1:length(var[vi].symvar.vals)
+                for compo=1:length(var[vi].symvar)
                     dofind = dofind + 1;
                     for bid=1:bidcount
                         if prob.bc_type[var[vi].index, bid] == NO_BC
@@ -596,13 +596,13 @@ end
 #         var_to_dofs = [];
 #         for vi=1:length(var)
 #             tmp = dofs_per_node;
-#             dofs_per_node += length(var[vi].symvar.vals);
+#             dofs_per_node += length(var[vi].symvar);
 #             push!(var_to_dofs, (tmp+1):dofs_per_node);
 #             maxvarindex = max(maxvarindex,var[vi].index);
 #         end
 #     else
 #         # one variable
-#         dofs_per_node = length(var.symvar.vals);
+#         dofs_per_node = length(var.symvar);
 #         maxvarindex = var.index;
 #     end
 #     Nn = dofs_per_node * N1;
@@ -690,7 +690,7 @@ end
 #         if multivar
 #             dofind = 0;
 #             for vi=1:length(var)
-#                 for compo=1:length(var[vi].symvar.vals)
+#                 for compo=1:length(var[vi].symvar)
 #                     dofind = dofind + 1;
 #                     for bid=1:bidcount
 #                         if prob.bc_type[var[vi].index, bid] == NO_BC
@@ -802,10 +802,10 @@ function place_sol_in_vars(var, sol, stepper)
         tmp = 0;
         totalcomponents = 0;
         for vi=1:length(var)
-            totalcomponents = totalcomponents + length(var[vi].symvar.vals);
+            totalcomponents = totalcomponents + length(var[vi].symvar);
         end
         for vi=1:length(var)
-            components = length(var[vi].symvar.vals);
+            components = length(var[vi].symvar);
             for compi=1:components
                 if stepper.type == EULER_EXPLICIT
                     var[vi].values[compi,:] += sol[(compi+tmp):totalcomponents:end];
@@ -816,7 +816,7 @@ function place_sol_in_vars(var, sol, stepper)
             end
         end
     else
-        components = length(var.symvar.vals);
+        components = length(var.symvar);
         for compi=1:components
             if stepper.type == EULER_EXPLICIT
                 var.values[compi,:] += sol[compi:components:end];
@@ -833,18 +833,18 @@ function get_var_vals(var)
         tmp = 0;
         totalcomponents = 0;
         for vi=1:length(var)
-            totalcomponents = totalcomponents + length(var[vi].symvar.vals);
+            totalcomponents = totalcomponents + length(var[vi].symvar);
         end
         vect = zeros(totalcomponents * length(var[1].values[1,:]));
         for vi=1:length(var)
-            components = length(var[vi].symvar.vals);
+            components = length(var[vi].symvar);
             for compi=1:components
                 vect[(compi+tmp):totalcomponents:end] = var[vi].values[compi,:];
                 tmp = tmp + 1;
             end
         end
     else
-        components = length(var.symvar.vals);
+        components = length(var.symvar);
         vect = zeros(components * length(var.values[1,:]));
         for compi=1:components
             vect[compi:components:end] = var.values[compi,:];

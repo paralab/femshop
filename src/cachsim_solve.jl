@@ -15,12 +15,12 @@ function linear_solve_cachesim(var, bilinear, linear, stepper=nothing)
         var_to_dofs = [];
         for vi=1:length(var)
             tmp = dofs_per_node;
-            dofs_per_node += length(var[vi].symvar.vals);
+            dofs_per_node += length(var[vi].symvar);
             push!(var_to_dofs, (tmp+1):dofs_per_node);
         end
     else
         # one variable
-        dofs_per_node = length(var.symvar.vals);
+        dofs_per_node = length(var.symvar);
     end
     init_cachesimout(N1, refel, mesh_data.nel, dofs_per_node, variables);
     
@@ -69,12 +69,12 @@ function assemble_cachesim(var, bilinear, linear, t=0.0, dt=0.0)
         var_to_dofs = [];
         for vi=1:length(var)
             tmp = dofs_per_node;
-            dofs_per_node += length(var[vi].symvar.vals);
+            dofs_per_node += length(var[vi].symvar);
             push!(var_to_dofs, (tmp+1):dofs_per_node);
         end
     else
         # one variable
-        dofs_per_node = length(var.symvar.vals);
+        dofs_per_node = length(var.symvar);
     end
     Nn = dofs_per_node * N1;
     
@@ -149,12 +149,12 @@ function assemble_rhs_only_cachesim(var, linear, t=0.0, dt=0.0)
         var_to_dofs = [];
         for vi=1:length(var)
             tmp = dofs_per_node;
-            dofs_per_node += length(var[vi].symvar.vals);
+            dofs_per_node += length(var[vi].symvar);
             push!(var_to_dofs, (tmp+1):dofs_per_node);
         end
     else
         # one variable
-        dofs_per_node = length(var.symvar.vals);
+        dofs_per_node = length(var.symvar);
     end
     Nn = dofs_per_node * N1;
 

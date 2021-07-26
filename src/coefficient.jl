@@ -5,8 +5,8 @@
 =#
 
 struct Coefficient
-    symbol::Symbol          # symbol used in expressions
-    symvar                  # SymType object
+    symbol::Symbol          # symbol used in expressions referring to this coefficient
+    symvar::Array{Basic,1}  # Array of symbolic layer symbols(Basic symbols)
     index::Int              # index in the Femshop list of coefficients
     type::String            # constants for SCALAR, VECTOR, etc.
     location::String        # constant for NODAL, MODAL, CELL

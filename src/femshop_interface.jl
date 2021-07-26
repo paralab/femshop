@@ -143,11 +143,12 @@ function exportMesh(filename, format=MSH_V2)
     close(mfile);
 end
 
-function variable(name, type=SCALAR, location=NODAL)
+function variable(name, type=SCALAR, location=NODAL, array_size=[1], transpose_vals=false)
     varind = var_count + 1;
     varsym = Symbol(name);
-    var = Variable(varsym, nothing, varind, type, location, [], [], false);
-    add_variable(var);
+    # Just make an empty variable with the info known so far.
+    var = Variable(varsym, [], varind, type, location, [], [], false, [], false);
+    add_variable(var, var_array_size=array_size, transpose_vals=transpose_vals);
     return var;
 end
 
@@ -288,9 +289,9 @@ function weakForm(var, wf)
         log_entry("rhs surface symexpression:\n\t"*string(rhs_surf_symexpr));
         
         log_entry("Latex equation:\n\t\t \\int_{K}"*symexpression_to_latex(lhs_symexpr)*
-                    " dx + \\int_{\\partialK}"*symexpression_to_latex(lhs_surf_symexpr)*
+                    " dx + \\int_{\\partial K}"*symexpression_to_latex(lhs_surf_symexpr)*
                     " ds = \\int_{K}"*symexpression_to_latex(rhs_symexpr)*
-                    " dx + \\int_{\\partialK}"*symexpression_to_latex(rhs_surf_symexpr)*" ds");
+                    " dx + \\int_{\\partial K}"*symexpression_to_latex(rhs_surf_symexpr)*" ds");
     else
         (lhs_symexpr, rhs_symexpr) = build_symexpressions(wfvars, lhs_expr, rhs_expr, remove_zeros=true);
         set_symexpressions(var, lhs_symexpr, LHS, "volume");
@@ -433,8 +434,8 @@ function flux(var, fex)
     
     log_entry("flux lhs symexpression:\n\t"*string(lhs_symexpr));
     log_entry("flux rhs symexpression:\n\t"*string(rhs_symexpr));
-    log_entry("Latex flux equation:\n\t\t \\int_{\\partialK}"*symexpression_to_latex(lhs_symexpr)*
-                    " ds - \\int_{\\partialK}"*symexpression_to_latex(rhs_symexpr)*" ds");
+    log_entry("Latex flux equation:\n\t\t \\int_{\\partial K}"*symexpression_to_latex(lhs_symexpr)*
+                    " ds - \\int_{\\partial K}"*symexpression_to_latex(rhs_symexpr)*" ds");
     
     # change symbolic layer into code layer
     (lhs_string, lhs_code) = generate_code_layer(lhs_symexpr, var, LHS, "surface", FV, language, gen_framework);
@@ -648,12 +649,12 @@ end
 # Prints a Latex string for the equation for a variable
 function printLatex(var)
     if typeof(var) <: Array
-        var = var[1];
         varname = "["*string(var[1].symbol);
         for i=2:length(var)
             varname *= ", "*string(var[i].symbol);
         end
         varname *= "]";
+        var = var[1];
     else
         varname = string(var.symbol);
     end
@@ -665,7 +666,7 @@ function printLatex(var)
             result *= " + \\int_{K}"*symexpression_to_latex(symexpressions[1][var.index])*" dx";
         end
         if !(symexpressions[2][var.index] === nothing)
-            result *= " + \\int_{\\partialK}"*symexpression_to_latex(symexpressions[2][var.index])*" ds";
+            result *= " + \\int_{\\partial K}"*symexpression_to_latex(symexpressions[2][var.index])*" ds";
         end
         result *= " = ";
         if !(symexpressions[3][var.index] === nothing)
@@ -675,7 +676,7 @@ function printLatex(var)
             if !(symexpressions[3][var.index] === nothing)
                 result *= " + ";
             end
-            result *= "\\int_{\\partialK}"*symexpression_to_latex(symexpressions[4][var.index])*" ds";
+            result *= "\\int_{\\partial K}"*symexpression_to_latex(symexpressions[4][var.index])*" ds";
         end
         if symexpressions[3][var.index] === nothing && symexpressions[4][var.index] === nothing
             result *= "0";
@@ -691,7 +692,7 @@ function printLatex(var)
                 if !(symexpressions[1][var.index] === nothing)
                     result *= " + ";
                 end
-                result *= "\\int_{\\partialK}"*symexpression_to_latex(symexpressions[2][var.index])*" ds";
+                result *= "\\int_{\\partial K}"*symexpression_to_latex(symexpressions[2][var.index])*" ds";
             end
             if symexpressions[1][var.index] === nothing && symexpressions[2][var.index] === nothing
                 result *= "0";
@@ -704,7 +705,7 @@ function printLatex(var)
                 if !(symexpressions[3][var.index] === nothing)
                     result *= " + ";
                 end
-                result *= "\\int_{\\partialK}"*symexpression_to_latex(symexpressions[4][var.index])*" ds";
+                result *= "\\int_{\\partial K}"*symexpression_to_latex(symexpressions[4][var.index])*" ds";
             end
             if symexpressions[3][var.index] === nothing && symexpressions[4][var.index] === nothing
                 result *= "0";
@@ -720,7 +721,7 @@ function printLatex(var)
                 if !(symexpressions[1][var.index] === nothing)
                     result *= " + ";
                 end
-                result *= "\\int_{\\partialK}"*symexpression_to_latex(symexpressions[2][var.index])*" ds";
+                result *= "\\int_{\\partial K}"*symexpression_to_latex(symexpressions[2][var.index])*" ds";
             end
             if symexpressions[1][var.index] === nothing && symexpressions[2][var.index] === nothing
                 result *= "0";
@@ -733,7 +734,7 @@ function printLatex(var)
                 if !(symexpressions[3][var.index] === nothing)
                     result *= " + ";
                 end
-                result *= "\\int_{\\partialK}"*symexpression_to_latex(symexpressions[4][var.index])*" ds";
+                result *= "\\int_{\\partial K}"*symexpression_to_latex(symexpressions[4][var.index])*" ds";
             end
             if symexpressions[3][var.index] === nothing && symexpressions[4][var.index] === nothing
                 result *= "0";
@@ -813,10 +814,10 @@ function solve(var, nlvar=nothing; nonlinear=false)
                     tmp = 0;
                     totalcomponents = 0;
                     for vi=1:length(var)
-                        totalcomponents = totalcomponents + length(var[vi].symvar.vals);
+                        totalcomponents = totalcomponents + length(var[vi].symvar);
                     end
                     for vi=1:length(var)
-                        components = length(var[vi].symvar.vals);
+                        components = length(var[vi].symvar);
                         for compi=1:components
                             #println("putting result "*string(compi+tmp)*":"*string(totalcomponents)*":end in var["*string(vi)*"].values["*string(compi)*"]")
                             var[vi].values[compi,:] = result[(compi+tmp):totalcomponents:end];
@@ -824,7 +825,7 @@ function solve(var, nlvar=nothing; nonlinear=false)
                         tmp = tmp + components;
                     end
                 elseif length(result) > 1
-                    components = length(var.symvar.vals);
+                    components = length(var.symvar);
                     for compi=1:components
                         var.values[compi,:] = result[compi:components:end];
                     end
@@ -866,17 +867,17 @@ function solve(var, nlvar=nothing; nonlinear=false)
                     tmp = 0;
                     totalcomponents = 0;
                     for vi=1:length(var)
-                        totalcomponents = totalcomponents + length(var[vi].symvar.vals);
+                        totalcomponents = totalcomponents + length(var[vi].symvar);
                     end
                     for vi=1:length(var)
-                        components = length(var[vi].symvar.vals);
+                        components = length(var[vi].symvar);
                         for compi=1:components
                             var[vi].values[compi,:] = result[(compi+tmp):totalcomponents:end];
                             tmp = tmp + 1;
                         end
                     end
                 elseif length(result) > 1
-                    components = length(var.symvar.vals);
+                    components = length(var.symvar);
                     for compi=1:components
                         var.values[compi,:] = result[compi:components:end];
                     end

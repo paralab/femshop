@@ -18,13 +18,13 @@ function apply_boundary_conditions_lhs_rhs(var, A, b, t)
         var_to_dofs = [];
         for vi=1:length(var)
             tmp = dofs_per_node;
-            dofs_per_node += length(var[vi].symvar.vals);
+            dofs_per_node += length(var[vi].symvar);
             push!(var_to_dofs, (tmp+1):dofs_per_node);
             maxvarindex = max(maxvarindex,var[vi].index);
         end
     else
         # one variable
-        dofs_per_node = length(var.symvar.vals);
+        dofs_per_node = length(var.symvar);
         maxvarindex = var.index;
     end
     
@@ -40,7 +40,7 @@ function apply_boundary_conditions_lhs_rhs(var, A, b, t)
         if multivar
             dofind = 0;
             for vi=1:length(var)
-                for compo=1:length(var[vi].symvar.vals)
+                for compo=1:length(var[vi].symvar)
                     dofind = dofind + 1;
                     for bid=1:bidcount
                         if prob.bc_type[var[vi].index, bid] == NO_BC

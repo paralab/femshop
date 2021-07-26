@@ -148,13 +148,18 @@ function broadcast_all_ops(ex)
             elseif ex.args[1] === :* ex.args[1] = :.*
             elseif ex.args[1] === :+ ex.args[1] = :.+
             elseif ex.args[1] === :- ex.args[1] = :.-
+            elseif ex.args[1] in [:.+, :.-, :.*, :./, :.^] # no change
             else # named operator: abs -> abs.
-                bop = Expr(:., ex.args[1], Expr(:tuple, ex.args[2]));
+                argtuple = Expr(:tuple, ex.args[2]);
+                if length(ex.args) > 2
+                    append!(argtuple.args, ex.args[3:end]);
+                end
+                bop = Expr(:., ex.args[1], argtuple);
                 ex = bop;
                 bopped = true;
             end
             if bopped
-                for i=2:length(ex.args[2].args)
+                for i=1:length(ex.args[2].args)
                     ex.args[2].args[i] = broadcast_all_ops(ex.args[2].args[i]);
                 end
             else
@@ -297,7 +302,7 @@ function separate_factors(ex, var=nothing)
                     if is_unknown_var(ex,var[vi])
                         trial_ind = tmpind + ex.index;
                     else
-                        tmpind += length(var[vi].symvar.vals);
+                        tmpind += length(var[vi].symvar);
                     end
                 end
             else
@@ -372,9 +377,39 @@ end
 function code_string_to_expr(s)
     e = Expr(:block);
     lines = split(s, "\n", keepempty=false);
-
+    
+    skiplines = 0;
     for i=1:length(lines)
-        tmp = Meta.parse(lines[i]);
+        if skiplines > 0
+            skiplines = skiplines-1;
+            continue;
+        end
+        # if blocks are split across several lines. Join them
+        if occursin(" if ", split(lines[i], "#")[1])
+            level = 1;
+            ifline = lines[i];
+            j = i+1;
+            while j <= length(lines)
+                ifline = ifline * "\n" * lines[j];
+                if occursin(" if ", split(lines[j], "#")[1])
+                    level = level + 1;
+                end
+                if occursin("end", split(lines[j], "#")[1])
+                    level = level - 1;
+                end
+                if level == 0
+                    # The end of the top level if
+                    skiplines = skiplines + j - i;
+                    break;
+                end
+                j=j+1;
+            end
+            tmp = Meta.parse(ifline);
+            
+        else
+            tmp = Meta.parse(lines[i]);
+        end
+        
         # a toplevel wrapper might be put around the expression. remove it.
         if !(tmp === nothing)
             if tmp.head === :toplevel

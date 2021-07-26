@@ -24,6 +24,8 @@ struct SymEntity
     flags::Array                    # any non-derivative modifiers or flags
 end
 
+Base.copy(x::SymEntity) = SymEntity(x.name, x.index, copy(x.derivs), copy(x.flags));
+
 # For printing, write the entity in a more readable format
 Base.show(io::IO, x::SymEntity) = print(io, symentity_string(x));
 function symentity_string(a::SymEntity)

@@ -18,12 +18,12 @@ function solve_matrix_free_sym(var, bilinear, linear, stepper=nothing, t=0, dt=0
         var_to_dofs = [];
         for vi=1:length(var)
             tmp = dofs_per_node;
-            dofs_per_node += length(var[vi].symvar.vals);
+            dofs_per_node += length(var[vi].symvar);
             push!(var_to_dofs, (tmp+1):dofs_per_node);
         end
     else
         # one variable
-        dofs_per_node = length(var.symvar.vals);
+        dofs_per_node = length(var.symvar);
     end
     Nn = dofs_per_node * N1;
     
@@ -96,12 +96,12 @@ function solve_matrix_free_asym(var, bilinear, linear, stepper=nothing, t=0, dt=
         var_to_dofs = [];
         for vi=1:length(var)
             tmp = dofs_per_node;
-            dofs_per_node += length(var[vi].symvar.vals);
+            dofs_per_node += length(var[vi].symvar);
             push!(var_to_dofs, (tmp+1):dofs_per_node);
         end
     else
         # one variable
-        dofs_per_node = length(var.symvar.vals);
+        dofs_per_node = length(var.symvar);
     end
     Nn = dofs_per_node * N1;
     
@@ -173,7 +173,7 @@ function elem_matvec(x, bilinear, dofs_per_node, var, t = 0.0, dt = 0.0)
         var_to_dofs = [];
         for vi=1:length(var)
             tmp = dofs_per_node;
-            dofs_per_node += length(var[vi].symvar.vals);
+            dofs_per_node += length(var[vi].symvar);
             push!(var_to_dofs, (tmp+1):dofs_per_node);
             maxvarindex = max(maxvarindex,var[vi].index);
             
@@ -187,7 +187,7 @@ function elem_matvec(x, bilinear, dofs_per_node, var, t = 0.0, dt = 0.0)
         
     else
         # one variable
-        dofs_per_node = length(var.symvar.vals);
+        dofs_per_node = length(var.symvar);
         maxvarindex = var.index;
     end
     
@@ -249,7 +249,7 @@ function elem_matvec(x, bilinear, dofs_per_node, var, t = 0.0, dt = 0.0)
         if multivar
             d = 0;
             for vi=1:length(var)
-                for compo=1:length(var[vi].symvar.vals)
+                for compo=1:length(var[vi].symvar)
                     d = d + 1;
                     for bid=1:bidcount
                         if prob.bc_type[var[vi].index, bid] == NO_BC
