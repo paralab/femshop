@@ -196,7 +196,7 @@ function custom_main_file(var)
     if typeof(var) <: Array
         # multiple variables
         # TODO
-    elseif length(var.symvar.vals) > 1
+    elseif length(var.symvar) > 1
         # multiple components for this variable
         # TODO
     else
@@ -736,13 +736,13 @@ function customtarget_make_elemental_computation(terms, var, lorr, vors)
     offset_ind = [0];
     if typeof(var) <:Array
         offset_ind = zeros(Int, varcount);
-        dofsper = length(var[1].symvar.vals);
+        dofsper = length(var[1].symvar);
         for i=2:length(var)
             offset_ind[i] = dofsper;
-            dofsper = dofsper + length(var[i].symvar.vals);
+            dofsper = dofsper + length(var[i].symvar);
         end
     else
-        dofsper = length(var.symvar.vals);
+        dofsper = length(var.symvar);
     end
     
     code = "";
