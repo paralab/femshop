@@ -177,9 +177,9 @@ function symexpression_to_latex(ex)
         end
         if ex.index > 0
             result = name * "_{"*string(ex.index);
-            if "DGSIDE1" in ex.flags
+            if "DGSIDE1" in ex.flags || "CELL1" in ex.flags
                 result *= "+";
-            elseif "DGSIDE2" in ex.flags
+            elseif "DGSIDE2" in ex.flags || "CELL2" in ex.flags
                 result *= "-";
             end
             if length(ex.derivs) > 0

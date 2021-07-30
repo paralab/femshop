@@ -79,7 +79,6 @@ function add_custom_op_file(file)
     include(file);
     for i=1:length(_names)
         add_custom_op(_names[i], _handles[i]);
-        log_entry("Added custom operator: "*string(_names[i]));
     end
 end
 

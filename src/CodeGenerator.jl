@@ -32,9 +32,9 @@ import ..Femshop: custom_gen_funcs
 
 genDir = "";
 genFileName = "";
-genFileExtension = "";
-commentChar = "";
-blockCommentChar = [""; ""];
+gen_file_extension = "";
+comment_char = "";
+block_comment_char = [""; ""];
 headerText = "";
 genfiles = [];
 external_get_language_elements_function = nothing;
@@ -82,9 +82,9 @@ include("generate_code_layer_fv_julia.jl");
 ####
 
 function init_code_generator(dir, name, header)
-    global genFileExtension = ".jl";
-    global commentChar = "#";
-    global blockCommentChar = ["#="; "=#"];
+    global gen_file_extension = ".jl";
+    global comment_char = "#";
+    global block_comment_char = ["#="; "=#"];
     global genDir = dir;
     global genFileName = name;
     global headerText = header;
@@ -100,9 +100,13 @@ function set_generation_target(lang_elements, code_layer, file_maker)
     global external_generate_code_layer_function = code_layer;
     global external_generate_code_files_function = file_maker;
     global using_custom_target = true;
+    global gen_file_extension;
+    global comment_char;
+    global block_comment_char;
+    (gen_file_extension, comment_char, block_comment_char) = Base.invokelatest(external_get_language_elements_function);
 end
 
-function add_generated_file(filename; dir="")
+function add_generated_file(filename; dir="", make_header_text=true)
     if length(dir) > 0
         code_dir = genDir*"/"*dir;
         if !isdir(code_dir)
@@ -113,7 +117,10 @@ function add_generated_file(filename; dir="")
     end
     newfile = open(code_dir*"/"*filename, "w");
     push!(genfiles, newfile);
-    generate_head(newfile, headerText);
+    if make_header_text
+        generate_head(newfile, headerText);
+    end
+    
     return newfile;
 end
 
@@ -133,11 +140,11 @@ end
 #### Utilities ####
 
 function comment(file,line)
-    println(file, commentChar * line);
+    println(file, comment_char * line);
 end
 
 function commentBlock(file,text)
-    print(file, "\n"*blockCommentChar[1]*"\n"*text*"\n"*blockCommentChar[2]*"\n");
+    print(file, "\n"*block_comment_char[1]*"\n"*text*"\n"*block_comment_char[2]*"\n");
 end
 
 function generate_head(file, text)

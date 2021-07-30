@@ -661,7 +661,7 @@ function printLatex(var)
     println("Latex equation for "*varname*":");
     
     if config.solver_type == FV
-        result = raw"$" * " \\frac{d}{dt}"*string(var.symbol);
+        result = raw"$" * " \\frac{d}{dt}\\bar{"*string(var.symbol)*"}";
         if !(symexpressions[1][var.index] === nothing)
             result *= " + \\int_{K}"*symexpression_to_latex(symexpressions[1][var.index])*" dx";
         end

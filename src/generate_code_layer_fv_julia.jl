@@ -35,8 +35,8 @@ face2glb =   args[9];  # Global indices of face nodes
 normal =     args[10]; # Normal vector from e1 to e2
 face_detJ =  args[11]; # geometric factor for face
 area =       args[12]; # area face
-pvol_J =     args[13]; # jacobian for both elements
-ptime =      args[14]; # time for time dependent coefficients
+vol_J =     args[13]; # jacobian for both elements
+time =      args[14]; # time for time dependent coefficients
 dt =         args[15]; # dt for time dependent problems
 "
     end
@@ -173,7 +173,7 @@ function prepare_needed_values_fv_julia(entities, var, lorr, vors)
                             code *= cname * " = RD"*string(entities[i].derivs[di])*" * " * cname * 
                                     "; # Apply d/d"*xyzchar[entities[i].derivs[di]]*".\n";
                         end
-                        code *= cname * " = " * cname * "[refel.face2local[frefelind[1]]; # extract face values only.";
+                        code *= cname * " = " * cname * "[refel.face2local[frefelind[1]]]; # extract face values only.";
                     else # no derivatives, only need surface nodes
                         code *= cname * " = zeros(refel.Nfp[frefelind[1]]);\n";
                         code *= "for coefi = 1:refel.Nfp[frefelind[1]] " * cname * "[coefi] = (Femshop.genfunctions["*string(cval)*"]).func" * cargs * " end\n";
