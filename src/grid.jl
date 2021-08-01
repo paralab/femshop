@@ -30,6 +30,8 @@ etypetoftype=[0,1, 1, 2, 3, 3, 3, 0, 1, 1, 2, 3, 3, 3, 0, 0, 0, 0, 0]; # type of
 
 # Build a grid from a mesh
 function grid_from_mesh(mesh)
+    log_entry("Building full grid from mesh data", 2);
+    t_grid_from_mesh = Base.Libc.time();
     dim = config.dimension;
     ord = config.basis_order_min;
     nfaces = etypetonf[mesh.etypes[1]];;
@@ -43,6 +45,7 @@ function grid_from_mesh(mesh)
     end
     nvtx = etypetonv[mesh.etypes[1]]; # Assumes one element type
     
+    log_entry("Building reference element: "*string(dim)*"D, order="*string(ord)*", nfaces="*string(nfaces), 3);
     refel = build_refel(dim, ord, nfaces, config.elemental_nodes);
     
     if config.solver_type == DG # || config.solver_type == FV ????
@@ -74,6 +77,7 @@ function grid_from_mesh(mesh)
     facebid = zeros(Int, totalfaces); # BID of each face
     
     tmpallnodes = zeros(dim, mesh.nel*refel.Np);
+    t_nodes1 = Base.Libc.time();
     for ei=1:nel
         # Find this element's nodes
         n_vert = etypetonv[mesh.etypes[ei]];
@@ -107,52 +111,110 @@ function grid_from_mesh(mesh)
         # temporary mapping
         loc2glb[:,ei] = ((ei-1)*Np+1):(ei*Np);
     end
+    t_nodes1 = Base.Libc.time() - t_nodes1;
+    log_entry("Initial node setup: "*string(t_nodes1), 3);
     
     if Gness == 1 # CG
         # Go back and remove duplicate nodes. Adjust loc2glb.
-        remove_count = 0;
-        found = false;
-        next_ind = Np+1;
-        allnodes = zeros(size(tmpallnodes));
-        allnodes[:,1:Np] = tmpallnodes[:,1:Np];
-        for ei=2:nel
-            for ni=1:Np
-                found = false;
-                for ej=1:ei-1
-                    for nj=1:Np
-                        if is_same_node(tmpallnodes[:,loc2glb[ni,ei]], allnodes[:,loc2glb[nj,ej]], tol)
-                            # duplicates: keep the ej one, remove ei
-                            loc2glb[ni,ei] = loc2glb[nj,ej];
-                            remove_count += 1;
-                            found = true;
-                            break;
-                        end
-                    end
-                    if found
-                        break;
-                    end
-                end
-                if !found
-                    allnodes[:,next_ind] = tmpallnodes[:,loc2glb[ni,ei]];
-                    loc2glb[ni,ei] = next_ind;
-                    next_ind += 1;
+        # Strategy: divide nodes into bins compare against nodes in bin
+        t_nodes1 = Base.Libc.time();
+        
+        tmpNnodes = size(tmpallnodes,2);
+        replace_with = zeros(Int, tmpNnodes); # holds index of replacement node being kept. 0 if this is kept.
+        abins = zeros(Int, tmpNnodes);
+        depth = 5; # 32768 for 3D
+        mincount = 50; # don't subdivide if less than this
+        bin_ends = [tmpNnodes]; # The last index of each bin
+        
+        # init bins and find extrema
+        xlim = [1e10, -1e10];
+        ylim = [1e10, -1e10];
+        zlim = [1e10, -1e10];
+        for i=1:tmpNnodes
+            abins[i] = i;
+            xyz=tmpallnodes[:,i];
+            xlim[1] = min(xlim[1], xyz[1]);
+            xlim[2] = max(xlim[2], xyz[1]);
+            if dim>1
+                ylim[1] = min(ylim[1], xyz[2]);
+                ylim[2] = max(ylim[2], xyz[2]);
+                if dim > 2
+                    zlim[1] = min(zlim[1], xyz[3]);
+                    zlim[2] = max(zlim[2], xyz[3]);
                 end
             end
         end
-        N = next_ind-1;
-        allnodes = allnodes[:,1:N];
+        
+        if dim == 1
+            (abins, bin_ends) = partition_nodes_in_bins_1d(tmpallnodes, abins, xlim, depth, mincount);
+        elseif dim == 2
+            (abins, bin_ends) = partition_nodes_in_bins_2d(tmpallnodes, abins, xlim, ylim, depth, mincount);
+        else # dim==3
+            (abins, bin_ends) = partition_nodes_in_bins_3d(tmpallnodes, abins, xlim, ylim, zlim, depth, mincount);
+        end
+        
+        remove_count = 0;
+        startind = 1;
+        # Loop over nodes in bins and put numbers in replace_with where duplicates will be removed.
+        for bini = 1:length(bin_ends)
+            for ni=startind:bin_ends[bini]
+                for nj=startind:(ni-1)
+                    # If node[nj] == node[ni], keep nj, remove ni
+                    if is_same_node(tmpallnodes[:,abins[ni]], tmpallnodes[:,abins[nj]], tol)
+                        remove_count += 1;
+                        replace_with[abins[ni]] = abins[nj];
+                        break;
+                    end
+                end
+            end
+            startind = bin_ends[bini] + 1;
+        end
+        
+        # println(string(length(bin_ends))*" bins: " )
+        # println(bin_ends);
+        # println("Nnodes before: "*string(tmpNnodes)*" after: "*string(tmpNnodes-remove_count));
+        
+        # Loop over nodes and place in new allnodes array while adjusting replace_with
+        Nnodes = tmpNnodes-remove_count;
+        next_ind = 1;
+        allnodes = zeros(size(tmpallnodes,1), Nnodes);
+        new_homes = zeros(Int, tmpNnodes);
+        for i=1:tmpNnodes
+            if replace_with[i] == 0
+                # A node to keep
+                allnodes[:,next_ind] = tmpallnodes[:,i];
+                new_homes[i] = next_ind;
+                next_ind += 1;
+            end
+        end
+        for i=1:tmpNnodes
+            if replace_with[i] > 0
+                # A node that was removed. update replace_with with new_homes
+                replace_with[i] = new_homes[replace_with[i]];
+            end
+        end
+        
+        # Loop over each element's nodes and adjust loc2glb
+        for ei=1:nel
+            for ni=1:Np
+                ind = loc2glb[ni,ei];
+                if replace_with[ind] > 0
+                    loc2glb[ni,ei] = replace_with[ind];
+                else
+                    loc2glb[ni,ei] = new_homes[ind];
+                end
+            end
+        end
+        
+        t_nodes1 = Base.Libc.time() - t_nodes1;
+        log_entry("Remove duplicate nodes: "*string(t_nodes1), 3);
         
     else
         allnodes = tmpallnodes; # DG grid is already made
     end
     
-    # if config.solver_type == FV
-    #     centers = zeros(dim, nel);# For finite volume, store cell centers
-    # else
-    #     centers = zeros(0);
-    # end
-    
     # vertices, faces and boundary
+    t_faces1 = Base.Libc.time();
     for ei=1:nel
         n_vert = etypetonv[mesh.etypes[ei]];
         mfids = mesh.element2face[:,ei];
@@ -170,10 +232,6 @@ function grid_from_mesh(mesh)
             end
         end
         el_center ./= Np;
-        # # For finite volumes, store the cell center
-        # if config.solver_type == FV
-        #     centers[:, ei] = el_center;
-        # end
         
         # f2glb has duplicates. Compare to mesh faces and keep same ordering as mesh.
         # Copy normals and bdry info.
@@ -182,9 +240,11 @@ function grid_from_mesh(mesh)
         if dim == 1
             test_same_face = is_same_node;
         elseif dim == 2
-            test_same_face = is_same_line;
+            # test_same_face = is_same_line;
+            test_same_face = is_same_face_center;
         elseif dim == 3
-            test_same_face = is_same_plane;
+            # test_same_face = is_same_plane;
+            test_same_face = is_same_face_center;
         end
         
         for gfi=1:nfaces
@@ -239,8 +299,11 @@ function grid_from_mesh(mesh)
         end
         
     end # element loop
+    t_faces1 = Base.Libc.time() - t_faces1;
+    log_entry("Vertex, face, bdry setup: "*string(t_faces1), 3);
     
     # There are duplicates in the bdry info. Remove them
+    t_faces1 = Base.Libc.time();
     newbdry = similar(bdry);
     newbdrynorm = similar(bdrynorm);
     for i=1:length(bdry)
@@ -276,6 +339,9 @@ function grid_from_mesh(mesh)
     bdry = newbdry;
     bdrynorm = newbdrynorm;
     
+    t_faces1 = Base.Libc.time() - t_faces1;
+    log_entry("Remove duplicate bdry nodes: "*string(t_faces1), 3);
+    
     # Refel index for each face
     for fi=1:totalfaces
         faceRefelInd[1,fi] = which_refel_face(f2glb[:,1,fi], allnodes, refel, loc2glb[:,face2element[1,fi]]);
@@ -283,6 +349,9 @@ function grid_from_mesh(mesh)
             faceRefelInd[2,fi] = which_refel_face(f2glb[:,Gness,fi], allnodes, refel, loc2glb[:,face2element[2,fi]]);
         end
     end
+    
+    t_grid_from_mesh = Base.Libc.time() - t_grid_from_mesh;
+    log_entry("Total grid building time: "*string(t_grid_from_mesh), 2);
     
     return (refel, Grid(allnodes, bdry, bdryfc, bdrynorm, bids, loc2glb, glbvertex, f2glb, element2face, face2element, facenormals, faceRefelInd, facebid));
 end
@@ -303,6 +372,221 @@ function collectBIDs(mesh)
         end
     end
     return bids;
+end
+
+# recursively subdivide bins of nodes
+function partition_nodes_in_bins_1d(nodes, abin, xlim, depth, mincount)
+    halfx = (xlim[1] + xlim[2])/2;
+    N = length(abin);
+    
+    bbin = similar(abin); # Temporary storage
+    lcount = 0;
+    rcount = 0;
+    for i=1:N
+        if nodes[1,abin[i]] <= halfx
+            lcount += 1;
+            bbin[lcount] = abin[i];
+        else
+            rcount += 1;
+            bbin[N-rcount+1] = abin[i];
+        end
+    end
+    
+    # Only recurse if depth and mincount allow
+    if depth > 0
+        if lcount >= mincount
+            (abin[1:lcount], lbinends) = partition_nodes_in_bins_1d(nodes, bbin[1:lcount], [xlim[1], halfx], depth-1, mincount);
+        else
+            abin[1:lcount] = bbin[1:lcount];
+            lbinends = [lcount];
+        end
+        if rcount >= mincount
+            (abin[(lcount+1):N], rbinends) = partition_nodes_in_bins_1d(nodes, bbin[(lcount+1):N], [halfx, xlim[2]], depth-1, mincount);
+        else
+            abin[(lcount+1):N] = bbin[(lcount+1):N];
+            rbinends = [rcount];
+        end
+        binends = append!(lbinends, rbinends .+ lcount);
+        
+    else
+        abin = bbin;
+        binends = [lcount, N];
+    end
+    
+    return (abin, binends);
+end
+
+# recursively subdivide bins of nodes
+function partition_nodes_in_bins_2d(nodes, abin, xlim, ylim, depth, mincount)
+    halfx = (xlim[1] + xlim[2])/2;
+    halfy = (ylim[1] + ylim[2])/2;
+    N = length(abin);
+    
+    which_bin = zeros(Int, N) # Which bin will the node go in
+    bin_counts = zeros(Int, 4) # How many go in each
+    for i=1:N
+        if nodes[1,abin[i]] <= halfx
+            if nodes[2,abin[i]] <= halfy
+                bin_counts[1] += 1;
+                which_bin[i] = 1;
+            else
+                bin_counts[2] += 1;
+                which_bin[i] = 2;
+            end
+            
+        else
+            if nodes[2,abin[i]] <= halfy
+                bin_counts[3] += 1;
+                which_bin[i] = 3;
+            else
+                bin_counts[4] += 1;
+                which_bin[i] = 4;
+            end
+        end
+    end
+    
+    # Make bbin arrays and fill them.
+    bbins = [zeros(Int, bin_counts[1]), zeros(Int, bin_counts[2]), zeros(Int, bin_counts[3]), zeros(Int, bin_counts[4])];
+    next_inds = [1,1,1,1];
+    for i=1:N
+        ind = which_bin[i];
+        bbins[ind][next_inds[ind]] = abin[i];
+        next_inds[ind] += 1;
+    end
+    
+    # convenient offsets and limits
+    starts = [1, 0,0,0];
+    ends   = [bin_counts[1], 0,0,0];
+    for i=2:4
+        starts[i] = ends[i-1] + 1;
+        ends[i] = bin_counts[i] + ends[i-1];
+    end
+    xlims = [[xlim[1], halfx], [xlim[1], halfx], [halfx, xlim[2]], [halfx, xlim[2]]];
+    ylims = [[ylim[1], halfy], [halfy, ylim[2]], [ylim[1], halfy], [halfy, ylim[2]]];
+    
+    # Only recurse if depth and mincount allow
+    if depth > 0
+        binends = [];
+        for i=1:4
+            if bin_counts[i] >= mincount
+                (abin[starts[i]:ends[i]], tmpbinends) = partition_nodes_in_bins_2d(nodes, bbins[i], xlims[i], ylims[i], depth-1, mincount);
+                if i>1
+                    append!(binends, tmpbinends .+ ends[i-1]);
+                else
+                    binends = tmpbinends;
+                end
+                
+            else
+                abin[starts[i]:ends[i]] = bbins[i];
+                append!(binends, [ends[i]]);
+            end
+        end
+        
+    else
+        abin = [bbins[1]; bbins[2]; bbins[3]; bbins[4]];
+        binends = ends;
+    end
+    
+    return (abin, binends);
+end
+
+# recursively subdivide bins of nodes
+function partition_nodes_in_bins_3d(nodes, abin, xlim, ylim, zlim, depth, mincount)
+    halfx = (xlim[1] + xlim[2])/2;
+    halfy = (ylim[1] + ylim[2])/2;
+    halfz = (zlim[1] + zlim[2])/2;
+    N = length(abin);
+    
+    which_bin = zeros(Int, N) # Which bin will the node go in
+    bin_counts = zeros(Int, 8) # How many go in each
+    for i=1:N
+        if nodes[1,abin[i]] <= halfx
+            if nodes[2,abin[i]] <= halfy
+                if nodes[2,abin[i]] <= halfz
+                    bin_counts[1] += 1;
+                    which_bin[i] = 1;
+                else
+                    bin_counts[2] += 1;
+                    which_bin[i] = 2;
+                end
+            else
+                if nodes[2,abin[i]] <= halfy
+                    bin_counts[3] += 1;
+                    which_bin[i] = 3;
+                else
+                    bin_counts[4] += 1;
+                    which_bin[i] = 4;
+                end
+            end
+            
+        else
+            if nodes[2,abin[i]] <= halfy
+                if nodes[2,abin[i]] <= halfz
+                    bin_counts[5] += 1;
+                    which_bin[i] = 5;
+                else
+                    bin_counts[6] += 1;
+                    which_bin[i] = 6;
+                end
+            else
+                if nodes[2,abin[i]] <= halfy
+                    bin_counts[7] += 1;
+                    which_bin[i] = 7;
+                else
+                    bin_counts[8] += 1;
+                    which_bin[i] = 8;
+                end
+            end
+        end
+    end
+    
+    # Make bbin arrays and fill them.
+    bbins = [zeros(Int, bin_counts[1]), zeros(Int, bin_counts[2]), zeros(Int, bin_counts[3]), zeros(Int, bin_counts[4]), 
+             zeros(Int, bin_counts[5]), zeros(Int, bin_counts[6]), zeros(Int, bin_counts[7]), zeros(Int, bin_counts[8])];
+    next_inds = [1,1,1,1,1,1,1,1];
+    for i=1:N
+        ind = which_bin[i];
+        bbins[ind][next_inds[ind]] = abin[i];
+        next_inds[ind] += 1;
+    end
+    
+    # convenient offsets and limits
+    starts = [1, 0,0,0,0,0,0,0];
+    ends   = [bin_counts[1], 0,0,0,0,0,0,0];
+    for i=2:8
+        starts[i] = ends[i-1] + 1;
+        ends[i] = bin_counts[i] + ends[i-1];
+    end
+    xlims = [[xlim[1], halfx], [xlim[1], halfx], [xlim[1], halfx], [xlim[1], halfx], 
+             [halfx, xlim[2]], [halfx, xlim[2]], [halfx, xlim[2]], [halfx, xlim[2]]];
+    ylims = [[ylim[1], halfy], [ylim[1], halfy], [halfy, ylim[2]], [halfy, ylim[2]], 
+             [ylim[1], halfy], [ylim[1], halfy], [halfy, ylim[2]], [halfy, ylim[2]]];
+    zlims = [[zlim[1], halfz], [halfz, zlim[2]], [zlim[1], halfz], [halfz, zlim[2]], 
+             [zlim[1], halfz], [halfz, zlim[2]], [zlim[1], halfz], [halfz, zlim[2]]];
+    
+    # Only recurse if depth and mincount allow
+    if depth > 0
+        binends = [];
+        for i=1:8
+            if bin_counts[i] >= mincount
+                (abin[starts[i]:ends[i]], tmpbinends) = partition_nodes_in_bins_3d(nodes, bbins[i], xlims[i], ylims[i], zlims[i], depth-1, mincount);
+                if i>1
+                    append!(binends, tmpbinends .+ ends[i-1]);
+                else
+                    binends = tmpbinends;
+                end
+            else
+                abin[starts[i]:ends[i]] = bbins[i];
+                append!(binends, [ends[i]]);
+            end
+        end
+        
+    else
+        abin = [bbins[1]; bbins[2]; bbins[3]; bbins[4]; bbins[5]; bbins[6]; bbins[7]; bbins[8]];
+        binends = ends;
+    end
+    
+    return (abin, binends);
 end
 
 #Extra remove later 
@@ -380,6 +664,25 @@ end
 # Returns true if the nodes are within tol of each other.
 function is_same_node(x1, x2, tol)
     return sum(abs.(x1 - x2)) < tol
+end
+
+# Returns true if the centroid of each line is close enough.
+function is_same_face_center(l1, l2, tol)
+    n1 = size(l1,2);
+    n2 = size(l2,2);
+    center1 = zeros(size(l1,1));
+    center2 = zeros(size(l2,1));
+    for i=1:n1
+        center1 = center1 .+ l1[:,i];
+    end
+    center1 = center1 ./ n1;
+    
+    for i=1:n2
+        center2 = center2 .+ l2[:,i];
+    end
+    center2 = center2 ./ n2;
+    
+    return is_same_node(center1, center2, tol);
 end
 
 # Returns true if the two node lists have at least two of the same nodes.

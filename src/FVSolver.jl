@@ -41,7 +41,7 @@ function init_fvsolver()
                 if typeof(prob.initial[vind]) <: Array 
                     nodal_values = zeros(length(prob.initial[vind]), size(grid_data.allnodes,2));
                     for ci=1:length(prob.initial[vind])
-                        for ni=1:size(grid_data.allnodes,2)
+                        Threads.@threads for ni=1:size(grid_data.allnodes,2)
                             if dim == 1
                                 nodal_values[ci,ni] = prob.initial[vind][ci].func(grid_data.allnodes[ni],0,0,0);
                             elseif dim == 2
@@ -53,7 +53,7 @@ function init_fvsolver()
                     end
                     # compute cell averages using nodal values
                     nel = size(grid_data.loc2glb, 2);
-                    for ei=1:nel
+                    Threads.@threads for ei=1:nel
                         e = elemental_order[ei];
                         glb = grid_data.loc2glb[:,e];
                         vol = geo_factors.volume[e];
@@ -66,7 +66,7 @@ function init_fvsolver()
                     
                 else
                     nodal_values = zeros(size(grid_data.allnodes,2));
-                    for ni=1:size(grid_data.allnodes,2)
+                    Threads.@threads for ni=1:size(grid_data.allnodes,2)
                         if dim == 1
                             nodal_values[ni] = prob.initial[vind].func(grid_data.allnodes[ni],0,0,0);
                         elseif dim == 2
@@ -77,7 +77,7 @@ function init_fvsolver()
                     end
                     # compute cell averages using nodal values
                     nel = size(grid_data.loc2glb, 2);
-                    for ei=1:nel
+                    Threads.@threads for ei=1:nel
                         e = elemental_order[ei];
                         glb = grid_data.loc2glb[:,e];
                         vol = geo_factors.volume[e];
@@ -113,11 +113,11 @@ function linear_solve(var, source_lhs, source_rhs, flux_lhs, flux_rhs, stepper=n
     
     # Allocate arrays that will be used by assemble
     # These vectors will hold the integrated values(one per cell).
-    # They will later be combined and interpolated to nodes.
+    # They will later be combined.
     sourcevec = zeros(Nn);
     fluxvec = zeros(Nn);
     facefluxvec = zeros(Nf);
-    face_done = zeros(Bool, Nf); # Set to true when the corresponding fluxvec value is computed.
+    face_done = zeros(Bool, Nf); # Set to true when the corresponding flux value is computed.
     allocated_vecs = [sourcevec, fluxvec, facefluxvec, face_done];
     
     if prob.time_dependent && !(stepper === nothing)
@@ -200,7 +200,7 @@ function linear_solve(var, source_lhs, source_rhs, flux_lhs, flux_rhs, stepper=n
                 place_sol_in_vars(var, sol, stepper);
                 
             else
-                printerr("Only explicit time steppers for FV. TODO")
+                printerr("Only explicit time steppers for FV are ready. TODO")
                 return sol;
             end
             
@@ -243,9 +243,8 @@ end
 
 function assemble(var, source_lhs, source_rhs, flux_lhs, flux_rhs, allocated_vecs, dofs_per_node=1, t=0, dt=0)
     nel = size(grid_data.loc2glb, 2);
-    dim = size(grid_data.allnodes, 1);
     
-    # name things that were allocated externally
+    # Label things that were allocated externally
     sourcevec = allocated_vecs[1];
     fluxvec = allocated_vecs[2];
     facefluxvec = allocated_vecs[3];
@@ -254,93 +253,41 @@ function assemble(var, source_lhs, source_rhs, flux_lhs, flux_rhs, allocated_vec
     face_done .= false;
     
     # Elemental loop
-    for ei=1:nel
-        e = elemental_order[ei];                    # This element index
+    Threads.@threads for ei=1:nel
+        eid = elemental_order[ei]; # The index of this element
+        # Zero the result vectors for this element
+        sourcevec[((eid-1)*dofs_per_node + 1):(eid*dofs_per_node)] .= 0;
+        fluxvec[((eid-1)*dofs_per_node + 1):(eid*dofs_per_node)] .= 0;
         
         ##### Source integrated over the cell #####
-        
-        # nodes and maps
-        glb = grid_data.loc2glb[:,e];               # elemental node global index
-        nodex = grid_data.allnodes[:,glb[:]];       # elemental node coordinates
-        
-        # geometric factors
-        detj = geo_factors.detJ[e];
-        J = geo_factors.J[e];
-        inv_vol = 1/geo_factors.volume[e];
-        
-        if source_rhs === nothing
-            source = zeros(dofs_per_node);
-        else
-            sourceargs = (var, e, nodex, glb, refel, detj, J, t, dt);
-            source = source_rhs.func(sourceargs) .* inv_vol;
-        end
-        
-        if dofs_per_node > 1
-            sourcevec[((e-1)*dofs_per_node + 1):(e*dofs_per_node)] = source;
-        else
-            sourcevec[e] = source[1];
+        # Compute RHS volume integral
+        if !(source_rhs === nothing)
+            sourceargs = prepare_args(var, eid, 0, RHS, "volume", t, dt); # (var, e, nodex, loc2glb, refel, detj, J, t, dt)
+            source = source_rhs.func(sourceargs) ./ geo_factors.volume[eid];
+            # Add to global source vector
+            sourcevec[((eid-1)*dofs_per_node + 1):(eid*dofs_per_node)] = source;
         end
         
         ##### Flux integrated over the faces #####
-        
-        nfaces = refel.Nfaces;                      # number of faces
-        faces = grid_data.element2face[1:nfaces, e];# face index
-        fluxvec[((e-1)*dofs_per_node + 1):(e*dofs_per_node)] .= 0;
         # Loop over this element's faces.
-        for i=1:nfaces
-            fid = faces[i];
-            if face_done[fid] == false
-                face_done[fid] = true; # Possible race condition, but in the worst case it will be computed twice.
-                
-                if grid_data.face2element[1, fid] == e
-                    # The normal points out of e
-                    normal = grid_data.facenormals[:, fid];
-                    neighbor = grid_data.face2element[2, fid];
-                    frefelind = [grid_data.faceRefelInd[1,fid], grid_data.faceRefelInd[2,fid]]; # refel based index of face in both elements
-                else
-                    # The normal points into e, reverse it
-                    normal = -grid_data.facenormals[:, fid];
-                    neighbor = grid_data.face2element[1, fid];
-                    frefelind = [grid_data.faceRefelInd[2,fid], grid_data.faceRefelInd[1,fid]]; # refel based index of face in both elements
-                end
-                
-                face2glb = grid_data.face2glb[:,:,fid];         # global index for face nodes for each side of each face
-                facex = grid_data.allnodes[:, face2glb[:, 1]];  # face node coordinates
-                
-                # geometric factors
-                fdetj = geo_factors.face_detJ[fid];
-                face_area = geo_factors.area[fid];
-                
-                if neighbor == 0 # This is a boundary face. For now, just compute as if neighbor is identical. BCs handled later.
-                    neighbor = e;
-                end
-                
-                vol_J_neighbor = geo_factors.J[neighbor];
-                vol_loc2glb = (glb, grid_data.loc2glb[:, neighbor]); # volume local to global
-                
-                nodex = (grid_data.allnodes[:,glb[:]], grid_data.allnodes[:,vol_loc2glb[2][:]]); # volume node coordinates
-                cellx = (fv_info.cellCenters[:, e], fv_info.cellCenters[:, neighbor]); # cell center coordinates
-                
-                fluxargs = (var, (e, neighbor), refel, vol_loc2glb, nodex, cellx, frefelind, facex, face2glb, normal, fdetj, face_area, (J, vol_J_neighbor), t, dt);
-                
-                flux = flux_rhs.func(fluxargs) .* face_area;
-                if dofs_per_node > 1
+        for i=1:refel.Nfaces
+            fid = grid_data.element2face[i, eid];
+            
+            if !(flux_rhs === nothing)
+                if face_done[fid] == false
+                    face_done[fid] = true; # Possible race condition, but in the worst case it will be computed twice.
+                    
+                    fluxargs = prepare_args(var, eid, fid, RHS, "surface", t, dt); #(var, (e, neighbor), refel, vol_loc2glb, nodex, cellx, frefelind, facex, face2glb, normal, fdetj, face_area, (J, vol_J_neighbor), t, dt);
+                    flux = flux_rhs.func(fluxargs) .* geo_factors.area[fid];
+                    # Add to global flux vector for faces
                     facefluxvec[((fid-1)*dofs_per_node + 1):(fid*dofs_per_node)] = flux;
-                    # Combine with source
-                    fluxvec[((e-1)*dofs_per_node + 1):(e*dofs_per_node)] += flux .* inv_vol;
+                    # Combine all flux for this element
+                    fluxvec[((eid-1)*dofs_per_node + 1):(eid*dofs_per_node)] += flux ./ geo_factors.volume[eid];
+                    
                 else
-                    facefluxvec[fid] = flux;
-                    # Combine with source
-                    fluxvec[e] += flux .* inv_vol;
-                end
-                
-            else
-                # This flux has either been computed or is being computed by another thread.
-                # The state will need to be known before paralellizing, but for now assume it's complete.
-                if dofs_per_node > 1
-                    fluxvec[((e-1)*dofs_per_node + 1):(e*dofs_per_node)] -= facefluxvec[((fid-1)*dofs_per_node + 1):(fid*dofs_per_node)] .* inv_vol;
-                else
-                    fluxvec[e] -= facefluxvec[fid] .* inv_vol;
+                    # This flux has either been computed or is being computed by another thread.
+                    # The state will need to be known before paralellizing, but for now assume it's complete.
+                    fluxvec[((eid-1)*dofs_per_node + 1):(eid*dofs_per_node)] -= facefluxvec[((fid-1)*dofs_per_node + 1):(fid*dofs_per_node)] ./ geo_factors.volume[eid];
                 end
             end
             
@@ -358,11 +305,11 @@ function assemble(var, source_lhs, source_rhs, flux_lhs, flux_rhs, allocated_vec
                                 # do nothing
                             elseif prob.bc_type[var[vi].index, fbid] == FLUX
                                 # compute the value and add it to the flux directly
-                                Qvec = (refel.surf_wg[frefelind[1]] .* fdetj)' * (refel.surf_Q[frefelind[1]])[:, refel.face2local[frefelind[1]]]
-                                Qvec = Qvec ./ face_area
-                                bflux = FV_flux_bc_rhs_only(prob.bc_func[var[vi].index, fbid][compo], facex, Qvec, t, dofind, dofs_per_node) .* face_area;
+                                Qvec = (refel.surf_wg[grid_data.faceRefelInd[1,fi]] .* fdetj)' * (refel.surf_Q[grid_data.faceRefelInd[1,fi]])[:, refel.face2local[grid_data.faceRefelInd[1,fi]]]
+                                Qvec = Qvec ./ geo_factors.area[fid];
+                                bflux = FV_flux_bc_rhs_only(prob.bc_func[var[vi].index, fbid][compo], facex, Qvec, t, dofind, dofs_per_node) .* geo_factors.area[fid];
                                 
-                                fluxvec[(e-1)*dofs_per_node + dofind] += (bflux - facefluxvec[(fid-1)*dofs_per_node + dofind]) .* inv_vol;
+                                fluxvec[(eid-1)*dofs_per_node + dofind] += (bflux - facefluxvec[(fid-1)*dofs_per_node + dofind]) ./ geo_factors.volume[eid];
                                 facefluxvec[(fid-1)*dofs_per_node + dofind] = bflux;
                             else
                                 printerr("Unsupported boundary condition type: "*prob.bc_type[var[vi].index, fbid]);
@@ -376,11 +323,11 @@ function assemble(var, source_lhs, source_rhs, flux_lhs, flux_rhs, allocated_vec
                             # do nothing
                         elseif prob.bc_type[var.index, fbid] == FLUX
                             # compute the value and add it to the flux directly
-                            Qvec = (refel.surf_wg[frefelind[1]] .* fdetj)' * (refel.surf_Q[frefelind[1]])[:, refel.face2local[frefelind[1]]]
-                            Qvec = Qvec ./ face_area
-                            bflux = FV_flux_bc_rhs_only(prob.bc_func[var.index, fbid][d], facex, Qvec, t, dofind, dofs_per_node) .* face_area;
+                            Qvec = (refel.surf_wg[grid_data.faceRefelInd[1,fi]] .* fdetj)' * (refel.surf_Q[grid_data.faceRefelInd[1,fi]])[:, refel.face2local[grid_data.faceRefelInd[1,fi]]]
+                            Qvec = Qvec ./ geo_factors.area[fid];
+                            bflux = FV_flux_bc_rhs_only(prob.bc_func[var.index, fbid][d], facex, Qvec, t, dofind, dofs_per_node) .* geo_factors.area[fid];
                             
-                            fluxvec[(e-1)*dofs_per_node + dofind] += (bflux - facefluxvec[(fid-1)*dofs_per_node + dofind]) .* inv_vol;
+                            fluxvec[(eid-1)*dofs_per_node + dofind] += (bflux - facefluxvec[(fid-1)*dofs_per_node + dofind]) ./ geo_factors.volume[eid];
                             facefluxvec[(fid-1)*dofs_per_node + dofind] = bflux;
                         else
                             printerr("Unsupported boundary condition type: "*prob.bc_type[var.index, fbid]);
@@ -393,6 +340,58 @@ function assemble(var, source_lhs, source_rhs, flux_lhs, flux_rhs, allocated_vec
     end# element loop
     
     return sourcevec + fluxvec;
+end
+
+# Gathers all info needed to be passed in args
+function prepare_args(var, ei, fi, lorr, vors, t, dt)
+    if vors == "volume"
+        # nodes and maps
+        loc2glb = grid_data.loc2glb[:,ei];               # elemental node global index
+        nodex = grid_data.allnodes[:,glb[:]];       # elemental node coordinates
+        
+        # geometric factors
+        detj = geo_factors.detJ[ei];
+        J = geo_factors.J[ei];
+        
+        args = (var, ei, nodex, loc2glb, refel, detj, J, t, dt);
+        
+    else # surface
+        if grid_data.face2element[1, fi] == ei
+            # The normal points out of e
+            normal = grid_data.facenormals[:, fi];
+            neighbor = grid_data.face2element[2, fi];
+            frefelind = [grid_data.faceRefelInd[1,fi], grid_data.faceRefelInd[2,fi]]; # refel based index of face in both elements
+        else
+            # The normal points into e, reverse it
+            normal = -grid_data.facenormals[:, fi];
+            neighbor = grid_data.face2element[1, fi];
+            frefelind = [grid_data.faceRefelInd[2,fi], grid_data.faceRefelInd[1,fi]]; # refel based index of face in both elements
+        end
+        
+        face2glb = grid_data.face2glb[:,:,fi];         # global index for face nodes for each side of each face
+        facex = grid_data.allnodes[:, face2glb[:, 1]];  # face node coordinates
+        
+        # geometric factors
+        fdetj = geo_factors.face_detJ[fi];
+        face_area = geo_factors.area[fi];
+        
+        if neighbor == 0 # This is a boundary face. For now, just compute as if neighbor is identical. BCs handled later.
+            neighbor = ei;
+        end
+        els = (ei, neighbor);
+        
+        vol_J = (geo_factors.J[ei], geo_factors.J[neighbor]);
+        
+        vol_loc2glb = (grid_data.loc2glb[:,ei], grid_data.loc2glb[:, neighbor]); # volume local to global
+        
+        nodex = (grid_data.allnodes[:,vol_loc2glb[1][:]], grid_data.allnodes[:,vol_loc2glb[2][:]]); # volume node coordinates
+        cellx = (fv_info.cellCenters[:, ei], fv_info.cellCenters[:, neighbor]); # cell center coordinates
+        
+        args = (var, els, refel, vol_loc2glb, nodex, cellx, frefelind, facex, face2glb, normal, fdetj, face_area, vol_J, t, dt);
+        
+    end
+    
+    return args
 end
 
 # Insert the single dof into the greater vector

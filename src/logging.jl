@@ -75,11 +75,11 @@ end
 function close_log()
     global use_log;
     if use_log
-        log_entry("Finalizing. Dumping state.", 3);
-        if log_level >= 3
-            log_dump_config();
-            log_dump_prob();
-        end
+        # log_entry("Finalizing. Dumping state.", 3);
+        # if log_level >= 3
+        #     log_dump_config();
+        #     log_dump_prob();
+        # end
         
         log_entry("Completed. Closing Log.", 0);
         use_log = false;

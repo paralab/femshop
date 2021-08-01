@@ -201,26 +201,30 @@ function build_faces(nel, elements, etypes)
     next_ind = 2;
     remove_count = 0;
     found = false;
+    both_sides_done = zeros(Bool, Nfaces); # If both sides have been handled, don't need to check anymore.
     for fi=2:Nfaces
         found = false;
         removeinds = face2v[:,fi];
         for fj=1:next_ind-1
-            keepinds = newface2v[:,fj];
-            if shared_face(keepinds, removeinds) # fi is a duplicate. 
-                #newface2e[1,fj] = face2e[1,fj];
-                newface2e[2,fj] = face2e[1,fi];
-                for fk=1:length(e2face[:,face2e[1,fi]])
-                    # if e2face[fk,newface2e[1,fj]] == fj
-                    #     newe2face[fk,newface2e[1,fj]] = fj;
-                    # end
-                    if e2face[fk,face2e[1,fi]] == fi
-                        newe2face[fk,face2e[1,fi]] = fj;
+            if !both_sides_done[fj]
+                keepinds = newface2v[:,fj];
+                if shared_face(keepinds, removeinds) # fi is a duplicate. 
+                    #newface2e[1,fj] = face2e[1,fj];
+                    newface2e[2,fj] = face2e[1,fi];
+                    for fk=1:length(e2face[:,face2e[1,fi]])
+                        # if e2face[fk,newface2e[1,fj]] == fj
+                        #     newe2face[fk,newface2e[1,fj]] = fj;
+                        # end
+                        if e2face[fk,face2e[1,fi]] == fi
+                            newe2face[fk,face2e[1,fi]] = fj;
+                        end
                     end
+                    
+                    remove_count += 1;
+                    found = true;
+                    both_sides_done[fj] = true;
+                    break;
                 end
-                
-                remove_count += 1;
-                found = true;
-                break;
             end
         end
         if !found # fi wasn't a duplicate. give it a new index.
