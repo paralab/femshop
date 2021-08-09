@@ -4,8 +4,8 @@ Many of them simply call corresponding functions in jl.
 =#
 export generateFor, useLog, domain, solverType, functionSpace, trialSpace, testSpace, 
         nodeType, timeStepper, setSteps, matrixFree, customOperator, customOperatorFile,
-        mesh, exportMesh, variable, coefficient, parameter, testSymbol, boundary, addBoundaryID,
-        referencePoint, timeInterval, initial, weakForm, fluxAndSource, flux, source, 
+        mesh, exportMesh, variable, coefficient, parameter, testSymbol, index, boundary, addBoundaryID,
+        referencePoint, timeInterval, initial, weakForm, fluxAndSource, flux, source, assemblyLoops,
         exportCode, importCode, printLatex,
         solve, cachesimSolve, finalize_femshop, cachesim, output_values,
         morton_nodes, hilbert_nodes, tiled_nodes, morton_elements, hilbert_elements, 
@@ -143,12 +143,12 @@ function exportMesh(filename, format=MSH_V2)
     close(mfile);
 end
 
-function variable(name, type=SCALAR, location=NODAL, array_size=[1], transpose_vals=false)
+function variable(name, type=SCALAR, location=NODAL; index=nothing)
     varind = var_count + 1;
     varsym = Symbol(name);
     # Just make an empty variable with the info known so far.
-    var = Variable(varsym, [], varind, type, location, [], [], false, [], false);
-    add_variable(var, var_array_size=array_size, transpose_vals=transpose_vals);
+    var = Variable(varsym, [], varind, type, location, [], index, 0, [], false);
+    add_variable(var);
     return var;
 end
 
@@ -188,6 +188,15 @@ end
 
 function testSymbol(symb, type=SCALAR)
     add_test_function(Symbol(symb), type);
+end
+
+function index(name; range=[1])
+    if length(range) == 2
+        range = Array(range[1]:range[2]);
+    end
+    idx = Indexer(Symbol(name), range, range[1])
+    add_indexer(idx);
+    return idx;
 end
 
 function boundary(var, bid, bc_type, bc_exp=0)
@@ -443,7 +452,7 @@ function flux(var, fex)
     log_entry("flux, code layer: \n  LHS = "*string(lhs_string)*" \n  RHS = "*string(rhs_string));
     
     if language == JULIA || language == 0
-        args = "args";
+        args = "args; kwargs...";
         @makeFunction(args, string(lhs_code));
         set_lhs_surface(var);
         
@@ -508,7 +517,7 @@ function source(var, sex)
     log_entry("source, code layer: \n  LHS = "*string(lhs_string)*" \n  RHS = "*string(rhs_string));
     
     if language == JULIA || language == 0
-        args = "args";
+        args = "args; kwargs...";
         @makeFunction(args, string(lhs_code));
         set_lhs(var);
         
@@ -518,6 +527,40 @@ function source(var, sex)
     else
         set_lhs(var, lhs_code);
         set_rhs(var, rhs_code);
+    end
+end
+
+# Creates an assembly loop function for a given variable that nests the loops in the given order.
+function assemblyLoops(var, indices)
+    # find the associated indexer objects
+    indexer_list = [];
+    for i=1:length(indices)
+        if typeof(indices[i]) == String
+            if indices[i] == "elements" || indices[i] == "cells"
+                push!(indexer_list, "elements");
+            else
+                for j=1:length(indexers)
+                    if indices[i] == string(indexers[j].symbol)
+                        push!(indexer_list, indexers[j]);
+                    end
+                end
+            end
+            
+        elseif typeof(indices[i]) == Indexer
+            push!(indexer_list, indices[i]);
+        end
+        
+    end
+    
+    (loop_string, loop_code) = generate_assembly_loops(indexer_list, config.solver_type, language);
+    log_entry("assembly loop function: \n\t"*string(loop_string));
+    
+    if language == JULIA || language == 0
+        args = "var, source_lhs, source_rhs, flux_lhs, flux_rhs, allocated_vecs, dofs_per_node=1, dofs_per_loop=1, t=0, dt=0";
+        @makeFunction(args, string(loop_code));
+        set_assembly_loops(var);
+    else
+        set_assembly_loops(var, loop_code);
     end
 end
 
@@ -748,6 +791,82 @@ function printLatex(var)
     return result;
 end
 
+# Evaluate all of the initial conditions
+function eval_initial_conditions()
+    dim = config.dimension;
+
+    # build initial conditions
+    for vind=1:length(variables)
+        if !(variables[vind].ready) && vind <= length(prob.initial)
+            if prob.initial[vind] != nothing
+                if typeof(prob.initial[vind]) <: Array
+                    # Evaluate at nodes
+                    nodal_values = zeros(length(prob.initial[vind]), size(grid_data.allnodes,2));
+                    for ci=1:length(prob.initial[vind])
+                        Threads.@threads for ni=1:size(grid_data.allnodes,2)
+                            if dim == 1
+                                nodal_values[ci,ni] = prob.initial[vind][ci].func(grid_data.allnodes[ni],0,0,0);
+                            elseif dim == 2
+                                nodal_values[ci,ni] = prob.initial[vind][ci].func(grid_data.allnodes[1,ni],grid_data.allnodes[2,ni],0,0);
+                            elseif dim == 3
+                                nodal_values[ci,ni] = prob.initial[vind][ci].func(grid_data.allnodes[1,ni],grid_data.allnodes[2,ni],grid_data.allnodes[3,ni],0);
+                            end
+                        end
+                    end
+                    
+                    # compute cell averages using nodal values if needed
+                    if variables[vind].location == CELL
+                        nel = size(grid_data.loc2glb, 2);
+                        Threads.@threads for ei=1:nel
+                            e = elemental_order[ei];
+                            glb = grid_data.loc2glb[:,e];
+                            vol = geo_factors.volume[e];
+                            detj = geo_factors.detJ[e];
+                            
+                            for ci=1:length(prob.initial[vind])
+                                variables[vind].values[ci,e] = detj / vol * (refel.wg' * refel.Q * (nodal_values[ci,glb][:]))[1];
+                            end
+                        end
+                    else
+                        variables[vind].values = nodal_values;
+                    end
+                    
+                else # scalar
+                    nodal_values = zeros(size(grid_data.allnodes,2));
+                    Threads.@threads for ni=1:size(grid_data.allnodes,2)
+                        if dim == 1
+                            nodal_values[ni] = prob.initial[vind].func(grid_data.allnodes[ni],0,0,0);
+                        elseif dim == 2
+                            nodal_values[ni] = prob.initial[vind].func(grid_data.allnodes[1,ni],grid_data.allnodes[2,ni],0,0);
+                        elseif dim == 3
+                            nodal_values[ni] = prob.initial[vind].func(grid_data.allnodes[1,ni],grid_data.allnodes[2,ni],grid_data.allnodes[3,ni],0);
+                        end
+                    end
+                    
+                    # compute cell averages using nodal values if needed
+                    if variables[vind].location == CELL
+                        nel = size(grid_data.loc2glb, 2);
+                        Threads.@threads for ei=1:nel
+                            e = elemental_order[ei];
+                            glb = grid_data.loc2glb[:,e];
+                            vol = geo_factors.volume[e];
+                            detj = geo_factors.detJ[e];
+                            
+                            variables[vind].values[e] = detj / vol * (refel.wg' * refel.Q * nodal_values[glb])[1];
+                        end
+                    else
+                        variables[vind].values = nodal_values;
+                    end
+                    
+                end
+                
+                variables[vind].ready = true;
+                log_entry("Built initial conditions for: "*string(variables[vind].symbol));
+            end
+        end
+    end
+end
+
 # This will either solve the problem or generate the code for an external target.
 function solve(var, nlvar=nothing; nonlinear=false)
     if use_cachesim
@@ -779,9 +898,11 @@ function solve(var, nlvar=nothing; nonlinear=false)
             varind = var.index;
         end
         
+        # Evaluate initial conditions if not already done
+        eval_initial_conditions();
+        
+        # Use the appropriate solver
         if config.solver_type == CG
-            init_cgsolver();
-            
             lhs = bilinears[varind];
             rhs = linears[varind];
             
@@ -793,7 +914,7 @@ function solve(var, nlvar=nothing; nonlinear=false)
                 end
                 if (nonlinear)
                     if time_stepper.type == EULER_EXPLICIT || time_stepper.type == LSRK4
-                        printerr("Warning: Use implicit stepper for nonlinear problem. Aborting.");
+                        printerr("Warning: Use implicit stepper for nonlinear problem. cancelling solve.");
                         return;
                     end
                 	t = @elapsed(result = CGSolver.nonlinear_solve(var, nlvar, lhs, rhs, time_stepper));
@@ -835,8 +956,6 @@ function solve(var, nlvar=nothing; nonlinear=false)
             log_entry("Solved for "*varnames*".(took "*string(t)*" seconds)", 1);
             
         elseif config.solver_type == DG
-            init_dgsolver();
-            
             lhs = bilinears[varind];
             rhs = linears[varind];
             slhs = face_bilinears[varind];
@@ -849,7 +968,9 @@ function solve(var, nlvar=nothing; nonlinear=false)
 				    time_stepper.Nsteps = specified_Nsteps;
                 end
 				if (nonlinear)
-                	t = @elapsed(result = DGSolver.nonlinear_solve(var, nlvar, lhs, rhs, slhs, srhs, time_stepper));
+                	# t = @elapsed(result = DGSolver.nonlinear_solve(var, nlvar, lhs, rhs, slhs, srhs, time_stepper));
+                    printerr("Nonlinear solver not ready for DG");
+                    return;
 				else
                 	t = @elapsed(result = DGSolver.linear_solve(var, lhs, rhs, slhs, srhs, time_stepper));
 				end
@@ -887,12 +1008,11 @@ function solve(var, nlvar=nothing; nonlinear=false)
             log_entry("Solved for "*varnames*".(took "*string(t)*" seconds)", 1);
             
         elseif config.solver_type == FV
-            init_fvsolver();
-            
             slhs = bilinears[varind];
             srhs = linears[varind];
             flhs = face_bilinears[varind];
             frhs = face_linears[varind];
+            loop_func = assembly_loops[varind];
             
             if prob.time_dependent
                 time_stepper = init_stepper(grid_data.allnodes, time_stepper);
@@ -901,18 +1021,21 @@ function solve(var, nlvar=nothing; nonlinear=false)
 				    time_stepper.Nsteps = specified_Nsteps;
                 end
 				if (nonlinear)
-                	t = 0;
-                    #TODO
+                	printerr("Nonlinear solver not ready for FV");
+                    return;
 				else
-                	t = @elapsed(result = FVSolver.linear_solve(var, slhs, srhs, flhs, frhs, time_stepper));
+                	t = @elapsed(result = FVSolver.linear_solve(var, slhs, srhs, flhs, frhs, time_stepper, loop_func));
 				end
                 # result is already stored in variables
+                log_entry("Solved for "*varnames*".(took "*string(t)*" seconds)", 1);
             else
                 # does this make sense?
+                printerr("FV assumes time dependence. Set initial conditions etc.");
             end
         end
     end
-
+    
+    # At this point all of the final values for the variables in var should be placed in var.values.
 end
 
 # When using cachesim, this will be used to simulate the solve.

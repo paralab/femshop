@@ -19,7 +19,7 @@ end
 
 struct SymEntity
     name::Union{Float64, String}    # The string or number 
-    index::Int64                    # vector component, 1 for scalars, -1 for numbers
+    index::Union{Int64, Array}     # vector component, 1 for scalars, -1 for numbers, "INDEXEDBY..." for indexed vars
     derivs::Array                   # any derivatives applied
     flags::Array                    # any non-derivative modifiers or flags
 end
@@ -39,8 +39,18 @@ function symentity_string(a::SymEntity)
     end
     
     result *= a.name;
-    if a.index > 0
+    if typeof(a.index) == Int && a.index > 0
         result *= "_"*string(a.index);
+    elseif typeof(a.index) <: Array && length(a.index) > 0
+        if length(a.index) > 1
+            result *= "_{"*a.index[1];
+            for i=2:length(a.index)
+                result *= ","*a.index[i];
+            end
+            result *= "}";
+        elseif length(a.index) == 1
+            result *= "_"*a.index[1];
+        end
     end
     
     for i=1:length(a.derivs)
@@ -175,7 +185,7 @@ function symexpression_to_latex(ex)
         elseif name == "FACENORMAL2"
             name = "-normal";
         end
-        if ex.index > 0
+        if typeof(ex.index) == Int && ex.index > 0
             result = name * "_{"*string(ex.index);
             if "DGSIDE1" in ex.flags || "CELL1" in ex.flags
                 result *= "+";
@@ -305,63 +315,70 @@ function build_symentity(var, ex)
     end
 end
 
+# Extract the indexing symbols from the index string
+function extract_index_symbols_from_index_string(ind_str)
+    indices = [];
+    b = 10;
+    e = 10;
+    for i=10:length(ind_str)
+        if ind_str[i-1:i] == "BY"
+            e = i-2;
+            push!(indices, ind_str[b:e]);
+            b = i+1;
+        elseif i == length(ind_str)
+            push!(indices, ind_str[b:end]);
+        end
+    end
+    
+    return indices;
+end
+
 # Extract meaning from the symbolic object name
 # The format of the input symbol should look like this
 #   MOD1_MOD2_..._var_n
-# There could be any number of mods, _var_n is the symvar symbol (n is the vector index, or 1 for scalar)
+# There could be any number of mods, _var_n is the symvar symbol (n is the vector index, or 1 for scalar, or INDEXEDBY... for array type)
 # Returns (n, var, [MOD1,MOD2,...]) all as strings
 function extract_entity_parts(ex)
     str = string(ex);
-    index = [];
+    index = 0;
     var = "";
     mods = [];
     l = lastindex(str);
     e = l; # end of variable name
     b = l; # beginning of variable name
     
-    # dt is a special symbol that will be passes as a number value in the generated function.
+    # dt is a special symbol that will be passed as a number value in the generated function.
     if str == "dt"
         return(-1, str, []);
     end
     
-    # Extract the name and index
-    for i=l:-1:0
-        if e==l
-            if str[i] == '_'
-                e = i-1;
+    # Extract the index
+    for i=l:-1:1
+        if str[i] == '_' && i < l
+            index_str = str[i+1:l];
+            # This could be an integer or INDEXEDBY...
+            if occursin("INDEXED", index_str)
+                index = extract_index_symbols_from_index_string(index_str);
             else
-                # These are the indices at the end. Parse one digit at a time.
                 try
-                    index = [parse(Int, str[i]); index] # The indices on the variable
+                    index = parse(Int, index_str);
                 catch
-                    return ([0],ex,[]);
+                    return (-1,str,[]); # an unexpected index, perhaps it is a special symbol
                 end
-                
-            end
-        elseif b==l && i>0
-            if str[i] == '_'
-                b = i+1;
             end
             
-        else
-            # At this point we know b and e
-            if var == ""
-                var = string((SubString(str, b, e)));
-                b = b-2;
-                e = b;
-            end
+            e = i-1; # end of variable name
+            break;
         end
     end
     
-    # Change index from [a, b] to a*d + b
-    if length(index) > 0
-        newindex = index[end];
-        for i=1:(length(index)-1)
-            newindex = newindex + (index[i]-1)*config.dimension^(length(index)-i);
+    # Extract the name
+    for i=e:-1:1
+        if str[i] == '_'
+            var = str[i+1:e];
+            b = i-1;
+            break;
         end
-        index = newindex;
-    else
-        index = 0;
     end
     
     # extract the modifiers like D1_ etc. separated by underscores
@@ -369,14 +386,13 @@ function extract_entity_parts(ex)
         e = b-1;
         for i=e:-1:1
             if str[i] == '_'
-                push!(mods, SubString(str, b, e));
-                
-                e = i-1;
+                b = i+1;
+                push!(mods, str[b:e]);
+                e = b-1;
                 
             elseif i == 1
-                push!(mods, SubString(str, 1, e));
+                push!(mods, str[1:e]);
             end
-            b = i;
         end
     end
     
@@ -414,19 +430,9 @@ function replace_special_ops(ex)
             newex.args[i] = replace_special_ops(newex.args[i]);
         end
         
-        # # turn conditional(a,b,c) into a ? b : c
-        # if newex.args[1] === :conditional && length(newex.args) == 4
-        #     # ifexpr = :(a ? b : c);
-        #     # ifexpr.args[1] = newex.args[2];
-        #     # ifexpr.args[2] = newex.args[3];
-        #     # ifexpr.args[3] = newex.args[4];
-        #     # newex = ifexpr;
-        #     newex.args[1] = :conditional_function; # See function below
-        # end
-        
     elseif typeof(ex) == Symbol
         # check against these special ones that need to be replaced
-        # This will eventually contain more complex things and conditionals.
+        # This will eventually contain more complex things.
         specials = [:symbolmin, :symbolmax, :isgreaterthan, :islessthan, :conditional];
         replacements = Dict([(:symbolmin, :min), (:symbolmax, :max), (:isgreaterthan, :>), (:islessthan, :<), (:conditional, :conditional_function)]);
         if ex in specials

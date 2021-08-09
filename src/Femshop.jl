@@ -13,7 +13,7 @@ export init_femshop, set_language, set_custom_gen_target, dendro, set_solver, se
         reformat_for_stepper, reformat_for_stepper_fv,
         add_mesh, output_mesh, add_boundary_ID, add_test_function, 
         add_initial_condition, add_boundary_condition, add_reference_point, set_rhs, set_lhs, set_lhs_surface, set_rhs_surface,
-        set_symexpressions
+        set_symexpressions, set_assembly_loops
 export build_cache_level, build_cache, build_cache_auto
 export sp_parse
 export generate_code_layer, generate_code_layer_surface, generate_code_layer_fv
@@ -50,6 +50,7 @@ variables = [];
 coefficients = [];
 parameters = [];
 test_functions = [];
+indexers = [];
 #generated functions
 genfunc_count = 0;
 genfunctions = [];
@@ -59,6 +60,8 @@ face_linears = [];
 #lhs
 bilinears = [];
 face_bilinears = [];
+#assembly loop functions
+assembly_loops = [];
 #symbolic layer
 symexpressions = [[],[],[],[]];
 #time stepper
@@ -104,12 +107,14 @@ function init_femshop(name="unnamedProject")
     global coefficients = [];
     global parameters = [];
     global test_functions = [];
+    global indexers = [];
     global genfunc_count = 0;
     global genfunctions = [];
     global linears = [];
     global bilinears = [];
     global face_linears = [];
     global face_bilinears = [];
+    global assembly_loops = [];
     global symexpressions = [[],[],[],[]];
     global time_stepper = nothing;
     global specified_dt = 0;
@@ -249,14 +254,35 @@ end
 function add_test_function(v, type)
     varind = length(test_functions) + 1;
     # make SymType
-    symvar = sym_var(string(v), type, config.dimension);
+    dim = config.dimension;
+    components = 1;
+    if type == SCALAR
+        components = 1;
+    elseif type == VECTOR
+        components = dim;
+    elseif type == TENSOR
+        components = dim*dim;
+    elseif type == SYM_TENSOR
+        if dim == 1
+            components = 1;
+        elseif dim == 2
+            components = 3;
+        elseif dim == 3
+            components = 6;;
+        elseif dim == 4
+            components = 10;
+        end
+    elseif type == VAR_ARRAY
+        components = 1;
+    end
+    symvar = sym_var(string(v), type, components);
 
     push!(test_functions, Femshop.Coefficient(v, symvar, varind, type, NODAL, []););
     log_entry("Set test function symbol: "*string(v)*" of type: "*type, 2);
 end
 
 # Adds a variable and allocates everything associated with it.
-function add_variable(var; var_array_size=[1], transpose_vals=false)
+function add_variable(var)
     global var_count += 1;
     if language == JULIA || language == 0
         # adjust values arrays
@@ -268,36 +294,36 @@ function add_variable(var; var_array_size=[1], transpose_vals=false)
         
         if var.type == SCALAR
             val_size = (1, N);
+            comps = 1;
         elseif var.type == VECTOR
             val_size = (config.dimension, N);
-            var_array_size = [config.dimension];
+            comps = config.dimension;
         elseif var.type == TENSOR
             val_size = (config.dimension*config.dimension, N);
-            var_array_size = [config.dimension, config.dimension];
+            comps = config.dimension*config.dimension;
         elseif var.type == SYM_TENSOR
             val_size = (Int((config.dimension*(config.dimension+1))/2), N);
-            var_array_size = [val_size[1]];
+            comps = val_size[1];
         elseif var.type == VAR_ARRAY
-            push!(var_array_size, N);
-            val_size = tuple(var_array_size);
-        end
-        if transpose_vals
-            var_array_size = [val_size[end]];
-            append!(var_array_size, val_size[2:(end-1)]);
-            val_size = tuple(var_array_size);
-            var.transposed = true;
+            if typeof(var.indexer) <: Array
+                comps = 1;
+                for i=1:length(var.indexer)
+                    comps *= length(var.indexer[i].range);
+                end
+            elseif typeof(var.indexer) == Indexer
+                comps = length(var.indexer.range);
+            else
+                comps = 1;
+            end
+            val_size = (comps, N);
         end
         
         var.values = zeros(val_size);
-        var.array_size = [val_size[1]];
-        for i=2:length(val_size)
-            push!(var.array_size, val_size[i]);
-        end
-        
+        var.total_components = comps;
     end
     
     # make symbolic layer variable symbols
-    var.symvar = sym_var(string(var.symbol), var.type, config.dimension, array_size=var.array_size);
+    var.symvar = sym_var(string(var.symbol), var.type, var.total_components);
 
     global variables = [variables; var];
 
@@ -305,6 +331,7 @@ function add_variable(var; var_array_size=[1], transpose_vals=false)
     global bilinears = [bilinears; nothing];
     global face_linears = [face_linears; nothing];
     global face_bilinears = [face_bilinears; nothing];
+    global assembly_loops = [assembly_loops; nothing];
     global symexpressions[1] = [symexpressions[1]; nothing];
     global symexpressions[2] = [symexpressions[2]; nothing];
     global symexpressions[3] = [symexpressions[3]; nothing];
@@ -317,6 +344,7 @@ end
 function add_coefficient(c, type, location, val, nfuns)
     global coefficients;
     vals = [];
+    components = length(vals);
     if nfuns == 0 # constant values
         vals = val;
         if length(vals) == 1 && !(typeof(vals) <: Array)
@@ -339,7 +367,7 @@ function add_coefficient(c, type, location, val, nfuns)
         end
     end
 
-    symvar = sym_var(string(c), type, config.dimension);
+    symvar = sym_var(string(c), type, components);
 
     index = length(coefficients);
     push!(coefficients, Coefficient(c, symvar, index, type, location, vals));
@@ -357,6 +385,17 @@ function add_parameter(p, type, val)
     log_entry("Added parameter "*string(p)*" : "*string(val), 2);
 
     return parameters[end];
+end
+
+# Adds an Indexer entity
+function add_indexer(indexer)
+    push!(indexers, indexer);
+    if length(indexer.range) < 3
+        log_entry("Added indexer "*string(indexer.symbol)*" : "*string(indexer.range));
+    else
+        log_entry("Added indexer "*string(indexer.symbol)*" : ["*string(indexer.range[1])*", ... "*string(indexer.range[end])*"]");
+    end
+    
 end
 
 # Needed to insert parameter expressions into the weak form expressions.
@@ -619,6 +658,28 @@ function set_symexpressions(var, ex, lorr, vors)
             end
         end
         symexpressions[ind][var.index] = ex;
+    end
+end
+
+function set_assembly_loops(var, code="")
+    global assembly_loops;
+    if language == 0 || language == JULIA
+        if typeof(var) <:Array
+            for i=1:length(var)
+                assembly_loops[var[i].index] = genfunctions[end];
+            end
+        else
+            assembly_loops[var.index] = genfunctions[end];
+        end
+        
+    else # external generation
+        if typeof(var) <:Array
+            for i=1:length(var)
+                assembly_loops[var[i].index] = code;
+            end
+        else
+            assembly_loops[var.index] = code;
+        end
     end
 end
 

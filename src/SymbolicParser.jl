@@ -14,12 +14,12 @@ import ..Femshop: JULIA, CPP, MATLAB, DENDRO, HOMG, CUSTOM_GEN_TARGET,
             VTK, RAW_OUTPUT, CUSTOM_OUTPUT, 
             DIRICHLET, NEUMANN, ROBIN, NO_BC, FLUX,
             MSH_V2, MSH_V4,
-            SCALAR, VECTOR, TENSOR, SYM_TENSOR,
+            SCALAR, VECTOR, TENSOR, SYM_TENSOR, VAR_ARRAY,
             LHS, RHS,
             LINEMESH, QUADMESH, HEXMESH
 import ..Femshop: Femshop_config, Femshop_prob, Variable, Coefficient
 import ..Femshop: log_entry, printerr
-import ..Femshop: config, prob, variables, coefficients, parameters, test_functions
+import ..Femshop: config, prob, variables, coefficients, parameters, test_functions, indexers
 
 using SymEngine, LinearAlgebra
 
@@ -43,11 +43,13 @@ include("basic_ops.jl");
 
 # These are special function symbols that need to be defined.
 # They can be used in operators.
+# They are defined in symexpression.jl for now
 @funs(conditional)
 @funs(symbolmin)
 @funs(symbolmax)
 @funs(isgreaterthan)
 @funs(islessthan)
+@funs(indexing_operator)
 
 # a special operator for dealing with scalar multiplication when the scalar is in an array
 import Base.*
@@ -83,33 +85,16 @@ function add_custom_op_file(file)
 end
 
 # Builds an array of symbolic layer symbols
-function sym_var(name, type, dim; array_size=[1])
-    components = 1;
-    if type == SCALAR
-        components = 1;
-    elseif type == VECTOR
-        components = dim;
-    elseif type == TENSOR
-        components = dim*dim;
-    elseif type == SYM_TENSOR
-        if dim == 1
-            components = 1;
-        elseif dim == 2
-            components = 3;
-        elseif dim == 3
-            components = 6;;
-        elseif dim == 4
-            components = 10;
+function sym_var(name, type, components=1)
+    if type == VAR_ARRAY
+        # These must be indexed
+        symvar = [symbols("_"*name*"_INDEXED")];
+        
+    else
+        symvar = [symbols("_"*name*"_1")];
+        for i=2:components
+            push!(symvar, symbols("_"*name*"_"*string(i)));
         end
-    elseif type == VAR_ARRAY
-        components=1;
-        for i=1:length(array_size)
-            components = components * array_size[i];
-        end
-    end
-    symvar = [symbols("_"*name*"_1")];
-    for i=2:components
-        push!(symvar, symbols("_"*name*"_"*string(i)));
     end
     
     return symvar;
@@ -155,6 +140,12 @@ function sp_parse(ex, var)
     symex = replace_symbols(symex);
     # if debug println("replace symbols -> "*string(symex)); end
     log_entry("SP replace symbols -> "*string(symex), 3);
+    
+    # Look for indexes like [i] where i is an indexer
+    if length(indexers) > 0
+        symex = handle_indexers(symex);
+        log_entry("SP symbolic indicies -> "*string(symex), 3);
+    end
     
     # change some operators like ^ and / to broadcast versions .^ ./
     symex = broadcast_ops(symex);
@@ -365,6 +356,59 @@ function replace_symbols(ex)
     else
         return ex;
     end
+end
+
+# Turns u[i] into u_INDEXEDBYi
+function handle_indexers(ex)
+    # Traverse the Expr looking for ref heads
+    if typeof(ex) <:Array
+        result = copy(ex);
+        for i=1:length(ex)
+            result[i] = handle_indexers(ex[i]);
+        end
+        return result;
+        
+    elseif typeof(ex) == Expr
+        if ex.head === :ref
+            needs_indexing = false;
+            for i=2:length(ex.args)
+                if !(typeof(ex.args[i]) <: Number)
+                    needs_indexing = true;
+                end
+            end
+            if needs_indexing
+                
+                var = ex.args[1];
+                if typeof(var) <: Array && length(var) == 1 && occursin("INDEXED", string(var[1]))
+                    newname = string(var[1]);
+                    for i=2:length(ex.args)
+                        newname *= "BY"*string(ex.args[i]);
+                    end
+                    return [symbols(newname)];
+                else
+                    printerr("Expected an array type variable when indexing: "*string(ex));
+                end
+                
+                
+                # newex = Expr(:call, :indexing_operator, ex.args[1]);
+                # # the index symbols need to be turned into symengine things
+                # for i=2:length(ex.args)
+                #     if typeof(ex.args[i]) == Symbol
+                #         ex.args[i] = symbols(string(ex.args[i]))
+                #     end
+                # end
+                # append!(newex.args, ex.args[2:end]);
+                # return newex;
+            end
+            
+        else
+            for i=1:length(ex.args)
+                ex.args[i] = handle_indexers(ex.args[i]);
+            end
+        end
+    end
+    
+    return ex;
 end
 
 function broadcast_ops(ex)

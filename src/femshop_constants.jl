@@ -12,7 +12,7 @@ export JULIA, CPP, MATLAB, DENDRO, HOMG, CUSTOM_GEN_TARGET,
         VTK, RAW_OUTPUT, CUSTOM_OUTPUT, 
         DIRICHLET, NEUMANN, ROBIN, NO_BC, FLUX,
         MSH_V2, MSH_V4,
-        SCALAR, VECTOR, TENSOR, SYM_TENSOR,
+        SCALAR, VECTOR, TENSOR, SYM_TENSOR, VAR_ARRAY,
         LHS, RHS,
         LINEMESH, QUADMESH, HEXMESH
 
@@ -89,6 +89,7 @@ const SCALAR = "scalar";
 const VECTOR = "vector";
 const TENSOR = "tensor";
 const SYM_TENSOR = "sym_tensor";
+const VAR_ARRAY = "var array";
 
 const LHS = "lhs";
 const RHS = "rhs";

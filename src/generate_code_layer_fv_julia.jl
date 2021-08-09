@@ -4,112 +4,50 @@ Code generation functions for FV for Julia.
 
 # Extract the input args. This must match the arguments passed by the solver.
 function handle_input_args_fv_julia(lorr, vors)
-    code = "";
-    
-    if vors == "volume" # source (integrated over the cell volume)
-        code =
+    # args = (var, eid, fid, grid_data, geo_factors, fv_info, t, dt)
+    code =
+"var =       args[1];
+eid =       args[2];
+fid =       args[3];
+grid =      args[4];
+geo_facs =  args[5];
+fv_data =   args[6];
+refel =     args[7]
+time =      args[8];
+dt =        args[9]
 "
-var =    args[1];  # unknown variables
-el =     args[2];  # This element index
-nodex =  args[3];  # global coords of element's nodes
-loc2glb= args[4];  # global indices of the nodes
-refel =  args[5];  # reference element
-detj =   args[6];  # quadrature weights * detJ
-J =      args[7];  # Jacobian
-time =   args[8];  # time for time dependent coefficients
-dt =     args[9];  # dt for time dependent problems
-"
-        
-    elseif vors == "surface" # flux (integrated over the cell surface)
-        code =
-"
-var =        args[1];  # list of unknown variables for this expression
-els =        args[2];  # elements on both sides of the face
-refel =      args[3];  # reference element for volume
-loc2glb =    args[4];  # loc2glb for full elements
-nodex =      args[5];  # global coords of element's nodes
-cellx =      args[6];  # coordinates of cell center
-frefelind =  args[7];  # reference element indices for faces
-facex =      args[8];  # global coords of face nodes
-face2glb =   args[9];  # Global indices of face nodes
-normal =     args[10]; # Normal vector from e1 to e2
-face_detJ =  args[11]; # geometric factor for face
-area =       args[12]; # area face
-vol_J =     args[13]; # jacobian for both elements
-time =      args[14]; # time for time dependent coefficients
-dt =         args[15]; # dt for time dependent problems
-"
-    end
-    
-    return code;
-end
-
-# If needed, build derivative matrices
-function build_derivative_matrices_fv_julia(lorr, vors, need_matrix)
-    if need_matrix
-        code = 
-"
-# Note on derivative matrices:
-# RQn are vandermond matrices for the derivatives of the basis functions
-# with Jacobian factors. They are made like this.
-# |RQ1|   | rx sx tx || Qx |
-# |RQ2| = | ry sy ty || Qy |
-# |RQ3|   | rz sz tz || Qz |
-
-"
-        if config.dimension == 1
-            if vors == "volume"
-                code *= "(RQ1, RD1) = build_deriv_matrix(refel, J);\n";
-                code *= "TRQ1 = RQ1';\n"
-            else
-                #TODO
-            end
-            
-        elseif config.dimension == 2
-            if vors == "volume"
-                code *= "(RQ1, RQ2, RD1, RD2) = build_deriv_matrix(refel, J);\n";
-                code *= "(TRQ1, TRQ2) = (RQ1', RQ2');\n"
-            else
-                #TODO
-            end
-            
-        elseif config.dimension == 3
-            if vors == "volume"
-                code *= "(RQ1, RQ2, RQ3, RD1, RD2, RD3) = build_deriv_matrix(refel, J);\n";
-                code *= "(TRQ1, TRQ2, TRQ3) = (RQ1', RQ2', RQ3');\n"
-            else
-                #TODO
-            end
-        end
-        
-    else
-        code = ""
-    end
-    
-    # This is computed for all
-    if vors == "surface"
-        code *= "dxyz = norm(cellx[2] - cellx[1]) .* normal; # normal scaled by distance between cell centers\n"
-    end
-    
     return code;
 end
 
 # Allocate, compute, or fetch all needed values
 function prepare_needed_values_fv_julia(entities, var, lorr, vors)
+    # Only gather the pieces that are used. See the end of this function.
+    if vors == "volume"
+        # el, nodex, loc2glb, detJ, J
+        piece_needed = zeros(Bool, 5);
+    else # surface
+        # els, nodex, loc2glb, cellx, frefelind, facex, face2glb, normal, face_detJ, area, vol_J
+        piece_needed = zeros(Bool, 11);
+    end
+    need_deriv_matrix = false;
+    need_deriv_dist = false;
+    
     code = "";
-    needs_integration = [];
+    
+    # First label the index values
+    for i=1:length(indexers)
+        if indexers[i].symbol === :elements || indexers[i].symbol === :cells
+            # not needed
+        else
+            code *= "INDEX_VAL_"*string(indexers[i].symbol)*" = kwargs["*string(i)*"]\n";
+        end
+    end
+    
     for i=1:length(entities)
         cname = make_coef_name(entities[i]);
         if is_unknown_var(entities[i], var) && lorr == LHS
             # TODO
-            # if length(entities[i].derivs) > 0
-            #     xyzchar = ["x","y","z"];
-            #     for di=1:length(entities[i].derivs)
-            #         code *= cname * " = RQ"*string(entities[i].derivs[di])*"; # d/d"*xyzchar[entities[i].derivs[di]]*" of trial function\n";
-            #     end
-            # else
-            #     code *= cname * " = refel.Q; # trial function.\n";
-            # end
+            
         else
             # Is coefficient(number or function) or variable(array)?
             (ctype, cval) = get_coef_val(entities[i]);
@@ -117,8 +55,10 @@ function prepare_needed_values_fv_julia(entities, var, lorr, vors)
                 # It was a special symbol like dt or FACENORMAL
                 if entities[i].name == "FACENORMAL1"
                     code *= cname * " = normal["*string(entities[i].index)*"]; # normal vector component\n"
+                    piece_needed[8] = true;
                 else entities[i].name == "FACENORMAL2"
                     code *= cname * " = -normal["*string(entities[i].index)*"]; # reverse normal vector component\n"
+                    piece_needed[8] = true;
                 end
             elseif ctype == 0
                 # It was a number, do nothing?
@@ -140,8 +80,10 @@ function prepare_needed_values_fv_julia(entities, var, lorr, vors)
                 ######################################
                 if vors == "surface" && length(entities[i].derivs) == 0
                     nodesymbol = "facex"
+                    piece_needed[6] = true;
                 else
                     nodesymbol = "nodex"
+                    piece_needed[2] = true;
                 end
                 cargs = "("*nodesymbol*"[coefi], 0, 0, time)";
                 if config.dimension == 2
@@ -159,9 +101,12 @@ function prepare_needed_values_fv_julia(entities, var, lorr, vors)
                             code *= cname * " = RD"*string(entities[i].derivs[di])*" * " * cname * 
                                     "; # Apply d/d"*xyzchar[entities[i].derivs[di]]*".\n";
                         end
+                        need_deriv_matrix = true;
+                        piece_needed[5] = true;
                     end
                     # integrate over cell
                     code *= cname * " = (refel.wg .* detj)' * refel.Q * " * cname * "; # integrate over cell\n";
+                    piece_needed[4] = true;
                     
                 else # surface
                     # Apply any needed derivative operators. Interpolate at quadrature points.
@@ -174,9 +119,13 @@ function prepare_needed_values_fv_julia(entities, var, lorr, vors)
                                     "; # Apply d/d"*xyzchar[entities[i].derivs[di]]*".\n";
                         end
                         code *= cname * " = " * cname * "[refel.face2local[frefelind[1]]]; # extract face values only.";
+                        need_deriv_matrix = true;
+                        piece_needed[[4,5,8]] .= true;
+                        
                     else # no derivatives, only need surface nodes
                         code *= cname * " = zeros(refel.Nfp[frefelind[1]]);\n";
                         code *= "for coefi = 1:refel.Nfp[frefelind[1]] " * cname * "[coefi] = (Femshop.genfunctions["*string(cval)*"]).func" * cargs * " end\n";
+                        piece_needed[5] = true;
                     end
                     # integrate over face
                     if config.dimension == 1
@@ -184,10 +133,13 @@ function prepare_needed_values_fv_julia(entities, var, lorr, vors)
                         code *= cname * " = " * cname * "[1]\n";
                     else
                         code *= cname * " = (refel.surf_wg[frefelind[1]] .* face_detJ)' * refel.surf_Q[frefelind[1]][:, refel.face2local[frefelind[1]]] * " * cname * " / area; # integrate over face\n";
+                        piece_needed[9] = true;
+                        piece_needed[10] = true;
                     end
                 end
                 
             elseif ctype == 3 # a known variable value
+                piece_needed[1] = true;
                 # This generates something like: coef_u_1 = copy((Femshop.variables[1]).values[1, gbl])
                 cellside = 0; # 0 means no side flag
                 for flagi=1:length(entities[i].flags)
@@ -207,31 +159,230 @@ function prepare_needed_values_fv_julia(entities, var, lorr, vors)
                 elseif cellside == 2
                     l2gsymbol = "els[2]"
                 end
+                
+                if typeof(entities[i].index) <: Array
+                    # It is an indexed variable
+                    if length(entities[i].index) == 1
+                        indstr = "INDEX_VAL_"*entities[i].index[1];
+                    else
+                        # There is more than one index. Need to form an expression for it.
+                        indstr = "(INDEX_VAL_"*entities[i].index[1];
+                        indices = variables[cval].indexer;
+                        for indi=2:length(entities[i].index)
+                            indstr *= " + ("*string(length(indices[indi-1].range))*"*(INDEX_VAL_"*entities[i].index[indi]*"-1)";
+                        end
+                        for indi=1:length(entities[i].index)
+                            indstr *= ")";
+                        end
+                    end
+                    
+                else
+                    indstr = string(entities[i].index);
+                end
+                    
                 if vors == "volume"
                     # Apply any needed derivative operators.
                     if length(entities[i].derivs) > 0
                         # Need a derivative here...
                         # TODO
                     else
-                        code *= cname * " = Femshop.variables["*string(cval)*"].values["*string(entities[i].index)*", "*l2gsymbol*"];\n";
+                        code *= cname * " = Femshop.variables["*string(cval)*"].values["*indstr*", "*l2gsymbol*"];\n";
                     end
                 else
                     if length(entities[i].derivs) > 0
-                        code *= cname * " = Femshop.variables["*string(cval)*"].values["*string(entities[i].index)*", els[2]] - Femshop.variables["*string(cval)*"].values["*string(entities[i].index)*", els[1]];\n";
+                        code *= cname * " = Femshop.variables["*string(cval)*"].values["*indstr*", els[2]] - Femshop.variables["*string(cval)*"].values["*indstr*", els[1]];\n";
                         code *= cname * " = (els[1] != els[2] && abs(normal["*string(entities[i].derivs[1])*"]) > 1e-10) ? "*cname*" ./ dxyz["*string(entities[i].derivs[1])*"]  : 0\n"
+                        need_deriv_dist = true;
+                        piece_needed[4] = true; # cellx
+                        piece_needed[8] = true; # normal
                     else
                         if cellside == 0
                             # No side was specified, so use the average
-                            code *= cname * " = 0.5 * (Femshop.variables["*string(cval)*"].values["*string(entities[i].index)*", els[1]] + Femshop.variables["*string(cval)*"].values["*string(entities[i].index)*", els[2]]);\n";
+                            code *= cname * " = 0.5 * (Femshop.variables["*string(cval)*"].values["*indstr*", els[1]] + Femshop.variables["*string(cval)*"].values["*indstr*", els[2]]);\n";
                         else
-                            code *= cname * " = Femshop.variables["*string(cval)*"].values["*string(entities[i].index)*", "*l2gsymbol*"];\n";
+                            code *= cname * " = Femshop.variables["*string(cval)*"].values["*indstr*", "*l2gsymbol*"];\n";
                         end
+                    end
+                end
+                
+            elseif ctype == 4 # an indexed coefficient
+                # This generates something like:
+                ######################################
+                # coef_n_1 = zeros(refel.Np); # allocate
+                # for coefi = 1:refel.Np
+                #     coef_k_1[coefi] = (Femshop.coefficients[cval]).value[INDEX_VAL_i].func(x[1,coefi], x[2,coefi],x[3,coefi],time); # evaluate at nodes
+                # end
+                ######################################
+                if vors == "surface" && length(entities[i].derivs) == 0
+                    nodesymbol = "facex"
+                    piece_needed[6] = true;
+                else
+                    nodesymbol = "nodex"
+                    piece_needed[2] = true;
+                end
+                cargs = "("*nodesymbol*"[coefi], 0, 0, time)";
+                if config.dimension == 2
+                    cargs = "("*nodesymbol*"[1, coefi], "*nodesymbol*"[2, coefi], 0, time)";
+                elseif config.dimension == 3
+                    cargs = "("*nodesymbol*"[1, coefi], "*nodesymbol*"[2, coefi], "*nodesymbol*"[3, coefi], time)";
+                end
+                
+                indstr = "";
+                for indi=1:length(entities[i].index)
+                    if indi>1
+                        indstr *= ",";
+                    end
+                    indstr *= "INDEX_VAL_"*entities[i].index[indi];
+                end
+                
+                if vors == "volume"
+                    code *= cname * " = zeros(refel.Np);\n";
+                    code *= "for coefi = 1:refel.Np " * cname * "[coefi] = (Femshop.coefficients["*string(cval)*"]).value["*indstr*"].func" * cargs * " end\n";
+                    # Apply any needed derivative operators. Interpolate at quadrature points.
+                    if length(entities[i].derivs) > 0
+                        xyzchar = ["x","y","z"];
+                        for di=1:length(entities[i].derivs)
+                            code *= cname * " = RD"*string(entities[i].derivs[di])*" * " * cname * 
+                                    "; # Apply d/d"*xyzchar[entities[i].derivs[di]]*".\n";
+                        end
+                        need_deriv_matrix = true;
+                        piece_needed[5] = true;
+                    end
+                    # integrate over cell
+                    code *= cname * " = (refel.wg .* detj)' * refel.Q * " * cname * "; # integrate over cell\n";
+                    piece_needed[4] = true;
+                    
+                else # surface
+                    # Apply any needed derivative operators. Interpolate at quadrature points.
+                    if length(entities[i].derivs) > 0
+                        code *= cname * " = zeros(refel.Np);\n";
+                        code *= "for coefi = 1:refel.Np " * cname * "[coefi] = (Femshop.coefficients["*string(cval)*"]).value["*indstr*"].func" * cargs * " end\n";
+                        xyzchar = ["x","y","z"];
+                        for di=1:length(entities[i].derivs)
+                            code *= cname * " = RD"*string(entities[i].derivs[di])*" * " * cname * 
+                                    "; # Apply d/d"*xyzchar[entities[i].derivs[di]]*".\n";
+                        end
+                        code *= cname * " = " * cname * "[refel.face2local[frefelind[1]]]; # extract face values only.";
+                        need_deriv_matrix = true;
+                        piece_needed[[4,5,8]] .= true;
+                        
+                    else # no derivatives, only need surface nodes
+                        code *= cname * " = zeros(refel.Nfp[frefelind[1]]);\n";
+                        code *= "for coefi = 1:refel.Nfp[frefelind[1]] " * cname * "[coefi] = (Femshop.coefficients["*string(cval)*"]).value["*indstr*"].func" * cargs * " end\n";
+                        piece_needed[5] = true;
+                    end
+                    # integrate over face
+                    if config.dimension == 1
+                        # in 1d there is only one face node
+                        code *= cname * " = " * cname * "[1]\n";
+                    else
+                        code *= cname * " = (refel.surf_wg[frefelind[1]] .* face_detJ)' * refel.surf_Q[frefelind[1]][:, refel.face2local[frefelind[1]]] * " * cname * " / area; # integrate over face\n";
+                        piece_needed[9] = true;
+                        piece_needed[10] = true;
                     end
                 end
                 
             end
         end # if coefficient
     end # entity loop
+    
+    
+    if vors == "volume"
+        # el, nodex, loc2glb, detJ, J
+        needed_pieces = "";
+        if piece_needed[1]
+            needed_pieces *= "el = eid;\n"
+        end
+        if piece_needed[2] || piece_needed[3]
+            needed_pieces *= "loc2glb = grid.loc2glb[:,eid]; # local to global map\n"
+        end
+        if piece_needed[2]
+            needed_pieces *= "nodex = grid.allnodes[:,loc2glb]; # node coordinates\n"
+        end
+        if piece_needed[4]
+            needed_pieces *= "detj = geo_factors.detJ[eid]; # geometric factors\n"
+        end
+        if piece_needed[5]
+            needed_pieces *= "J = geo_factors.J[eid]; # geometric factors\n"
+        end
+        
+        if need_deriv_matrix
+            needed_pieces *= 
+"
+# Note on derivative matrices:
+# RQn are vandermond matrices for the derivatives of the basis functions
+# with Jacobian factors. They are made like this.
+# |RQ1|   | rx sx tx || Qx |
+# |RQ2| = | ry sy ty || Qy |
+# |RQ3|   | rz sz tz || Qz |
+
+"
+            if config.dimension == 1
+                needed_pieces *= "(RQ1, RD1) = build_deriv_matrix(refel, J);\n";
+                needed_pieces *= "TRQ1 = RQ1';\n"
+                
+            elseif config.dimension == 2
+                needed_pieces *= "(RQ1, RQ2, RD1, RD2) = build_deriv_matrix(refel, J);\n";
+                needed_pieces *= "(TRQ1, TRQ2) = (RQ1', RQ2');\n"
+                
+            elseif config.dimension == 3
+                needed_pieces *= "(RQ1, RQ2, RQ3, RD1, RD2, RD3) = build_deriv_matrix(refel, J);\n";
+                needed_pieces *= "(TRQ1, TRQ2, TRQ3) = (RQ1', RQ2', RQ3');\n"
+            end
+        end
+        if need_deriv_dist
+            needed_pieces *= "TODO: neighboring cell-based derivative for volume. generate_code_layer_fv_julia.jl - prepare_needed_values_fv_julia()"
+        end
+        
+    else # surface
+        needed_pieces = 
+"if grid.face2element[1, fid] == eid # The normal points out of e"*(piece_needed[8] ? "\n\tnormal = grid.facenormals[:, fid];" : "")*"
+    neighbor = grid.face2element[2, fid];"*(piece_needed[5] ? "\n\tfrefelind = [grid.faceRefelInd[1,fid], grid.faceRefelInd[2,fid]]; # refel based index of face in both elements" : "")*"
+else # The normal points into e"*(piece_needed[8] ? "\n\tnormal = -grid.facenormals[:, fid];" : "")*"
+    neighbor = grid.face2element[1, fid];"*(piece_needed[5] ? "\n\tfrefelind = [grid.faceRefelInd[2,fid], grid.faceRefelInd[1,fid]]; # refel based index of face in both elements" : "")*"
+end
+if neighbor == 0 # This is a boundary face. For now, just compute as if neighbor is identical. BCs handled later.
+    neighbor = eid;
+end\n
+";
+        # els, nodex, loc2glb, cellx, frefelind, facex, face2glb, normal, face_detJ, area, vol_J
+        if piece_needed[1]
+            needed_pieces *= "els = (eid, neighbor); # indices of elements on both sides\n"
+        end
+        if piece_needed[2] || piece_needed[3]
+            needed_pieces *= "loc2glb = (grid.loc2glb[:,eid], grid.loc2glb[:, neighbor]); # volume local to global\n"
+        end
+        if piece_needed[2]
+            needed_pieces *= "nodex = (grid.allnodes[:,loc2glb[1][:]], grid.allnodes[:,loc2glb[2][:]]); # volume node coordinates\n"
+        end
+        if piece_needed[4]
+            needed_pieces *= "cellx = (fv_data.cellCenters[:, eid], fv_data.cellCenters[:, neighbor]); # cell center coordinates\n"
+        end
+        if piece_needed[5] || piece_needed[6]
+            needed_pieces *= "face2glb = grid.face2glb[:,:,fid];         # global index for face nodes for each side of each face\n"
+        end
+        if piece_needed[6]
+            needed_pieces *= "facex = grid.allnodes[:, face2glb[:, 1]];  # face node coordinates\n"
+        end
+        if piece_needed[9]
+            needed_pieces *= "face_detJ = geo_facs.face_detJ[fid];       # detJ on face\n"
+        end
+        if piece_needed[10]
+            needed_pieces *= "area = geo_facs.area[fid];                 # area of face\n"
+        end
+        if piece_needed[11]
+            needed_pieces *= "vol_J = (geo_facs.J[eid], geo_facs.J[neighbor]);\n"
+        end
+        
+        if need_deriv_matrix
+            needed_pieces *= "TODO: derivative matrices for surface. generate_code_layer_fv_julia.jl - prepare_needed_values_fv_julia()"
+        end
+        if need_deriv_dist
+            needed_pieces *= "dxyz = norm(cellx[2] - cellx[1]) .* normal; # normal scaled by distance between cell centers\n"
+        end
+    end
+    
+    code = needed_pieces * "\n" * code;
     
     return code;
 end
@@ -377,7 +528,8 @@ function make_elemental_computation_fv_julia(terms, var, dofsper, offset_ind, lo
                 end
             end
         end
-        code *= "return " * result * ";\n";
+        code *= "cell_average = " * result * ";\n";
+        code *= "return cell_average;\n"
     end
     
     return code;
@@ -408,4 +560,184 @@ function generate_term_calculation_fv_julia(term, var, lorr)
     end
     
     return (result, var_ind);
+end
+
+# Generate the assembly loop structures and insert the content
+function generate_assembly_loop_fv_julia(indices)
+    # Each of the indices must be passed to the functions in a named tuple.
+    # Pass all defined indexers.
+    index_args = "";
+    for i=1:length(indexers)
+        if i > 1
+            index_args *= ", ";
+        end
+        index_args *= "index_val_"*string(indexers[i].symbol)*"=indexing_variable_"*string(indexers[i].symbol);
+    end
+    if length(indexers) == 0
+        index_args = "empty_index = 1";
+    end
+    
+    # Make sure the elemental loop is included
+    elements_included = false;
+    for i=1:length(indices)
+        if indices[i] == "elements" || indices[i] == "cells"
+            elements_included = true;
+        end
+    end
+    # If elements were not included, make them the outermost loop
+    if !elements_included
+        indices = ["elements"; indices];
+    end
+    
+    code = 
+"# Label things that were allocated externally
+sourcevec = allocated_vecs[1];
+fluxvec = allocated_vecs[2];
+facefluxvec = allocated_vecs[3];
+face_done = allocated_vecs[4];
+
+"
+    # generate the loop structures
+    code *= "# Loops\n"
+    loop_start = ""
+    loop_end = ""
+    ind_offset = ""
+    prev_ind = ""
+    for i=1:length(indices)
+        if indices[i] == "elements" || indices[i] == "cells"
+            loop_start *= "for eid in elemental_order\n";
+            loop_start *= "face_done .= 0; # Reset face_done in elemental loop\n";
+            loop_end *= "end # loop for elements\n";
+        else
+            loop_start *= "for indexing_variable_"*string(indices[i].symbol)*" in "*string(indices[i].range)*"\n";
+            loop_end *= "end # loop for "*string(indices[i].symbol)*"\n";
+            if length(prev_ind) == 0
+                ind_offset *= "(indexing_variable_"*string(indices[i].symbol);
+                prev_ind = string(length(indices[i].range));
+            else
+                ind_offset *= " + "*prev_ind*" * (indexing_variable_"*string(indices[i].symbol)*" - 1";
+                prev_ind = string(length(indices[i].range));
+            end
+        end
+    end
+    for i=2:length(indices)
+        ind_offset *= ")";
+    end
+    index_offset = "dofs_per_loop * ("*ind_offset*" - 1 + dofs_per_node * (eid - 1)) + 1"
+    face_index_offset = "dofs_per_loop * ("*ind_offset*" - 1 + dofs_per_node * (fid - 1)) + 1"
+    
+    code *= loop_start;
+    
+    # insert the content
+    code *= "
+    # determine index in global vector
+    index_offset = "*index_offset*";
+    
+    # Zero the result vectors for this element
+    sourcevec[index_offset:(index_offset + dofs_per_loop-1)] .= 0;
+    fluxvec[index_offset:(index_offset + dofs_per_loop-1)] .= 0;
+    
+    ##### Source integrated over the cell #####
+    # Compute RHS volume integral
+    if !(source_rhs === nothing)
+        
+        sourceargs = (var, eid, 0, grid_data, geo_factors, fv_info, refel, t, dt);
+        source = source_rhs.func(sourceargs; "*index_args*") ./ geo_factors.volume[eid];
+        
+        # Add to global source vector
+        sourcevec[index_offset:(index_offset + dofs_per_loop-1)] .= source;
+    end
+
+    ##### Flux integrated over the faces #####
+    # Loop over this element's faces.
+    for i=1:refel.Nfaces
+        fid = grid_data.element2face[i, eid];
+        
+        # determine index in global face vector
+        face_index_offset = "*face_index_offset*";
+        
+        if !(flux_rhs === nothing)
+            if face_done[fid] < dofs_per_node
+                face_done[fid] += dofs_per_loop;
+                
+                fluxargs = (var, eid, fid, grid_data, geo_factors, fv_info, refel, t, dt);
+                flux = flux_rhs.func(fluxargs; "*index_args*") .* geo_factors.area[fid];
+                
+                # Add to global flux vector for faces
+                facefluxvec[face_index_offset:(face_index_offset + dofs_per_loop-1)] .= flux;
+                # Combine all flux for this element
+                fluxvec[index_offset:(index_offset + dofs_per_loop-1)] .+= flux ./ geo_factors.volume[eid];
+                
+            else
+                # This flux has either been computed or is being computed by another thread.
+                # The state will need to be known before paralellizing, but for now assume it's complete.
+                flux = -facefluxvec[face_index_offset:(face_index_offset + dofs_per_loop-1)];
+                fluxvec[index_offset:(index_offset + dofs_per_loop-1)] .-= facefluxvec[face_index_offset:(face_index_offset + dofs_per_loop-1)] ./ geo_factors.volume[eid];
+            end
+        end
+        
+        # Boundary conditions are applied to flux
+        fbid = grid_data.facebid[fid]; # BID of this face
+        if fbid > 0
+            facex = grid_data.allnodes[:, grid_data.face2glb[:,1,fid]];  # face node coordinates
+            
+            if typeof(var) <: Array
+                dofind = 0;
+                for vi=1:length(var)
+                    compo = indexing_variable_speed #1:var[vi].total_components
+                    dofind = dofind + 1;
+                    if prob.bc_type[var[vi].index, fbid] == NO_BC
+                        # do nothing
+                    elseif prob.bc_type[var[vi].index, fbid] == FLUX
+                        # compute the value and add it to the flux directly
+                        # Qvec = (refel.surf_wg[grid_data.faceRefelInd[1,fid]] .* geo_factors.face_detJ[fid])' * (refel.surf_Q[grid_data.faceRefelInd[1,fid]])[:, refel.face2local[grid_data.faceRefelInd[1,fid]]]
+                        # Qvec = Qvec ./ geo_factors.area[fid];
+                        # bflux = FV_flux_bc_rhs_only(prob.bc_func[var[vi].index, fbid][compo], facex, Qvec, t, dofind, dofs_per_node) .* geo_factors.area[fid];
+                        
+                        bflux = FVSolver.FV_flux_bc_rhs_only_simple(prob.bc_func[var[vi].index, fbid][compo], fv_info.faceCenters[:,fid], t);
+                        
+                        fluxvec[index_offset + dofind-1] += (bflux - facefluxvec[face_index_offset + dofind-1]) ./ geo_factors.volume[eid];
+                        facefluxvec[face_index_offset + dofind-1] = bflux;
+                    else
+                        printerr(\"Unsupported boundary condition type: \"*prob.bc_type[var[vi].index, fbid]);
+                    end
+                end
+                
+            else # one variable
+                d=indexing_variable_speed;
+                if prob.bc_type[var.index, fbid] == NO_BC
+                    # do nothing
+                elseif prob.bc_type[var.index, fbid] == FLUX
+                    # compute the value and add it to the flux directly
+                    # Qvec = (refel.surf_wg[grid_data.faceRefelInd[1,fid]] .* geo_factors.face_detJ[fid])' * (refel.surf_Q[grid_data.faceRefelInd[1,fid]])[:, refel.face2local[grid_data.faceRefelInd[1,fid]]]
+                    # Qvec = Qvec ./ geo_factors.area[fid];
+                    # bflux = FV_flux_bc_rhs_only(prob.bc_func[var.index, fbid][d], facex, Qvec, t, dofind, dofs_per_node) .* geo_factors.area[fid];
+                    
+                    bflux = FVSolver.FV_flux_bc_rhs_only_simple(prob.bc_func[var.index, fbid][d], fv_info.faceCenters[:,fid], t);
+                    
+                    
+                    fluxvec[index_offset] += (bflux - facefluxvec[face_index_offset]) ./ geo_factors.volume[eid];
+                    facefluxvec[face_index_offset] = bflux;
+                else
+                    printerr(\"Unsupported boundary condition type: \"*prob.bc_type[var.index, fbid]);
+                end
+            end
+        end# BCs
+        
+    end# face loop
+"
+    # close loops
+    code *= loop_end;
+    
+    # finish
+    code *=
+"
+if !(source_rhs === nothing)
+    return sourcevec + fluxvec;
+else
+    return fluxvec;
+end
+"
+    # println(code)
+    return code;
 end

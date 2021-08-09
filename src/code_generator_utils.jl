@@ -28,6 +28,7 @@ end
 # constant coef: type=1, val=number
 # genfunction: type=2, val= index in genfunctions array
 # variable: type=3, val=index in variables array
+# indexed coefficient: type=4, val=index in coefficients array
 function get_coef_val(c)
     if c.index == -1
         # It is a special symbol like dt
@@ -41,18 +42,24 @@ function get_coef_val(c)
     val = 0;
     for i=1:length(coefficients)
         if c.name == string(coefficients[i].symbol)
-            isit = (typeof(coefficients[i].value[c.index]) <: Number);
-            if isit
-                type = 1; # a constant wrapped in a coefficient ... not ideal
-                val = coefficients[i].value[c.index];
-            else
-                type = 2; # a function
-                name = coefficients[i].value[c.index].name;
-                for j=1:length(genfunctions)
-                    if name == genfunctions[j].name
-                        val = j;
+            if typeof(c.index) == Int
+                isit = (typeof(coefficients[i].value[c.index]) <: Number);
+                if isit
+                    type = 1; # a constant wrapped in a coefficient ... not ideal
+                    val = coefficients[i].value[c.index];
+                else
+                    type = 2; # a function
+                    name = coefficients[i].value[c.index].name;
+                    for j=1:length(genfunctions)
+                        if name == genfunctions[j].name
+                            val = j;
+                        end
                     end
                 end
+            else
+                # indexed coefficient
+                type = 4;
+                val = i;
             end
         end
     end
@@ -87,7 +94,7 @@ end
 # Makes a name for this value based on coefficient or variable name, derivative and other modifiers, and component index.
 function make_coef_name(c)
     # Special case for dt or other special symbols
-    if c.index < 0
+    if c.index == -1
         return c.name;
     end
     
@@ -99,7 +106,14 @@ function make_coef_name(c)
         tag = "D"*string(c.derivs[i]) * tag;
     end
     
-    str = "coef_"*tag*"_"*string(c.name)*"_"*string(c.index);
+    if typeof(c.index) == Int
+        str = "coef_"*tag*"_"*string(c.name)*"_"*string(c.index);
+    else
+        str = "coef_"*tag*"_"*string(c.name)*"_";
+        for i=1:length(c.index)
+            str *= string(c.index[i]);
+        end
+    end
     
     return str;
 end
@@ -184,6 +198,36 @@ function broadcast_all_ops(ex)
     end
 end
 
+# Turn entities with index=[i,j] into u[index_val_i, index_val_j]
+function insert_indices(ex)
+    if typeof(ex) <: Array
+        result = [];
+        for i=1:length(ex)
+            push!(result, insert_indices(ex[i]));
+        end
+        return result;
+        
+    elseif typeof(ex) == SymEntity
+        if typeof(ex.index) <: Array
+            indices = copy(ex.index);
+            
+            for i=1:length(indices)
+                indices[i] = Symbol("index_val_"*string(indices[i]));
+            end
+            ex = Expr(:ref, indexed_thing);
+            append!(ex.args, indices);
+            
+        else
+            for i=1:length(ex.args)
+                ex.args[i] = insert_indices(ex.args[i]);
+            end
+        end
+        
+    end
+    
+    return ex;
+end
+
 # symex could be an array. If so, make a similar array containing an array of terms.
 # This does any final processing of the terms. At this point symex should be a single term 
 # without a top level + or -. for example, a*b/c or a^2*b but not a*b+c
@@ -222,6 +266,9 @@ function process_terms(symex)
                     newex = mulex;
                 end
             end
+            
+            # insert indices indexing_operator(u, i, j) -> u[index_val_i, index_val_j]
+            newex = insert_indices(newex);
             
             # broadcast ops
             newex = broadcast_all_ops(newex);
@@ -290,9 +337,13 @@ function separate_factors(ex, var=nothing)
             coef_part = ex;
         end
     elseif typeof(ex) == SymEntity
+        numind = ex.index;
+        if typeof(numind) <: Array
+            numind = 1;
+        end
         if is_test_function(ex)
             test_part = ex;
-            test_ind = ex.index;
+            test_ind = numind;
         elseif !(var === nothing) && is_unknown_var(ex, var)
             trial_part = ex;
             # find the trial index
@@ -300,13 +351,13 @@ function separate_factors(ex, var=nothing)
                 tmpind = 0;
                 for vi=1:length(var)
                     if is_unknown_var(ex,var[vi])
-                        trial_ind = tmpind + ex.index;
+                        trial_ind = tmpind + numind;
                     else
                         tmpind += length(var[vi].symvar);
                     end
                 end
             else
-                trial_ind = ex.index;
+                trial_ind = numind;
             end
         else
             coef_part = ex;
@@ -375,55 +426,18 @@ end
 
 # Turns the generated code string into an Expr block to be put in a generated function.
 function code_string_to_expr(s)
-    e = Expr(:block);
     lines = split(s, "\n", keepempty=false);
     
-    skiplines = 0;
+    # Remove all comments and empty lines
+    # Wrap the whole thing in a block so the parser will make it a quote block
+    clean_string = "begin\n";
     for i=1:length(lines)
-        if skiplines > 0
-            skiplines = skiplines-1;
-            continue;
-        end
-        # if blocks are split across several lines. Join them
-        if occursin(" if ", split(lines[i], "#")[1])
-            level = 1;
-            ifline = lines[i];
-            j = i+1;
-            while j <= length(lines)
-                ifline = ifline * "\n" * lines[j];
-                if occursin(" if ", split(lines[j], "#")[1])
-                    level = level + 1;
-                end
-                if occursin("end", split(lines[j], "#")[1])
-                    level = level - 1;
-                end
-                if level == 0
-                    # The end of the top level if
-                    skiplines = skiplines + j - i;
-                    break;
-                end
-                j=j+1;
-            end
-            tmp = Meta.parse(ifline);
-            
-        else
-            tmp = Meta.parse(lines[i]);
-        end
-        
-        # a toplevel wrapper might be put around the expression. remove it.
-        if !(tmp === nothing)
-            if tmp.head === :toplevel
-                if length(tmp.args) > 0
-                    tmp = tmp.args[1];
-                else
-                    tmp = nothing;
-                end
-            end
-        end
-        if !(tmp === nothing)
-            push!(e.args, tmp);
+        tmp = split(lines[i], "#")[1];
+        if length(tmp) > 0
+            clean_string *= tmp*"\n";
         end
     end
+    clean_string *= "end";
     
-    return e;
+    return Meta.parse(clean_string);
 end

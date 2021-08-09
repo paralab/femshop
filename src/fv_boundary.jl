@@ -40,3 +40,29 @@ function FV_flux_bc_rhs_only(val, facex, Qvec, t=0, dofind = 1, totaldofs = 1)
     
     return b[1];
 end
+
+function FV_flux_bc_rhs_only_simple(val, facex, t=0)
+    if typeof(val) <: Number
+        return val;
+        
+    elseif typeof(val) == Coefficient && typeof(val.value[1]) == GenFunction
+        if config.dimension == 1
+            bval = val.value[1].func(facex[1],0,0,t);
+        elseif config.dimension == 2
+            bval = val.value[1].func(facex[1],facex[2],0,t);
+        else
+            bval = val.value[1].func(facex[1],facex[2],facex[3],t);
+        end
+        
+    elseif typeof(val) == GenFunction
+        if config.dimension == 1
+            bval = val.func(facex[1],0,0,t);
+        elseif config.dimension == 2
+            bval = val.func(facex[1],facex[2],0,t);
+        else
+            bval = val.func(facex[1],facex[2],facex[3],t);
+        end
+    end
+    
+    return bval;
+end

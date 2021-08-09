@@ -105,7 +105,7 @@ function generate_code_layer(symex, var, lorr, vors, solver, language, framework
             
         elseif solver == FV
             handle_input_args_fun = handle_input_args_fv_julia;
-            build_derivative_matrices_fun = build_derivative_matrices_fv_julia;
+            #build_derivative_matrices_fun = build_derivative_matrices_fv_julia;
             prepare_needed_values_fun = prepare_needed_values_fv_julia;
             make_elemental_computation_fun = make_elemental_computation_fv_julia;
         end
@@ -122,7 +122,8 @@ function generate_code_layer(symex, var, lorr, vors, solver, language, framework
         # If needed, compute derivative matrices
         if need_derivs
             if config.solver_type == FV
-                code *= build_derivative_matrices_fun(lorr, vors, need_deriv_matrix_for_fv);
+                # done by prepare_needed_values()
+                # code *= build_derivative_matrices_fun(lorr, vors, need_deriv_matrix_for_fv);
             else
                 code *= build_derivative_matrices_fun(lorr, vors);
             end
@@ -143,6 +144,20 @@ function generate_code_layer(symex, var, lorr, vors, solver, language, framework
     else
         code_string = external_generate_code_layer_function(var, entities, terms, lorr, vors);
         return (code_string, code_string);
+    end
+    
+    
+end
+
+
+function generate_assembly_loops(indices, solver, target)
+    # still working on this.
+    if solver == FV && target == JULIA
+        code = generate_assembly_loop_fv_julia(indices);
+        return (code, code_string_to_expr(code));
+    else
+        println("assembly loop generation not ready for "*string(solver)*" with "*string(target));
+        return ("","");
     end
     
     

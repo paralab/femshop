@@ -3,7 +3,7 @@
 =#
 module DGSolver
 
-export init_dgsolver, solve, nonlinear_solve
+export solve, nonlinear_solve
 
 import ..Femshop: JULIA, CPP, MATLAB, DENDRO, HOMG, CUSTOM_GEN_TARGET,
             SQUARE, IRREGULAR, UNIFORM_GRID, TREE, UNSTRUCTURED, 
@@ -15,7 +15,7 @@ import ..Femshop: JULIA, CPP, MATLAB, DENDRO, HOMG, CUSTOM_GEN_TARGET,
             VTK, RAW_OUTPUT, CUSTOM_OUTPUT, 
             DIRICHLET, NEUMANN, ROBIN, NO_BC, FLUX,
             MSH_V2, MSH_V4,
-            SCALAR, VECTOR, TENSOR, SYM_TENSOR,
+            SCALAR, VECTOR, TENSOR, SYM_TENSOR, VAR_ARRAY,
             LHS, RHS,
             LINEMESH, QUADMESH, HEXMESH
 import ..Femshop: log_entry, printerr
@@ -29,46 +29,6 @@ include("cg_boundary.jl"); # Can we use the CG versions here?
 include("nonlinear.jl");
 include("cg_matrixfree.jl");
 #include("face_data.jl");
-
-function init_dgsolver()
-    dim = config.dimension;
-
-    # build initial conditions
-    for vind=1:length(variables)
-        if vind <= length(prob.initial)
-            if prob.initial[vind] != nothing
-                variables[vind].values = zeros(size(variables[vind].values));
-                # Set initial condition
-                if typeof(prob.initial[vind]) <: Array
-                    for ci=1:length(prob.initial[vind])
-                        for ni=1:size(grid_data.allnodes,2)
-                            if dim == 1
-                                variables[vind].values[ci,ni] = prob.initial[vind][ci].func(grid_data.allnodes[ni],0,0,0);
-                            elseif dim == 2
-                                variables[vind].values[ci,ni] = prob.initial[vind][ci].func(grid_data.allnodes[1,ni],grid_data.allnodes[2,ni],0,0);
-                            elseif dim == 3
-                                variables[vind].values[ci,ni] = prob.initial[vind][ci].func(grid_data.allnodes[1,ni],grid_data.allnodes[2,ni],grid_data.allnodes[3,ni],0);
-                            end
-                        end
-                    end
-                else
-                    for ni=1:size(grid_data.allnodes,2)
-                        if dim == 1
-                            variables[vind].values[ni] = prob.initial[vind].func(grid_data.allnodes[ni],0,0,0);
-                        elseif dim == 2
-                            variables[vind].values[ni] = prob.initial[vind].func(grid_data.allnodes[1,ni],grid_data.allnodes[2,ni],0,0);
-                        elseif dim == 3
-                            variables[vind].values[ni] = prob.initial[vind].func(grid_data.allnodes[1,ni],grid_data.allnodes[2,ni],grid_data.allnodes[3,ni],0);
-                        end
-                    end
-                end
-
-                variables[vind].ready = true;
-                log_entry("Built initial conditions for: "*string(variables[vind].symbol));
-            end
-        end
-    end
-end
 
 function linear_solve(var, bilinear, linear, face_bilinear, face_linear, stepper=nothing)
     if config.dimension > 2

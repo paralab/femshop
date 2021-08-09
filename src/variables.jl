@@ -11,8 +11,9 @@ mutable struct Variable
     values::Array{Float64}  # a C x N array, C is number of components (SCALAR=1, etc.)
     
     # These are mainly for ARRAY type vars. Should there be a separate struct for those?
-    array_size::Array{Int64}# Size of the array
-    transposed::Bool        # If true, the values are actually trasposed -> N x C array (better for large C?)
+    indexer                  # indexer object or array of them
+    total_components::Int   # Number of components
+    #transposed::Bool        # If true, the values are actually trasposed -> N x C array (better for large C?)
     
     # not currently used, may be removed
     dependson               # a list of variables that this depends on

@@ -3,7 +3,7 @@
 =#
 module FVSolver
 
-export init_fvsolver, solve, nonlinear_solve
+export solve, nonlinear_solve
 
 import ..Femshop: JULIA, CPP, MATLAB, DENDRO, HOMG, CUSTOM_GEN_TARGET,
                 SQUARE, IRREGULAR, UNIFORM_GRID, TREE, UNSTRUCTURED, 
@@ -15,11 +15,11 @@ import ..Femshop: JULIA, CPP, MATLAB, DENDRO, HOMG, CUSTOM_GEN_TARGET,
                 VTK, RAW_OUTPUT, CUSTOM_OUTPUT, 
                 DIRICHLET, NEUMANN, ROBIN, NO_BC, FLUX,
                 MSH_V2, MSH_V4,
-                SCALAR, VECTOR, TENSOR, SYM_TENSOR,
+                SCALAR, VECTOR, TENSOR, SYM_TENSOR, VAR_ARRAY,
                 LHS, RHS,
                 LINEMESH, QUADMESH, HEXMESH
 import ..Femshop: log_entry, printerr
-import ..Femshop: config, prob, variables, mesh_data, grid_data, refel, time_stepper, elemental_order
+import ..Femshop: config, prob, variables, mesh_data, grid_data, refel, time_stepper, elemental_order, genfunctions, indexers
 import ..Femshop: Variable, Coefficient, GenFunction
 import ..Femshop: GeometricFactors, geo_factors, geometric_factors, geometric_factors_face, build_deriv_matrix
 import ..Femshop: FVInfo, fv_info, FV_cell_to_node, FV_node_to_cell
@@ -28,88 +28,25 @@ using LinearAlgebra, SparseArrays
 
 include("fv_boundary.jl");
 
-function init_fvsolver()
-    dim = config.dimension;
-
-    # build initial conditions
-    for vind=1:length(variables)
-        if vind <= length(prob.initial)
-            if prob.initial[vind] != nothing
-                #variables[vind].values = zeros(size(variables[vind].values));
-                
-                # Set initial condition
-                if typeof(prob.initial[vind]) <: Array 
-                    nodal_values = zeros(length(prob.initial[vind]), size(grid_data.allnodes,2));
-                    for ci=1:length(prob.initial[vind])
-                        Threads.@threads for ni=1:size(grid_data.allnodes,2)
-                            if dim == 1
-                                nodal_values[ci,ni] = prob.initial[vind][ci].func(grid_data.allnodes[ni],0,0,0);
-                            elseif dim == 2
-                                nodal_values[ci,ni] = prob.initial[vind][ci].func(grid_data.allnodes[1,ni],grid_data.allnodes[2,ni],0,0);
-                            elseif dim == 3
-                                nodal_values[ci,ni] = prob.initial[vind][ci].func(grid_data.allnodes[1,ni],grid_data.allnodes[2,ni],grid_data.allnodes[3,ni],0);
-                            end
-                        end
-                    end
-                    # compute cell averages using nodal values
-                    nel = size(grid_data.loc2glb, 2);
-                    Threads.@threads for ei=1:nel
-                        e = elemental_order[ei];
-                        glb = grid_data.loc2glb[:,e];
-                        vol = geo_factors.volume[e];
-                        detj = geo_factors.detJ[e];
-                        
-                        for ci=1:length(prob.initial[vind])
-                            variables[vind].values[ci,e] = detj / vol * (refel.wg' * refel.Q * (nodal_values[ci,glb][:]))[1];
-                        end
-                    end
-                    
-                else
-                    nodal_values = zeros(size(grid_data.allnodes,2));
-                    Threads.@threads for ni=1:size(grid_data.allnodes,2)
-                        if dim == 1
-                            nodal_values[ni] = prob.initial[vind].func(grid_data.allnodes[ni],0,0,0);
-                        elseif dim == 2
-                            nodal_values[ni] = prob.initial[vind].func(grid_data.allnodes[1,ni],grid_data.allnodes[2,ni],0,0);
-                        elseif dim == 3
-                            nodal_values[ni] = prob.initial[vind].func(grid_data.allnodes[1,ni],grid_data.allnodes[2,ni],grid_data.allnodes[3,ni],0);
-                        end
-                    end
-                    # compute cell averages using nodal values
-                    nel = size(grid_data.loc2glb, 2);
-                    Threads.@threads for ei=1:nel
-                        e = elemental_order[ei];
-                        glb = grid_data.loc2glb[:,e];
-                        vol = geo_factors.volume[e];
-                        detj = geo_factors.detJ[e];
-                        
-                        variables[vind].values[e] = detj / vol * (refel.wg' * refel.Q * nodal_values[glb])[1];
-                    end
-                end
-                
-                variables[vind].ready = true;
-                log_entry("Built initial conditions for: "*string(variables[vind].symbol));
-            end
-        end
-    end
-end
-
-function linear_solve(var, source_lhs, source_rhs, flux_lhs, flux_rhs, stepper=nothing)
+function linear_solve(var, source_lhs, source_rhs, flux_lhs, flux_rhs, stepper=nothing, assemble_func=nothing)
     # If more than one variable
     if typeof(var) <: Array
         # multiple variables being solved for simultaneously
         dofs_per_node = 0;
+        dofs_per_loop = 0;
         for vi=1:length(var)
-            tmp = dofs_per_node;
-            dofs_per_node += length(var[vi].symvar);
+            dofs_per_loop += length(var[vi].symvar);
+            dofs_per_node += var[vi].total_components;
         end
     else
         # one variable
-        dofs_per_node = length(var.symvar);
+        dofs_per_loop = length(var.symvar);
+        dofs_per_node = var.total_components;
     end
     nel = size(grid_data.loc2glb, 2);
+    nfaces = size(grid_data.face2element, 2);
     Nn = dofs_per_node * nel;
-    Nf = dofs_per_node * size(grid_data.face2element, 2);
+    Nf = dofs_per_node * nfaces
     
     # Allocate arrays that will be used by assemble
     # These vectors will hold the integrated values(one per cell).
@@ -117,7 +54,7 @@ function linear_solve(var, source_lhs, source_rhs, flux_lhs, flux_rhs, stepper=n
     sourcevec = zeros(Nn);
     fluxvec = zeros(Nn);
     facefluxvec = zeros(Nf);
-    face_done = zeros(Bool, Nf); # Set to true when the corresponding flux value is computed.
+    face_done = zeros(Int, nfaces); # Increment when the corresponding flux value is computed.
     allocated_vecs = [sourcevec, fluxvec, facefluxvec, face_done];
     
     if prob.time_dependent && !(stepper === nothing)
@@ -153,7 +90,12 @@ function linear_solve(var, source_lhs, source_rhs, flux_lhs, flux_rhs, stepper=n
                         rktime = t + stepper.c[rki]*stepper.dt;
                         # p(i-1) is currently in u
                         
-                        sol = assemble(var, source_lhs, source_rhs, flux_lhs, flux_rh, allocated_vecs, dofs_per_node, rktime, stepper.dt);
+                        if assemble_func === nothing
+                            sol = assemble(var, source_lhs, source_rhs, flux_lhs, flux_rh, allocated_vecs, dofs_per_node, rktime, stepper.dt);
+                        else
+                            sol = assemble_using_loop_func(var, assemble_func, source_lhs, source_rhs, flux_lhs, flux_rh, allocated_vecs, dofs_per_node, dofs_per_loop, rktime, stepper.dt);
+                        end
+                        
                         
                         if rki == 1 # because a1 == 0
                             tmpki = stepper.dt .* sol;
@@ -177,7 +119,11 @@ function linear_solve(var, source_lhs, source_rhs, flux_lhs, flux_rhs, stepper=n
                     for stage=1:stepper.stages
                         stime = t + stepper.c[stage]*stepper.dt;
                         
-                        tmpki[:,stage] = assemble(var, source_lhs, source_rhs, flux_lhs, flux_rhs, allocated_vecs, dofs_per_node, stime, stepper.dt);
+                        if assemble_func === nothing
+                            tmpki[:,stage] = assemble(var, source_lhs, source_rhs, flux_lhs, flux_rhs, allocated_vecs, dofs_per_node, stime, stepper.dt);
+                        else
+                            tmpki[:,stage] = assemble_using_loop_function(var, assemble_func, source_lhs, source_rhs, flux_lhs, flux_rhs, allocated_vecs, dofs_per_node, dofs_per_loop, stime, stepper.dt);
+                        end
                         
                         tmpvals = sol;
                         for j=1:(stage-1)
@@ -195,7 +141,11 @@ function linear_solve(var, source_lhs, source_rhs, flux_lhs, flux_rhs, stepper=n
                 end
                 
             elseif stepper.type == EULER_EXPLICIT
-                sol = sol .+ stepper.dt .* assemble(var, source_lhs, source_rhs, flux_lhs, flux_rhs, allocated_vecs, dofs_per_node, t, stepper.dt);
+                if assemble_func === nothing
+                    sol = sol .+ stepper.dt .* assemble(var, source_lhs, source_rhs, flux_lhs, flux_rhs, allocated_vecs, dofs_per_node, t, stepper.dt);
+                else
+                    sol = sol .+ stepper.dt .* assemble_using_loop_function(var, assemble_func, source_lhs, source_rhs, flux_lhs, flux_rhs, allocated_vecs, dofs_per_node, dofs_per_loop, t, stepper.dt);
+                end
                 
                 place_sol_in_vars(var, sol, stepper);
                 
@@ -204,9 +154,9 @@ function linear_solve(var, source_lhs, source_rhs, flux_lhs, flux_rhs, stepper=n
                 return sol;
             end
             
-            ########### uncomment to return after one time step
-            #return sol
-            #############
+            # ########## uncomment to return after one time step
+            # return sol
+            # ############
             
             t += stepper.dt;
             
@@ -241,6 +191,33 @@ function linear_solve(var, source_lhs, source_rhs, flux_lhs, flux_rhs, stepper=n
     end
 end
 
+# macro loops(indices, ranges, content)
+#     n = length(indices.args);
+#     if n == 1
+#         this_ind = indices.args[1];
+#         this_range = ranges.args[1];
+#         return esc(quote
+#             for $this_ind in $this_range
+#                 $content
+#             end
+#         end)
+#     else
+#         this_ind = indices.args[1];
+#         this_range = ranges.args[1];
+#         sub_ind = copy(indices);
+#         sub_ind.args = sub_ind.args[2:end];
+#         sub_range = copy(ranges);
+#         sub_range.args = sub_range.args[2:end];
+#         return esc(:(@loops([$this_ind], [$this_range], @loops($sub_ind, $sub_range, $content))));
+#     end
+# end
+
+#
+
+function assemble_using_loop_function(var, assemble_loops, source_lhs, source_rhs, flux_lhs, flux_rhs, allocated_vecs, dofs_per_node=1, dofs_per_loop = 1, t=0, dt=0)
+    return assemble_loops.func(var, source_lhs, source_rhs, flux_lhs, flux_rhs, allocated_vecs, dofs_per_node, dofs_per_loop, t, dt);
+end
+
 function assemble(var, source_lhs, source_rhs, flux_lhs, flux_rhs, allocated_vecs, dofs_per_node=1, t=0, dt=0)
     nel = size(grid_data.loc2glb, 2);
     
@@ -250,7 +227,7 @@ function assemble(var, source_lhs, source_rhs, flux_lhs, flux_rhs, allocated_vec
     facefluxvec = allocated_vecs[3];
     face_done = allocated_vecs[4];
     
-    face_done .= false;
+    face_done .= 0;
     
     # Elemental loop
     Threads.@threads for ei=1:nel
@@ -262,7 +239,8 @@ function assemble(var, source_lhs, source_rhs, flux_lhs, flux_rhs, allocated_vec
         ##### Source integrated over the cell #####
         # Compute RHS volume integral
         if !(source_rhs === nothing)
-            sourceargs = prepare_args(var, eid, 0, RHS, "volume", t, dt); # (var, e, nodex, loc2glb, refel, detj, J, t, dt)
+            #sourceargs = prepare_args(var, eid, 0, RHS, "volume", t, dt); # (var, e, nodex, loc2glb, refel, detj, J, t, dt)
+            sourceargs = (var, eid, 0, grid_data, geo_factors, fv_info, refel, t, dt);
             source = source_rhs.func(sourceargs) ./ geo_factors.volume[eid];
             # Add to global source vector
             sourcevec[((eid-1)*dofs_per_node + 1):(eid*dofs_per_node)] = source;
@@ -274,20 +252,21 @@ function assemble(var, source_lhs, source_rhs, flux_lhs, flux_rhs, allocated_vec
             fid = grid_data.element2face[i, eid];
             
             if !(flux_rhs === nothing)
-                if face_done[fid] == false
-                    face_done[fid] = true; # Possible race condition, but in the worst case it will be computed twice.
+                if face_done[fid] == 0
+                    face_done[fid] = 1; # Possible race condition, but in the worst case it will be computed twice.
                     
-                    fluxargs = prepare_args(var, eid, fid, RHS, "surface", t, dt); #(var, (e, neighbor), refel, vol_loc2glb, nodex, cellx, frefelind, facex, face2glb, normal, fdetj, face_area, (J, vol_J_neighbor), t, dt);
+                    #fluxargs = prepare_args(var, eid, fid, RHS, "surface", t, dt); #(var, (e, neighbor), refel, vol_loc2glb, nodex, cellx, frefelind, facex, face2glb, normal, fdetj, face_area, (J, vol_J_neighbor), t, dt);
+                    fluxargs = (var, eid, fid, grid_data, geo_factors, fv_info, refel, t, dt);
                     flux = flux_rhs.func(fluxargs) .* geo_factors.area[fid];
                     # Add to global flux vector for faces
-                    facefluxvec[((fid-1)*dofs_per_node + 1):(fid*dofs_per_node)] = flux;
+                    facefluxvec[((fid-1)*dofs_per_node + 1):(fid*dofs_per_node)] .= flux;
                     # Combine all flux for this element
-                    fluxvec[((eid-1)*dofs_per_node + 1):(eid*dofs_per_node)] += flux ./ geo_factors.volume[eid];
+                    fluxvec[((eid-1)*dofs_per_node + 1):(eid*dofs_per_node)] .+= flux ./ geo_factors.volume[eid];
                     
                 else
                     # This flux has either been computed or is being computed by another thread.
                     # The state will need to be known before paralellizing, but for now assume it's complete.
-                    fluxvec[((eid-1)*dofs_per_node + 1):(eid*dofs_per_node)] -= facefluxvec[((fid-1)*dofs_per_node + 1):(fid*dofs_per_node)] ./ geo_factors.volume[eid];
+                    fluxvec[((eid-1)*dofs_per_node + 1):(eid*dofs_per_node)] .-= facefluxvec[((fid-1)*dofs_per_node + 1):(fid*dofs_per_node)] ./ geo_factors.volume[eid];
                 end
             end
             
@@ -305,7 +284,7 @@ function assemble(var, source_lhs, source_rhs, flux_lhs, flux_rhs, allocated_vec
                                 # do nothing
                             elseif prob.bc_type[var[vi].index, fbid] == FLUX
                                 # compute the value and add it to the flux directly
-                                Qvec = (refel.surf_wg[grid_data.faceRefelInd[1,fi]] .* fdetj)' * (refel.surf_Q[grid_data.faceRefelInd[1,fi]])[:, refel.face2local[grid_data.faceRefelInd[1,fi]]]
+                                Qvec = (refel.surf_wg[grid_data.faceRefelInd[1,fid]] .* geo_factors.face_detJ[fid])' * (refel.surf_Q[grid_data.faceRefelInd[1,fid]])[:, refel.face2local[grid_data.faceRefelInd[1,fid]]]
                                 Qvec = Qvec ./ geo_factors.area[fid];
                                 bflux = FV_flux_bc_rhs_only(prob.bc_func[var[vi].index, fbid][compo], facex, Qvec, t, dofind, dofs_per_node) .* geo_factors.area[fid];
                                 
@@ -323,7 +302,7 @@ function assemble(var, source_lhs, source_rhs, flux_lhs, flux_rhs, allocated_vec
                             # do nothing
                         elseif prob.bc_type[var.index, fbid] == FLUX
                             # compute the value and add it to the flux directly
-                            Qvec = (refel.surf_wg[grid_data.faceRefelInd[1,fi]] .* fdetj)' * (refel.surf_Q[grid_data.faceRefelInd[1,fi]])[:, refel.face2local[grid_data.faceRefelInd[1,fi]]]
+                            Qvec = (refel.surf_wg[grid_data.faceRefelInd[1,fid]] .* geo_factors.face_detJ[fid])' * (refel.surf_Q[grid_data.faceRefelInd[1,fid]])[:, refel.face2local[grid_data.faceRefelInd[1,fid]]]
                             Qvec = Qvec ./ geo_factors.area[fid];
                             bflux = FV_flux_bc_rhs_only(prob.bc_func[var.index, fbid][d], facex, Qvec, t, dofind, dofs_per_node) .* geo_factors.area[fid];
                             
@@ -411,10 +390,10 @@ function place_sol_in_vars(var, sol, stepper)
         tmp = 0;
         totalcomponents = 0;
         for vi=1:length(var)
-            totalcomponents = totalcomponents + length(var[vi].symvar);
+            totalcomponents = totalcomponents + var[vi].total_components;
         end
         for vi=1:length(var)
-            components = length(var[vi].symvar);
+            components = var[vi].total_components;
             for compi=1:components
                 if stepper.type == EULER_EXPLICIT
                     var[vi].values[compi,:] = sol[(compi+tmp):totalcomponents:end];
@@ -425,7 +404,7 @@ function place_sol_in_vars(var, sol, stepper)
             end
         end
     else
-        components = length(var.symvar);
+        components = var.total_components;
         for compi=1:components
             if stepper.type == EULER_EXPLICIT
                 var.values[compi,:] = sol[compi:components:end];
@@ -442,21 +421,21 @@ function get_var_vals(var, vect=nothing)
         tmp = 0;
         totalcomponents = 0;
         for vi=1:length(var)
-            totalcomponents = totalcomponents + length(var[vi].symvar);
+            totalcomponents = totalcomponents + var[vi].total_components;
         end
         if vect === nothing
             vect = zeros(totalcomponents * length(var[1].values[1,:]));
         end
         
         for vi=1:length(var)
-            components = length(var[vi].symvar);
+            components = var[vi].total_components;
             for compi=1:components
                 vect[(compi+tmp):totalcomponents:end] = var[vi].values[compi,:];
                 tmp = tmp + 1;
             end
         end
     else
-        components = length(var.symvar);
+        components = var.total_components;
         if vect === nothing
             vect = zeros(components * length(var.values[1,:]));
         end

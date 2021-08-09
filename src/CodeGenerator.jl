@@ -7,7 +7,8 @@ export init_code_generator, finalize_code_generator, set_generation_target,
         generate_all_files, add_generated_file,
         # generate_main, generate_config, generate_prob, generate_mesh, generate_genfunction, 
         # generate_bilinear, generate_linear, generate_stepper, generate_output,
-        generate_code_layer, generate_code_layer_surface, generate_code_layer_fv
+        generate_code_layer, generate_assembly_loops
+        #, generate_code_layer_surface, generate_code_layer_fv
 
 import ..Femshop: JULIA, CPP, MATLAB, DENDRO, HOMG, CUSTOM_GEN_TARGET,
             SQUARE, IRREGULAR, UNIFORM_GRID, TREE, UNSTRUCTURED, 
@@ -19,13 +20,13 @@ import ..Femshop: JULIA, CPP, MATLAB, DENDRO, HOMG, CUSTOM_GEN_TARGET,
             VTK, RAW_OUTPUT, CUSTOM_OUTPUT, 
             DIRICHLET, NEUMANN, ROBIN, NO_BC, FLUX,
             MSH_V2, MSH_V4,
-            SCALAR, VECTOR, TENSOR, SYM_TENSOR,
+            SCALAR, VECTOR, TENSOR, SYM_TENSOR, VAR_ARRAY,
             LHS, RHS,
             LINEMESH, QUADMESH, HEXMESH
 import ..Femshop: Femshop_config, Femshop_prob, GenFunction, Variable, Coefficient
 import ..Femshop: log_entry, printerr
 import ..Femshop: config, prob, refel, mesh_data, grid_data, genfunctions, variables, coefficients, 
-        test_functions, linears, bilinears, time_stepper, language, gen_framework
+        test_functions, linears, bilinears, indexers, time_stepper, language, gen_framework
 import ..Femshop: SymExpression, SymEntity
 import ..Femshop: CachesimOut, use_cachesim
 import ..Femshop: custom_gen_funcs
