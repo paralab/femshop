@@ -52,3 +52,10 @@ Finite volume method for a basic advection problem. This example demonstrates th
 <br><a href="https://github.com/paralab/femshop/blob/master/src/examples/example-advection1d-fv.jl">example-advection1d-fv.jl</a>
 <br><a href="https://github.com/paralab/femshop/blob/master/src/examples/example-advection2d-fv.jl">example-advection2d-fv.jl</a>
 </p>
+
+<h3>Indexed Variables</h3>
+<p><img src="images/addiff1dindexed.png" alt="addiff1dindexed" width="200">
+Finite volume method for an advection-diffusion problem using indexed variables to compute the same equation over many values of advection speed and diffusion rate. This example demonstrates indexed variables and customizable assembly code generation.
+<br>Page: <a href="https://paralab.github.io/femshop/pages/indexed.html">Indexed Variables page</a>
+<br><a href="https://github.com/paralab/femshop/blob/master/src/examples/example-addiff1d-indexed.jl">example-addiff1d-indexed.jl</a>
+</p>
