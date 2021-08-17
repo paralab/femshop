@@ -229,7 +229,7 @@ function build_deriv_matrix(refel, J)
         RQ1 = zeros(size(refel.Q));
         RD1 = zeros(size(refel.Q));
         # Multiply rows of Qr and Ddr by J.rx
-        for i=1:length(J.rx) # loop over columns
+        for i=1:size(RQ1,2) # loop over columns
             RQ1[:,i] = J.rx .* refel.Qr[:,i];
             RD1[:,i] = J.rx .* refel.Ddr[:,i];
         end
@@ -240,7 +240,7 @@ function build_deriv_matrix(refel, J)
         RQ2 = zeros(size(refel.Q));
         RD1 = zeros(size(refel.Q));
         RD2 = zeros(size(refel.Q));
-        for i=1:size(RQ1,1)
+        for i=1:size(RQ1,2)
             RQ1[:,i] = J.rx .* refel.Qr[:,i] + J.sx .* refel.Qs[:,i];
             RQ2[:,i] = J.ry .* refel.Qr[:,i] + J.sy .* refel.Qs[:,i];
             RD1[:,i] = J.rx .* refel.Ddr[:,i] + J.sx .* refel.Dds[:,i];
@@ -255,7 +255,7 @@ function build_deriv_matrix(refel, J)
         RD1 = zeros(size(refel.Q));
         RD2 = zeros(size(refel.Q));
         RD3 = zeros(size(refel.Q));
-        for i=1:size(RQ1,1)
+        for i=1:size(RQ1,2)
             RQ1[:,i] = J.rx .* refel.Qr[:,i] + J.sx .* refel.Qs[:,i] + J.tx .* refel.Qt[:,i];
             RQ2[:,i] = J.ry .* refel.Qr[:,i] + J.sy .* refel.Qs[:,i] + J.ty .* refel.Qt[:,i];
             RQ3[:,i] = J.rz .* refel.Qr[:,i] + J.sz .* refel.Qs[:,i] + J.tz .* refel.Qt[:,i];

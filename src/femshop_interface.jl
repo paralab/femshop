@@ -832,7 +832,7 @@ function eval_initial_conditions()
                     end
                     
                 else # scalar
-                    nodal_values = zeros(size(grid_data.allnodes,2));
+                    nodal_values = zeros(1, size(grid_data.allnodes,2));
                     Threads.@threads for ni=1:size(grid_data.allnodes,2)
                         if dim == 1
                             nodal_values[ni] = prob.initial[vind].func(grid_data.allnodes[ni],0,0,0);

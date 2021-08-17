@@ -21,7 +21,7 @@ import ..Femshop: JULIA, CPP, MATLAB, DENDRO, HOMG, CUSTOM_GEN_TARGET,
 import ..Femshop: log_entry, printerr
 import ..Femshop: config, prob, variables, mesh_data, grid_data, refel, time_stepper, elemental_order
 import ..Femshop: Variable, Coefficient, GenFunction
-import ..Femshop: geometric_factors, build_deriv_matrix
+import ..Femshop: GeometricFactors, geo_factors, geometric_factors, build_deriv_matrix
 
 using LinearAlgebra, SparseArrays
 
@@ -36,16 +36,8 @@ function linear_solve(var, bilinear, linear, stepper=nothing)
         #return solve_matrix_free_asym(var, bilinear, linear, stepper);
     end
     if prob.time_dependent && !(stepper === nothing)
-        # Shall we save geometric factors to reuse each time step?
-        save_geometric_factors = true;
-        
-        if save_geometric_factors
-            assemble_t = @elapsed((A, b, wdetJ, J) = assemble(var, bilinear, linear, 0, stepper.dt; keep_geometric_factors=true));
-            saved_GF = (wdetJ, J);
-        else
-            assemble_t = @elapsed((A, b) = assemble(var, bilinear, linear, 0, stepper.dt));
-            saved_GF = nothing;
-        end
+        # First assemble both lhs and rhs
+        assemble_t = @elapsed((A, b) = assemble(var, bilinear, linear, 0, stepper.dt));
         
         log_entry("Initial assembly took "*string(assemble_t)*" seconds");
 
@@ -73,7 +65,7 @@ function linear_solve(var, bilinear, linear, stepper=nothing)
                     for rki=1:stepper.stages
                         rktime = t + stepper.c[rki]*stepper.dt;
                         # p(i-1) is currently in u
-                        assemble_t += @elapsed(b = assemble(var, nothing, linear, rktime, stepper.dt; rhs_only = true, saved_geometric_factors = saved_GF));
+                        assemble_t += @elapsed(b = assemble(var, nothing, linear, rktime, stepper.dt; rhs_only = true));
                         
                         linsolve_t += @elapsed(sol = A\b);
                         if rki == 1 # because a1 == 0
@@ -103,7 +95,7 @@ function linear_solve(var, bilinear, linear, stepper=nothing)
                     for stage=1:stepper.stages
                         stime = t + stepper.c[stage]*stepper.dt;
                         
-                        assemble_t += @elapsed(b = assemble(var, nothing, linear, stime, stepper.dt; rhs_only = true, saved_geometric_factors = saved_GF));
+                        assemble_t += @elapsed(b = assemble(var, nothing, linear, stime, stepper.dt; rhs_only = true));
                         
                         linsolve_t += @elapsed(tmpki[:,stage] = A\b);
                         
@@ -127,7 +119,7 @@ function linear_solve(var, bilinear, linear, stepper=nothing)
                 end
                 
             else
-                assemble_t += @elapsed(b = assemble(var, nothing, linear, t, stepper.dt; rhs_only = true, saved_geometric_factors = saved_GF));
+                assemble_t += @elapsed(b = assemble(var, nothing, linear, t, stepper.dt; rhs_only = true));
                 
                 linsolve_t += @elapsed(sol = A\b);
                 
@@ -163,15 +155,15 @@ function linear_solve(var, bilinear, linear, stepper=nothing)
     else
         assemble_t = @elapsed((A, b) = assemble(var, bilinear, linear));
         # uncomment to look at A
-        #global Amat = A;
+        # global Amat = A;
         
         sol_t = @elapsed(sol = A\b);
         
         log_entry("Assembly took "*string(assemble_t)*" seconds");
         log_entry("Linear solve took "*string(sol_t)*" seconds");
-        #display(A);
-        #display(b);
-        #display(sol);
+        # display(A);
+        # display(b);
+        # display(sol);
         return sol;
     end
 end
@@ -230,7 +222,7 @@ function nonlinear_solve(var, nlvar, bilinear, linear, stepper=nothing)
 end
 
 # assembles the A and b in Au=b
-function assemble(var, bilinear, linear, t=0.0, dt=0.0; rhs_only = false, keep_geometric_factors = false, saved_geometric_factors = nothing)
+function assemble(var, bilinear, linear, t=0.0, dt=0.0; rhs_only = false)
     Np = refel.Np;
     nel = mesh_data.nel;
     N1 = size(grid_data.allnodes,2);
@@ -261,28 +253,12 @@ function assemble(var, bilinear, linear, t=0.0, dt=0.0; rhs_only = false, keep_g
         AV = zeros(nel*dofs_per_node*Np*dofs_per_node*Np);
     end
     
-    # Save geometric factors if desired
-    if keep_geometric_factors
-        saved_wdetj = [];
-        saved_J = [];
-    end
-    
     # Stiffness and mass are precomputed for uniform grid meshes
     precomputed_mass_stiffness = config.mesh_type == UNIFORM_GRID && config.geometry == SQUARE
     if precomputed_mass_stiffness
-        glb = grid_data.loc2glb[:,1];
-        xe = grid_data.allnodes[:,glb[:]];
-        if saved_geometric_factors === nothing
-            (detJ, J) = geometric_factors(refel, xe);
-            wdetj = refel.wg .* detJ;
-            if keep_geometric_factors
-                saved_wdetj = [wdetj];
-                saved_J = [J];
-            end
-        else
-            wdetj = saved_geometric_factors[1][1];
-            J = saved_geometric_factors[2][1];
-        end
+        wdetj = refel.wg .* geo_factors.detJ[1];
+        J = geo_factors.J[1];
+        
         if config.dimension == 1
             (RQ1, RD1) = build_deriv_matrix(refel, J);
             TRQ1 = RQ1';
@@ -305,64 +281,40 @@ function assemble(var, bilinear, linear, t=0.0, dt=0.0; rhs_only = false, keep_g
     loop_time = Base.Libc.time();
     # Elemental loop follows elemental ordering
     for ei=1:nel
-        e = elemental_order[ei];
-        glb = grid_data.loc2glb[:,e];           # global indices of this element's nodes for extracting values from var arrays
-        xe = grid_data.allnodes[:,glb[:]];      # coordinates of this element's nodes for evaluating coefficient functions
-        
-        if !precomputed_mass_stiffness
-            if saved_geometric_factors === nothing
-                (detJ, J) = geometric_factors(refel, xe);
-                wdetj = refel.wg .* detJ;
-                
-                if keep_geometric_factors
-                    push!(saved_wdetj, wdetj);
-                    push!(saved_J, J);
-                end
-            else
-                wdetj = saved_geometric_factors[1][e];
-                J = saved_geometric_factors[2][e];
-            end
-        end
-        
-        rhsargs = (var, xe, glb, refel, wdetj, J, t, dt, stiffness, mass);
+        eid = elemental_order[ei];
+        loc2glb = grid_data.loc2glb[:,eid]; # global indices of this element's nodes
         
         if !rhs_only
-            Astart = (e-1)*Np*dofs_per_node*Np*dofs_per_node + 1; # The segment of AI, AJ, AV for this element
-            lhsargs = (var, xe, glb, refel, wdetj, J, t, dt, stiffness, mass);
+            Astart = (eid-1)*Np*dofs_per_node*Np*dofs_per_node + 1; # The segment of AI, AJ, AV for this element
+            
         end
+        
+        volargs = (var, eid, 0, grid_data, geo_factors, refel, t, dt, stiffness, mass);
+        
         if dofs_per_node == 1
-            linchunk = linear.func(rhsargs);  # get the elemental linear part
-            b[glb] .+= linchunk;
+            linchunk = linear.func(volargs);  # get the elemental linear part
+            b[loc2glb] .+= linchunk;
             
             if !rhs_only
-                bilinchunk = bilinear.func(lhsargs); # the elemental bilinear part
+                bilinchunk = bilinear.func(volargs); # the elemental bilinear part
                 #A[glb, glb] .+= bilinchunk;         # This will be very inefficient for sparse A
                 for jj=1:Np
                     offset = Astart - 1 + (jj-1)*Np;
                     for ii=1:Np
-                        AI[offset + ii] = glb[ii];
-                        AJ[offset + ii] = glb[jj];
+                        AI[offset + ii] = loc2glb[ii];
+                        AJ[offset + ii] = loc2glb[jj];
                         AV[offset + ii] = bilinchunk[ii, jj];
                     end
                 end
             end
             
-        elseif typeof(var) == Variable
-            # only one variable, but more than one dof
-            linchunk = linear.func(rhsargs);
-            insert_linear!(b, linchunk, glb, 1:dofs_per_node, dofs_per_node);
+        else # more than one DOF per node
+            linchunk = linear.func(volargs);
+            insert_linear!(b, linchunk, loc2glb, 1:dofs_per_node, dofs_per_node);
             
             if !rhs_only
-                bilinchunk = bilinear.func(lhsargs);
-                insert_bilinear!(AI, AJ, AV, Astart, bilinchunk, glb, 1:dofs_per_node, dofs_per_node);
-            end
-        else
-            linchunk = linear.func(rhsargs);
-            insert_linear!(b, linchunk, glb, 1:dofs_per_node, dofs_per_node);
-            
-            if !rhs_only
-                bilinchunk = bilinear.func(lhsargs);
-                insert_bilinear!(AI, AJ, AV, Astart, bilinchunk, glb, 1:dofs_per_node, dofs_per_node);
+                bilinchunk = bilinear.func(volargs);
+                insert_bilinear!(AI, AJ, AV, Astart, bilinchunk, loc2glb, 1:dofs_per_node, dofs_per_node);
             end
         end
     end
@@ -520,25 +472,17 @@ function assemble(var, bilinear, linear, t=0.0, dt=0.0; rhs_only = false, keep_g
     bc_time = Base.Libc.time() - bc_time;
     
     if rhs_only
-        if keep_geometric_factors
-            return (b, saved_wdetj, saved_J)
-        else
-            return b;
-        end
+        return b;
         
     else
         log_entry("Elemental loop time:     "*string(loop_time));
         log_entry("Boundary condition time: "*string(bc_time));
-        if keep_geometric_factors
-            return (A, b, saved_wdetj, saved_J);
-        else
-            return (A, b);
-        end
+        return (A, b);
     end
 end
 
-function assemble_rhs_only(var, linear, t=0.0, dt=0.0; keep_geometric_factors = false, saved_geometric_factors = nothing)
-    return assemble(var, nothing, linear, t, dt; rhs_only=true, keep_geometric_factors = keep_geometric_factors, saved_geometric_factors = saved_geometric_factors)
+function assemble_rhs_only(var, linear, t=0.0, dt=0.0)
+    return assemble(var, nothing, linear, t, dt; rhs_only=true)
 end
 
 # ######################################################

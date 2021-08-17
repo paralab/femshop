@@ -388,7 +388,7 @@ function extract_entity_parts(ex)
             if str[i] == '_'
                 b = i+1;
                 push!(mods, str[b:e]);
-                e = b-1;
+                e = b-2;
                 
             elseif i == 1
                 push!(mods, str[1:e]);

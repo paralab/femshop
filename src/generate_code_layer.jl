@@ -65,22 +65,6 @@ function generate_code_layer(symex, var, lorr, vors, solver, language, framework
         end
     end
     
-    # Determine if derivative matrices will be required
-    need_derivs = false;
-    need_deriv_matrix_for_fv = false;
-    for i=1:length(entities)
-        if length(entities[i].derivs) > 0
-            # FV only needs the matrices for coefficient derivatives
-            if config.solver_type == FV
-                (ctype, cval) = get_coef_val(entities[i]);
-                if ctype == 2 # a coefficient with a function
-                    need_deriv_matrix_for_fv = true;
-                end
-            end
-            need_derivs = true;
-        end
-    end
-    
     # To make things easier, separate the terms and work with them separately
     terms = process_terms(symex);
     
@@ -93,19 +77,16 @@ function generate_code_layer(symex, var, lorr, vors, solver, language, framework
     if language == JULIA || language == 0
         if solver == CG
             handle_input_args_fun = handle_input_args_cg_julia;
-            build_derivative_matrices_fun = build_derivative_matrices_cg_julia;
             prepare_needed_values_fun = prepare_needed_values_cg_julia;
             make_elemental_computation_fun = make_elemental_computation_cg_julia;
             
         elseif solver == DG
             handle_input_args_fun = handle_input_args_dg_julia;
-            build_derivative_matrices_fun = build_derivative_matrices_dg_julia;
             prepare_needed_values_fun = prepare_needed_values_dg_julia;
             make_elemental_computation_fun = make_elemental_computation_dg_julia;
             
         elseif solver == FV
             handle_input_args_fun = handle_input_args_fv_julia;
-            #build_derivative_matrices_fun = build_derivative_matrices_fv_julia;
             prepare_needed_values_fun = prepare_needed_values_fv_julia;
             make_elemental_computation_fun = make_elemental_computation_fv_julia;
         end
@@ -118,17 +99,6 @@ function generate_code_layer(symex, var, lorr, vors, solver, language, framework
         # Handle input arguments
         code *= handle_input_args_fun(lorr, vors);
         code *= "\n";
-        
-        # If needed, compute derivative matrices
-        if need_derivs
-            if config.solver_type == FV
-                # done by prepare_needed_values()
-                # code *= build_derivative_matrices_fun(lorr, vors, need_deriv_matrix_for_fv);
-            else
-                code *= build_derivative_matrices_fun(lorr, vors);
-            end
-            code *= "\n";
-        end
         
         # Evaluate or fetch the values for each needed entity.
         code *= prepare_needed_values_fun(entities, var, lorr, vors);

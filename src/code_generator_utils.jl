@@ -396,12 +396,35 @@ end
 function apply_flag_to_entities(ex, ents, flag)
     if typeof(ex) == Expr
         for i=1:length(ex.args)
-            ex.args[i] = apply_flag_to_entities(ex, ents, flag);
+            ex.args[i] = apply_flag_to_entities(ex.args[i], ents, flag);
         end
         
     elseif typeof(ex) == SymEntity
         if ex.name in ents
             push!(ex.flags, flag);
+        end
+    end
+    
+    return ex;
+end
+
+# Apply a flag to any variable type entities only
+function add_flag_to_var_entities(ex, vars, flag; nevermind="OHNEVERMIND")
+    if typeof(ex) == Expr
+        for i=1:length(ex.args)
+            ex.args[i] = add_flag_to_var_entities(ex.args[i], vars, flag, nevermind=nevermind);
+        end
+        
+    elseif typeof(ex) == SymEntity
+        for fi=1:length(ex.flags)
+            if occursin(nevermind, ex.flags[fi])
+                return ex;
+            end
+        end
+        for vi=1:length(vars)
+            if ex.name == string(vars[vi].symbol)
+                push!(ex.flags, flag);
+            end
         end
     end
     
