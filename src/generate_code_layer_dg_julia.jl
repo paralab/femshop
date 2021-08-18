@@ -712,7 +712,7 @@ function make_elemental_computation_dg_julia(terms, var, dofsper, offset_ind, lo
              
         else # surface
             mat_tags = ["LL", "LR", "RL", "RR"];
-            frefs = [["1","1"],["2","1"],["1","2"],["2","2"]];
+            frefs = [["1","1"],["1","2"],["2","1"],["2","2"]];
             for emi=1:dofsper
                 for emj=1:dofsper
                     for smpart=1:4
