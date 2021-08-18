@@ -393,15 +393,21 @@ function replace_entities_with_symbols(ex)
 end
 
 # Searches for any of the specified ents(strings matching entity.name) and adds a flag to entity.flags
-function apply_flag_to_entities(ex, ents, flag)
+function apply_flag_to_entities(ex, ents, flag; copy_ent=false)
     if typeof(ex) == Expr
         for i=1:length(ex.args)
-            ex.args[i] = apply_flag_to_entities(ex.args[i], ents, flag);
+            ex.args[i] = apply_flag_to_entities(ex.args[i], ents, flag, copy_ent=copy_ent);
         end
         
     elseif typeof(ex) == SymEntity
         if ex.name in ents
-            push!(ex.flags, flag);
+            if copy_ent
+                newex = copy(ex);
+                push!(newex.flags, flag);
+                ex = newex;
+            else
+                push!(ex.flags, flag);
+            end
         end
     end
     
@@ -409,10 +415,10 @@ function apply_flag_to_entities(ex, ents, flag)
 end
 
 # Apply a flag to any variable type entities only
-function add_flag_to_var_entities(ex, vars, flag; nevermind="OHNEVERMIND")
+function add_flag_to_var_entities(ex, vars, flag; nevermind="OHNEVERMIND", copy_ent=false)
     if typeof(ex) == Expr
         for i=1:length(ex.args)
-            ex.args[i] = add_flag_to_var_entities(ex.args[i], vars, flag, nevermind=nevermind);
+            ex.args[i] = add_flag_to_var_entities(ex.args[i], vars, flag, nevermind=nevermind, copy_ent=copy_ent);
         end
         
     elseif typeof(ex) == SymEntity
@@ -423,7 +429,13 @@ function add_flag_to_var_entities(ex, vars, flag; nevermind="OHNEVERMIND")
         end
         for vi=1:length(vars)
             if ex.name == string(vars[vi].symbol)
-                push!(ex.flags, flag);
+                if copy_ent
+                    newex = copy(ex);
+                    push!(newex.flags, flag);
+                    ex = newex;
+                else
+                    push!(ex.flags, flag);
+                end
             end
         end
     end

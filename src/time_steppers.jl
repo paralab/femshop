@@ -281,7 +281,7 @@ function reformat_for_stepper(lhs, rhs, face_lhs, face_rhs,stepper)
                 lhs[2][i] = -lhs[2][i]; # -lhs2
             end
             for i=1:length(face_lhs)
-                face_lhs[1] = -face_lhs[i]; # -facelhs
+                face_lhs[i] = -face_lhs[i]; # -facelhs
             end
             
             newlhs = copy(lhs[1]);# lhs1

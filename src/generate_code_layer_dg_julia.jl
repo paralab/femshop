@@ -804,19 +804,19 @@ function generate_term_calculation_dg_julia(term, var, lorr, vors)
             if "DGSIDE1" in trial_part.flags
                 trial_side = 1;
                 # also apply side1 to known variables
-                coef_part_side1 = add_flag_to_var_entities(copy(coef_part), variables, "DGSIDE1", nevermind="DGSIDE");
+                coef_part_side1 = add_flag_to_var_entities(copy(coef_part), variables, "DGSIDE1", nevermind="DGSIDE", copy_ent=true);
             elseif "DGSIDE2" in trial_part.flags
                 trial_side = 2;
                 # also apply side2 to known variables
-                coef_part_side2 = add_flag_to_var_entities(copy(coef_part), variables, "DGSIDE2", nevermind="DGSIDE");
+                coef_part_side2 = add_flag_to_var_entities(copy(coef_part), variables, "DGSIDE2", nevermind="DGSIDE", copy_ent=true);
             else
                 trial_part_side1 = copy(trial_part);
                 trial_part_side2 = copy(trial_part);
                 push!(trial_part_side1.flags, "DGSIDE1");
                 push!(trial_part_side2.flags, "DGSIDE2");
                 # also apply side to known variables
-                coef_part_side1 = add_flag_to_var_entities(copy(coef_part), variables, "DGSIDE1", nevermind="DGSIDE");
-                coef_part_side2 = add_flag_to_var_entities(copy(coef_part), variables, "DGSIDE2", nevermind="DGSIDE");
+                coef_part_side1 = add_flag_to_var_entities(copy(coef_part), variables, "DGSIDE1", nevermind="DGSIDE", copy_ent=true);
+                coef_part_side2 = add_flag_to_var_entities(copy(coef_part), variables, "DGSIDE2", nevermind="DGSIDE", copy_ent=true);
             end
             
             # LHS: test_part * diagm(weight_part .* coef_part) * trial_part
@@ -917,16 +917,16 @@ function generate_term_calculation_dg_julia(term, var, lorr, vors)
                 else
                     # LL and RR and must change both symbols
                     if !(coef_part === nothing)
-                        result[1] = string(replace_entities_with_symbols(test_part_side1)) * " * diagm(wdetj .* 0.5 .*" * 
+                        result[1] = string(replace_entities_with_symbols(test_part_side1)) * " * diagm(wdetj .*" * 
                                 string(replace_entities_with_symbols(coef_part_side1)) * ") * " * 
                                 string(replace_entities_with_symbols(trial_part_side1));
-                        result[4] = string(replace_entities_with_symbols(test_part_side2)) * " * diagm(wdetj .* 0.5 .* " * 
+                        result[4] = string(replace_entities_with_symbols(test_part_side2)) * " * diagm(wdetj .* " * 
                                 string(replace_entities_with_symbols(coef_part_side2)) * ") * " * 
                                 string(replace_entities_with_symbols(trial_part_side2));
                     else # no coef_part
-                        result[1] = string(replace_entities_with_symbols(test_part_side1)) * " * diagm(wdetj .* 0.5) * " * 
+                        result[1] = string(replace_entities_with_symbols(test_part_side1)) * " * diagm(wdetj) * " * 
                                 string(replace_entities_with_symbols(trial_part_side1));
-                        result[4] = string(replace_entities_with_symbols(test_part_side2)) * " * diagm(wdetj .* 0.5) * " * 
+                        result[4] = string(replace_entities_with_symbols(test_part_side2)) * " * diagm(wdetj) * " * 
                                 string(replace_entities_with_symbols(trial_part_side2));
                     end
                 end
@@ -935,49 +935,94 @@ function generate_term_calculation_dg_julia(term, var, lorr, vors)
         else # RHS
             result = ["",""];
             (test_part, trial_part, coef_part, test_ind, trial_ind) = separate_factors(term);
+            # figure out what side, if any, the coefficient part is on
+            function get_coef_side(ex)
+                side = 0;
+                if typeof(ex) == Expr
+                    for i=1:length(ex.args)
+                        side = max(side, get_coef_side(ex.args[i]));
+                    end
+                elseif typeof(ex) == SymEntity
+                    if "DGSIDE1" in ex.flags
+                        side = 1;
+                    elseif "DGSIDE2" in ex.flags
+                        side = 2;
+                    end
+                end
+                return side;
+            end
+            coef_side = get_coef_side(coef_part);
+            if coef_side == 0
+                coef_part_side1 = add_flag_to_var_entities(copy(coef_part), variables, "DGSIDE1", nevermind="DGSIDE", copy_ent=true);
+                coef_part_side2 = add_flag_to_var_entities(copy(coef_part), variables, "DGSIDE2", nevermind="DGSIDE", copy_ent=true);
+            end
             test_side = 0;
             if "DGSIDE1" in test_part.flags
                 test_side = 1;
-                # also apply side1 to known variables
-                coef_part_side1 = add_flag_to_var_entities(copy(coef_part), variables, "DGSIDE1", nevermind="DGSIDE");
             elseif "DGSIDE2" in test_part.flags
                 test_side = 2;
-                # also apply side2 to known variables
-                coef_part_side2 = add_flag_to_var_entities(copy(coef_part), variables, "DGSIDE2", nevermind="DGSIDE");
             else
                 test_part_side1 = copy(test_part);
                 test_part_side2 = copy(test_part);
                 push!(test_part_side1.flags, "DGSIDE1");
                 push!(test_part_side2.flags, "DGSIDE2");
-                # also apply side to known variables
-                coef_part_side1 = add_flag_to_var_entities(copy(coef_part), variables, "DGSIDE1", nevermind="DGSIDE");
-                coef_part_side2 = add_flag_to_var_entities(copy(coef_part), variables, "DGSIDE2", nevermind="DGSIDE");
             end
             
             # RHS: test_part * (weight_part .* coef_part)
             if test_side == 1
                 if !(coef_part === nothing)
-                    result[1] = string(replace_entities_with_symbols(test_part_side1)) * " * (wdetj .* " * 
-                            string(replace_entities_with_symbols(coef_part_side1)) * ")";
+                    if coef_side == 1
+                        result[1] = string(replace_entities_with_symbols(test_part)) * " * (wdetj .* (refel.surf_Q[frefelind[1]] * " * 
+                            string(replace_entities_with_symbols(coef_part)) * "))";
+                    elseif coef_side == 2
+                        result[1] = string(replace_entities_with_symbols(test_part)) * " * (wdetj .* (refel.surf_Q[frefelind[2]] * " * 
+                            string(replace_entities_with_symbols(coef_part)) * "))";
+                    else
+                        result[1] = string(replace_entities_with_symbols(test_part)) * " * (wdetj .* (refel.surf_Q[frefelind[1]] * " * 
+                            string(replace_entities_with_symbols(coef_part_side1)) * " .+ refel.surf_Q[frefelind[2]] * " *
+                            string(replace_entities_with_symbols(coef_part_side2)) * "))";
+                    end
+                    
                 else
-                    result[1] = string(replace_entities_with_symbols(test_part_side1)) * " * (wdetj)";
+                    result[1] = string(replace_entities_with_symbols(test_part)) * " * (wdetj .* (refel.surf_Q[frefelind[1]] .+ refel.surf_Q[frefelind[2]]))";
                 end
             elseif test_side == 2
                 if !(coef_part === nothing)
-                    result[2] = string(replace_entities_with_symbols(test_part_side2)) * " * (wdetj .* " * 
-                            string(replace_entities_with_symbols(coef_part_side2)) * ")";
+                    if coef_side == 1
+                        result[2] = string(replace_entities_with_symbols(test_part)) * " * (wdetj .* (refel.surf_Q[frefelind[1]] * " * 
+                            string(replace_entities_with_symbols(coef_part)) * "))";
+                    elseif coef_side == 2
+                        result[2] = string(replace_entities_with_symbols(test_part)) * " * (wdetj .* (refel.surf_Q[frefelind[2]] * " * 
+                            string(replace_entities_with_symbols(coef_part)) * "))";
+                    else
+                        result[2] = string(replace_entities_with_symbols(test_part)) * " * (wdetj .* (refel.surf_Q[frefelind[1]] * " * 
+                            string(replace_entities_with_symbols(coef_part_side1)) * " .+ refel.surf_Q[frefelind[2]] * " *
+                            string(replace_entities_with_symbols(coef_part_side2)) * "))";
+                    end
                 else
-                    result[2] = string(replace_entities_with_symbols(test_part_side2)) * " * (wdetj)";
+                    result[2] = string(replace_entities_with_symbols(test_part)) * " * (wdetj .* (refel.surf_Q[frefelind[1]] .+ refel.surf_Q[frefelind[2]]))";
                 end
-            else
+            else # no test side specified
                 if !(coef_part === nothing)
-                    result[1] = string(replace_entities_with_symbols(test_part_side1)) * " * (wdetj .* 0.5 .* " * 
-                            string(replace_entities_with_symbols(coef_part_side1)) * ")";
-                    result[2] = string(replace_entities_with_symbols(test_part_side2)) * " * (wdetj .* 0.5 .* " * 
-                            string(replace_entities_with_symbols(coef_part_side2)) * ")";
+                    if coef_side == 1
+                        result[1] = string(replace_entities_with_symbols(test_part_side1)) * " * (wdetj .* (refel.surf_Q[frefelind[1]] * " * 
+                            string(replace_entities_with_symbols(coef_part)) * "))";
+                        result[2] = string(replace_entities_with_symbols(test_part_side2)) * " * (wdetj .* (refel.surf_Q[frefelind[1]] * " * 
+                            string(replace_entities_with_symbols(coef_part)) * "))";
+                    elseif coef_side == 2
+                        result[1] = string(replace_entities_with_symbols(test_part_side1)) * " * (wdetj .* (refel.surf_Q[frefelind[2]] * " * 
+                            string(replace_entities_with_symbols(coef_part)) * "))";
+                        result[2] = string(replace_entities_with_symbols(test_part_side2)) * " * (wdetj .* (refel.surf_Q[frefelind[2]] * " * 
+                            string(replace_entities_with_symbols(coef_part)) * "))";
+                    else
+                        result[1] = string(replace_entities_with_symbols(test_part_side1)) * " * (wdetj .* (refel.surf_Q[frefelind[1]] * " * 
+                            string(replace_entities_with_symbols(coef_part_side1)) * "))";
+                        result[2] = string(replace_entities_with_symbols(test_part_side2)) * " * (wdetj .* (refel.surf_Q[frefelind[2]] * " *
+                            string(replace_entities_with_symbols(coef_part_side2)) * "))";
+                    end
                 else
-                    result[1] = string(replace_entities_with_symbols(test_part_side1)) * " * (wdetj .* 0.5)";
-                    result[2] = string(replace_entities_with_symbols(test_part_side2)) * " * (wdetj .* 0.5)";
+                    result[1] = string(replace_entities_with_symbols(test_part_side1)) * " * (wdetj .* (refel.surf_Q[frefelind[1]] .+ refel.surf_Q[frefelind[2]]))";
+                    result[2] = string(replace_entities_with_symbols(test_part_side2)) * " * (wdetj .* (refel.surf_Q[frefelind[1]] .+ refel.surf_Q[frefelind[2]]))";
                 end
             end
             

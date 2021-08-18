@@ -44,6 +44,8 @@ function linear_solve(var, bilinear, linear, face_bilinear, face_linear, stepper
         log_entry("Initial assembly took "*string(assemble_t)*" seconds");
         # global Amat = A;
         # global bvec = b;
+        # display(A);
+        # display(b);
 
         log_entry("Beginning "*string(stepper.Nsteps)*" time steps.");
         t = 0;
