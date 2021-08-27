@@ -12,9 +12,9 @@ fid =       args[3];
 grid =      args[4];
 geo_facs =  args[5];
 fv_data =   args[6];
-refel =     args[7]
+refel =     args[7];
 time =      args[8];
-dt =        args[9]
+dt =        args[9];
 "
     return code;
 end
@@ -511,7 +511,7 @@ function make_elemental_computation_fv_julia(terms, var, dofsper, offset_ind, lo
             end
             
         else
-            result = "0";
+            result = "[0]";
         end
         
         #process each term
@@ -528,7 +528,7 @@ function make_elemental_computation_fv_julia(terms, var, dofsper, offset_ind, lo
                 end
             end
         end
-        code *= "cell_average = " * result * ";\n";
+        code *= "cell_average = [" * result * "];\n";
         code *= "return cell_average;\n"
     end
     

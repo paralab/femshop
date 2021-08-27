@@ -2,7 +2,7 @@
 This file contains all of the common interface functions.
 Many of them simply call corresponding functions in jl.
 =#
-export generateFor, useLog, domain, solverType, functionSpace, trialSpace, testSpace, 
+export generateFor, useLog, domain, solverType, functionSpace, trialSpace, testSpace, finiteVolumeOrder,
         nodeType, timeStepper, setSteps, matrixFree, customOperator, customOperatorFile,
         mesh, exportMesh, variable, coefficient, parameter, testSymbol, index, boundary, addBoundaryID,
         referencePoint, timeInterval, initial, weakForm, fluxAndSource, flux, source, assemblyLoops,
@@ -141,6 +141,12 @@ function exportMesh(filename, format=MSH_V2)
     log_entry("Writing mesh file: "*filename);
     output_mesh(mfile, format);
     close(mfile);
+end
+
+function finiteVolumeOrder(order)
+    # Not sure where to put these yet. Let's hand them over to FVSolver.
+    (parent, child) = divide_parent_grid(grid_data, order);
+    set_parent_and_child(parent, child);
 end
 
 function variable(name, type=SCALAR, location=NODAL; index=nothing)
@@ -373,20 +379,19 @@ function weakForm(var, wf)
     #log_entry("Julia code Expr: LHS = \n"*string(lhs_code)*" \n  RHS = \n"*string(rhs_code), 3);
     
     if language == JULIA || language == 0
-        args = "args";
+        args = "args; kwargs...";
         @makeFunction(args, lhs_code);
-        set_lhs(var);
+        set_lhs(var, lhs_string);
         
         @makeFunction(args, rhs_code);
-        set_rhs(var);
+        set_rhs(var, rhs_string);
         
         if length(result_exprs) == 4
-            args = "args";
             @makeFunction(args, string(lhs_surf_code));
-            set_lhs_surface(var);
+            set_lhs_surface(var, lhs_surf_string);
             
             @makeFunction(args, string(rhs_surf_code));
-            set_rhs_surface(var);
+            set_rhs_surface(var, rhs_surf_string);
         end
         
     else
@@ -454,10 +459,10 @@ function flux(var, fex)
     if language == JULIA || language == 0
         args = "args; kwargs...";
         @makeFunction(args, string(lhs_code));
-        set_lhs_surface(var);
+        set_lhs_surface(var, lhs_string);
         
         @makeFunction(args, string(rhs_code));
-        set_rhs_surface(var);
+        set_rhs_surface(var, rhs_string);
         
     else
         set_lhs_surface(var, lhs_code);
@@ -519,10 +524,10 @@ function source(var, sex)
     if language == JULIA || language == 0
         args = "args; kwargs...";
         @makeFunction(args, string(lhs_code));
-        set_lhs(var);
+        set_lhs(var, lhs_string);
         
         @makeFunction(args, string(rhs_code));
-        set_rhs(var);
+        set_rhs(var, rhs_string);
         
     else
         set_lhs(var, lhs_code);
@@ -571,36 +576,47 @@ function exportCode(filename)
         println(file, "#=\nGenerated functions for "*project_name*"\n=#\n");
         for LorR in [LHS, RHS]
             if LorR == LHS
-                codevol = bilinears;
-                codesurf = face_bilinears;
+                codevol = code_strings[1];
+                codesurf = code_strings[3];
             else
-                codevol = linears;
-                codesurf = face_linears;
+                codevol = code_strings[2];
+                codesurf = code_strings[4];
             end
             for i=1:length(variables)
                 var = string(variables[i].symbol);
-                if !(codevol[i] === nothing)
+                if !(codevol[i] === "")
                     func_name = LorR*"_volume_function_for_"*var;
-                    println(file, "function "*func_name*"(args)");
-                    println(file, codevol[i].str);
+                    println(file, "function "*func_name*"(args; kwargs...)");
+                    println(file, codevol[i]);
                     println(file, "end #"*func_name*"\n");
                 else
                     println(file, "# No "*LorR*" volume set for "*var*"\n");
                 end
                 
-                if !(codesurf[i] === nothing)
+                if !(codesurf[i] === "")
                     func_name = LorR*"_surface_function_for_"*var;
-                    println(file, "function "*func_name*"(args)");
-                    println(file, codesurf[i].str);
+                    println(file, "function "*func_name*"(args; kwargs...)");
+                    println(file, codesurf[i]);
                     println(file, "end #"*func_name*"\n");
                 else
                     println(file, "# No "*LorR*" surface set for "*var*"\n");
+                end
+                
+                if LorR == RHS
+                    if !(assembly_loops[i] == "" || assembly_loops[i] === nothing)
+                        func_name = "assembly_function_for_"*var;
+                        println(file, "function "*func_name*"(args; kwargs...)");
+                        println(file, assembly_loops[i]);
+                        println(file, "end #"*func_name*"\n");
+                    else
+                        println(file, "# No assembly function set for "*var*"\n");
+                    end
                 end
             end
         end
         
         close(file);
-        
+        log_entry("Exported code to "*filename*".jl");
     else
         # Should we export for other targets?
     end
@@ -633,6 +649,8 @@ function importCode(filename)
                 vfunc_string = "";
                 sfunc_name = LorR*"_surface_function_for_"*var;
                 sfunc_string = "";
+                afunc_name = "assembly_function_for_"*var;
+                afunc_string = "";
                 for st=1:length(lines)
                     if occursin("function "*vfunc_name, lines[st])
                         # s is the start of the function
@@ -656,14 +674,25 @@ function importCode(filename)
                                 sfunc_string *= lines[en];
                             end
                         end
+                    elseif LorR == RHS && occursin("function "*afunc_name, lines[st])
+                        # s is the start of the function
+                        for en=(st+1):length(lines)
+                            if occursin("end #"*afunc_name, lines[en])
+                                # en is the end of the function
+                                st = en; # update st
+                                break;
+                            else
+                                afunc_string *= lines[en];
+                            end
+                        end
                     end
                 end # lines loop
                 
                 # Generate the functions and set them in the right places
                 if vfunc_string == ""
-                    println("Warning: While importing, no "*LorR*" volume function was found for "*var);
+                    log_entry("Warning: While importing, no "*LorR*" volume function was found for "*var);
                 else
-                    @makeFunction("args", string(vfunc_string));
+                    @makeFunction("args; kwargs...", CodeGenerator.code_string_to_expr(vfunc_string));
                     if LorR == LHS
                         set_lhs(variables[i]);
                     else
@@ -671,18 +700,27 @@ function importCode(filename)
                     end
                 end
                 if sfunc_string == ""
-                    println("Warning: While importing, no "*LorR*" surface function was found for "*var);
+                    log_entry("Warning: While importing, no "*LorR*" surface function was found for "*var);
                 else
-                    @makeFunction("args", string(sfunc_string));
+                    @makeFunction("args; kwargs...", CodeGenerator.code_string_to_expr(sfunc_string));
                     if LorR == LHS
                         set_lhs_surface(variables[i]);
                     else
                         set_rhs_surface(variables[i]);
                     end
                 end
+                if afunc_string == ""
+                    log_entry("Warning: While importing, no assembly function was found for "*var*" (using default)");
+                else
+                    @makeFunction("args; kwargs...", CodeGenerator.code_string_to_expr(afunc_string));
+                    set_assembly_loops(variables[i]);
+                end
                 
             end # vars loop
         end
+        
+        close(file);
+        log_entry("Imported code from "*filename*".jl");
         
     else
         # TODO non-julia
@@ -798,33 +836,44 @@ function eval_initial_conditions()
     # build initial conditions
     for vind=1:length(variables)
         if !(variables[vind].ready) && vind <= length(prob.initial)
-            if prob.initial[vind] != nothing
+            if !(prob.initial[vind] === nothing)
+                if variables[vind].location == CELL && !(fv_grid === nothing)
+                    # Need to use the fv_grid instead of grid_data
+                    this_grid_data = fv_grid;
+                    this_geo_factors = fv_geo_factors;
+                    this_refel = fv_refel;
+                else
+                    this_grid_data = grid_data;
+                    this_geo_factors = geo_factors;
+                    this_refel = refel;
+                end
+                
                 if typeof(prob.initial[vind]) <: Array
                     # Evaluate at nodes
-                    nodal_values = zeros(length(prob.initial[vind]), size(grid_data.allnodes,2));
+                    nodal_values = zeros(length(prob.initial[vind]), size(this_grid_data.allnodes,2));
                     for ci=1:length(prob.initial[vind])
-                        Threads.@threads for ni=1:size(grid_data.allnodes,2)
+                        Threads.@threads for ni=1:size(this_grid_data.allnodes,2)
                             if dim == 1
-                                nodal_values[ci,ni] = prob.initial[vind][ci].func(grid_data.allnodes[ni],0,0,0);
+                                nodal_values[ci,ni] = prob.initial[vind][ci].func(this_grid_data.allnodes[ni],0,0,0);
                             elseif dim == 2
-                                nodal_values[ci,ni] = prob.initial[vind][ci].func(grid_data.allnodes[1,ni],grid_data.allnodes[2,ni],0,0);
+                                nodal_values[ci,ni] = prob.initial[vind][ci].func(this_grid_data.allnodes[1,ni],this_grid_data.allnodes[2,ni],0,0);
                             elseif dim == 3
-                                nodal_values[ci,ni] = prob.initial[vind][ci].func(grid_data.allnodes[1,ni],grid_data.allnodes[2,ni],grid_data.allnodes[3,ni],0);
+                                nodal_values[ci,ni] = prob.initial[vind][ci].func(this_grid_data.allnodes[1,ni],this_grid_data.allnodes[2,ni],this_grid_data.allnodes[3,ni],0);
                             end
                         end
                     end
                     
                     # compute cell averages using nodal values if needed
                     if variables[vind].location == CELL
-                        nel = size(grid_data.loc2glb, 2);
-                        Threads.@threads for ei=1:nel
+                        nel = size(this_grid_data.loc2glb, 2);
+                        for ei=1:nel
                             e = elemental_order[ei];
-                            glb = grid_data.loc2glb[:,e];
-                            vol = geo_factors.volume[e];
-                            detj = geo_factors.detJ[e];
+                            glb = this_grid_data.loc2glb[:,e];
+                            vol = this_geo_factors.volume[e];
+                            detj = this_geo_factors.detJ[e];
                             
                             for ci=1:length(prob.initial[vind])
-                                variables[vind].values[ci,e] = detj / vol * (refel.wg' * refel.Q * (nodal_values[ci,glb][:]))[1];
+                                variables[vind].values[ci,e] = detj / vol * (this_refel.wg' * this_refel.Q * (nodal_values[ci,glb][:]))[1];
                             end
                         end
                     else
@@ -832,28 +881,28 @@ function eval_initial_conditions()
                     end
                     
                 else # scalar
-                    nodal_values = zeros(1, size(grid_data.allnodes,2));
-                    Threads.@threads for ni=1:size(grid_data.allnodes,2)
+                    nodal_values = zeros(1, size(this_grid_data.allnodes,2));
+                    Threads.@threads for ni=1:size(this_grid_data.allnodes,2)
                         if dim == 1
-                            nodal_values[ni] = prob.initial[vind].func(grid_data.allnodes[ni],0,0,0);
+                            nodal_values[ni] = prob.initial[vind].func(this_grid_data.allnodes[ni],0,0,0);
                         elseif dim == 2
-                            nodal_values[ni] = prob.initial[vind].func(grid_data.allnodes[1,ni],grid_data.allnodes[2,ni],0,0);
+                            nodal_values[ni] = prob.initial[vind].func(this_grid_data.allnodes[1,ni],this_grid_data.allnodes[2,ni],0,0);
                         elseif dim == 3
-                            nodal_values[ni] = prob.initial[vind].func(grid_data.allnodes[1,ni],grid_data.allnodes[2,ni],grid_data.allnodes[3,ni],0);
+                            nodal_values[ni] = prob.initial[vind].func(this_grid_data.allnodes[1,ni],this_grid_data.allnodes[2,ni],this_grid_data.allnodes[3,ni],0);
                         end
                     end
                     
                     # compute cell averages using nodal values if needed
                     if variables[vind].location == CELL
-                        nel = size(grid_data.loc2glb, 2);
-                        Threads.@threads for ei=1:nel
-                            e = elemental_order[ei];
-                            glb = grid_data.loc2glb[:,e];
-                            vol = geo_factors.volume[e];
-                            detj = geo_factors.detJ[e];
+                        nel = size(this_grid_data.loc2glb, 2);
+                        for e=1:nel
+                            glb = this_grid_data.loc2glb[:,e];
+                            vol = this_geo_factors.volume[e];
+                            detj = this_geo_factors.detJ[e];
                             
-                            variables[vind].values[e] = detj / vol * (refel.wg' * refel.Q * nodal_values[glb])[1];
+                            variables[vind].values[e] = detj / vol * (this_refel.wg' * this_refel.Q * nodal_values[glb])[1];
                         end
+                        
                     else
                         variables[vind].values = nodal_values;
                     end

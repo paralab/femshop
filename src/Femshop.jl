@@ -43,7 +43,11 @@ grid_data = nothing;    # The full collection of nodes(including internal nodes)
 geo_factors = nothing;  # Geometric factors
 fv_info = nothing;      # Finite volume info
 refel = nothing;        # Reference element (will eventually be an array of refels)
+fv_refel = nothing;        # Reference element for FV
 elemental_order = [];   # Determines the order of the elemental loops
+parent_maps = nothing;  # For high order FV
+fv_grid = nothing;      # For high order FV
+fv_geo_factors = nothing;# Geometric factors for FV
 #problem variables
 var_count = 0;
 variables = [];
@@ -64,6 +68,8 @@ face_bilinears = [];
 assembly_loops = [];
 #symbolic layer
 symexpressions = [[],[],[],[]];
+# string versions of generated code for printing
+code_strings = [[],[],[],[]];
 #time stepper
 time_stepper = nothing;
 specified_dt = 0;
@@ -101,7 +107,11 @@ function init_femshop(name="unnamedProject")
     global geo_factors = nothing;
     global fv_info = nothing;
     global refel = nothing;
+    global fv_refel = nothing;
     global elemental_order = [];
+    global parent_maps = nothing;
+    global fv_grid = nothing;
+    global fv_geo_factors = nothing;
     global var_count = 0;
     global variables = [];
     global coefficients = [];
@@ -116,6 +126,7 @@ function init_femshop(name="unnamedProject")
     global face_bilinears = [];
     global assembly_loops = [];
     global symexpressions = [[],[],[],[]];
+    global code_strings = [[],[],[],[]];
     global time_stepper = nothing;
     global specified_dt = 0;
     global specified_Nsteps = 0;
@@ -245,6 +256,47 @@ function output_mesh(file, format)
     log_entry("Wrote mesh data to file.", 1);
 end
 
+function set_parent_and_child(p_maps, c_grid)
+    global parent_maps = p_maps;
+    global fv_grid = c_grid;
+    dim = config.dimension;
+    nfaces = size(fv_grid.element2face,1);
+    global fv_refel = refel = build_refel(dim, 1, nfaces, config.elemental_nodes);
+    global fv_geo_factors = build_geometric_factors(fv_refel, fv_grid, do_face_detj=true, do_vol_area=true, constant_jacobian=true);
+    global fv_info = build_FV_info(fv_grid);
+    log_entry("FCreated parent-child grid with "*string(size(c_grid.allnodes,2))*" nodes and "*string(size(c_grid.loc2glb,2))*" elements.", 2);
+    
+    # If CELL variables exist, resize their values
+    N = size(fv_grid.loc2glb, 2);
+    for i=1:length(variables)
+        if variables[i].location == CELL
+            if var.type == SCALAR
+                val_size = (1, N);
+            elseif var.type == VECTOR
+                val_size = (config.dimension, N);
+            elseif var.type == TENSOR
+                val_size = (config.dimension*config.dimension, N);
+            elseif var.type == SYM_TENSOR
+                val_size = (Int((config.dimension*(config.dimension+1))/2), N);
+            elseif var.type == VAR_ARRAY
+                if typeof(var.indexer) <: Array
+                    comps = 1;
+                    for j=1:length(var.indexer)
+                        comps *= length(var.indexer[j].range);
+                    end
+                elseif typeof(var.indexer) == Indexer
+                    comps = length(var.indexer.range);
+                else
+                    comps = 1;
+                end
+                val_size = (comps, N);
+            end
+            
+            variables[i].values = zeros(val_size);
+        end
+    end
+end
+
 # Maybe remove. This is in grid.jl
 function add_boundary_ID(bid, on_bdry)
     add_boundary_ID_to_grid(bid, on_bdry, grid_data);
@@ -287,7 +339,11 @@ function add_variable(var)
     if language == JULIA || language == 0
         # adjust values arrays
         if var.location == CELL
-            N = size(grid_data.loc2glb, 2);
+            if fv_grid === nothing
+                N = size(grid_data.loc2glb, 2);
+            else
+                N = size(fv_grid.loc2glb, 2);
+            end
         else
             N = size(grid_data.allnodes,2);
         end
@@ -336,6 +392,10 @@ function add_variable(var)
     global symexpressions[2] = [symexpressions[2]; nothing];
     global symexpressions[3] = [symexpressions[3]; nothing];
     global symexpressions[4] = [symexpressions[4]; nothing];
+    global code_strings[1] = [code_strings[1]; ""];
+    global code_strings[2] = [code_strings[2]; ""];
+    global code_strings[3] = [code_strings[3]; ""];
+    global code_strings[4] = [code_strings[4]; ""];
 
     log_entry("Added variable: "*string(var.symbol)*" of type: "*var.type*", location: "*var.location, 2);
 end
@@ -344,7 +404,6 @@ end
 function add_coefficient(c, type, location, val, nfuns)
     global coefficients;
     vals = [];
-    components = length(vals);
     if nfuns == 0 # constant values
         vals = val;
         if length(vals) == 1 && !(typeof(vals) <: Array)
@@ -366,7 +425,8 @@ function add_coefficient(c, type, location, val, nfuns)
             push!(vals, genfunctions[end]);
         end
     end
-
+    components = length(vals);
+    
     symvar = sym_var(string(c), type, components);
 
     index = length(coefficients);
@@ -546,9 +606,11 @@ function set_rhs(var, code="")
         if typeof(var) <:Array
             for i=1:length(var)
                 linears[var[i].index] = genfunctions[end];
+                code_strings[2][var[i].index] = code;
             end
         else
             linears[var.index] = genfunctions[end];
+            code_strings[2][var.index] = code;
         end
         
     else # external generation
@@ -569,9 +631,11 @@ function set_lhs(var, code="")
         if typeof(var) <:Array
             for i=1:length(var)
                 bilinears[var[i].index] = genfunctions[end];
+                code_strings[1][var[i].index] = code;
             end
         else
             bilinears[var.index] = genfunctions[end];
+            code_strings[1][var.index] = code;
         end
         
     else # external generation
@@ -592,9 +656,11 @@ function set_rhs_surface(var, code="")
         if typeof(var) <:Array
             for i=1:length(var)
                 face_linears[var[i].index] = genfunctions[end];
+                code_strings[4][var[i].index] = code;
             end
         else
             face_linears[var.index] = genfunctions[end];
+            code_strings[4][var.index] = code;
         end
         
     else # external generation
@@ -615,9 +681,11 @@ function set_lhs_surface(var, code="")
         if typeof(var) <:Array
             for i=1:length(var)
                 face_bilinears[var[i].index] = genfunctions[end];
+                code_strings[3][var[i].index] = code;
             end
         else
             face_bilinears[var.index] = genfunctions[end];
+            code_strings[3][var.index] = code;
         end
         
     else # external generation

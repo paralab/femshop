@@ -62,6 +62,8 @@ include("geometric_factors.jl");
 include("dg_utils.jl");
 include("time_steppers.jl");
 include("fv_utils.jl");
+include("grid_parent_child.jl");
+include("polyharmonic_interp.jl");
 
 include("output_data.jl");
 

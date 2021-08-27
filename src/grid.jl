@@ -34,7 +34,7 @@ function grid_from_mesh(mesh)
     t_grid_from_mesh = Base.Libc.time();
     dim = config.dimension;
     ord = config.basis_order_min;
-    nfaces = etypetonf[mesh.etypes[1]];;
+    nfaces = etypetonf[mesh.etypes[1]];
     #totalfaces = nfaces*mesh.nel;
     totalfaces = size(mesh.normals,2);
     nel = mesh.nel;
@@ -116,96 +116,8 @@ function grid_from_mesh(mesh)
     
     if Gness == 1 # CG
         # Go back and remove duplicate nodes. Adjust loc2glb.
-        # Strategy: divide nodes into bins compare against nodes in bin
         t_nodes1 = Base.Libc.time();
-        
-        tmpNnodes = size(tmpallnodes,2);
-        replace_with = zeros(Int, tmpNnodes); # holds index of replacement node being kept. 0 if this is kept.
-        abins = zeros(Int, tmpNnodes);
-        depth = 5; # 32768 for 3D
-        mincount = 50; # don't subdivide if less than this
-        bin_ends = [tmpNnodes]; # The last index of each bin
-        
-        # init bins and find extrema
-        xlim = [1e10, -1e10];
-        ylim = [1e10, -1e10];
-        zlim = [1e10, -1e10];
-        for i=1:tmpNnodes
-            abins[i] = i;
-            xyz=tmpallnodes[:,i];
-            xlim[1] = min(xlim[1], xyz[1]);
-            xlim[2] = max(xlim[2], xyz[1]);
-            if dim>1
-                ylim[1] = min(ylim[1], xyz[2]);
-                ylim[2] = max(ylim[2], xyz[2]);
-                if dim > 2
-                    zlim[1] = min(zlim[1], xyz[3]);
-                    zlim[2] = max(zlim[2], xyz[3]);
-                end
-            end
-        end
-        
-        if dim == 1
-            (abins, bin_ends) = partition_nodes_in_bins_1d(tmpallnodes, abins, xlim, depth, mincount);
-        elseif dim == 2
-            (abins, bin_ends) = partition_nodes_in_bins_2d(tmpallnodes, abins, xlim, ylim, depth, mincount);
-        else # dim==3
-            (abins, bin_ends) = partition_nodes_in_bins_3d(tmpallnodes, abins, xlim, ylim, zlim, depth, mincount);
-        end
-        
-        remove_count = 0;
-        startind = 1;
-        # Loop over nodes in bins and put numbers in replace_with where duplicates will be removed.
-        for bini = 1:length(bin_ends)
-            for ni=startind:bin_ends[bini]
-                for nj=startind:(ni-1)
-                    # If node[nj] == node[ni], keep nj, remove ni
-                    if is_same_node(tmpallnodes[:,abins[ni]], tmpallnodes[:,abins[nj]], tol)
-                        remove_count += 1;
-                        replace_with[abins[ni]] = abins[nj];
-                        break;
-                    end
-                end
-            end
-            startind = bin_ends[bini] + 1;
-        end
-        
-        # println(string(length(bin_ends))*" bins: " )
-        # println(bin_ends);
-        # println("Nnodes before: "*string(tmpNnodes)*" after: "*string(tmpNnodes-remove_count));
-        
-        # Loop over nodes and place in new allnodes array while adjusting replace_with
-        Nnodes = tmpNnodes-remove_count;
-        next_ind = 1;
-        allnodes = zeros(size(tmpallnodes,1), Nnodes);
-        new_homes = zeros(Int, tmpNnodes);
-        for i=1:tmpNnodes
-            if replace_with[i] == 0
-                # A node to keep
-                allnodes[:,next_ind] = tmpallnodes[:,i];
-                new_homes[i] = next_ind;
-                next_ind += 1;
-            end
-        end
-        for i=1:tmpNnodes
-            if replace_with[i] > 0
-                # A node that was removed. update replace_with with new_homes
-                replace_with[i] = new_homes[replace_with[i]];
-            end
-        end
-        
-        # Loop over each element's nodes and adjust loc2glb
-        for ei=1:nel
-            for ni=1:Np
-                ind = loc2glb[ni,ei];
-                if replace_with[ind] > 0
-                    loc2glb[ni,ei] = replace_with[ind];
-                else
-                    loc2glb[ni,ei] = new_homes[ind];
-                end
-            end
-        end
-        
+        (allnodes, loc2glb) = remove_duplicate_nodes(tmpallnodes, loc2glb, tol=tol);
         t_nodes1 = Base.Libc.time() - t_nodes1;
         log_entry("Remove duplicate nodes: "*string(t_nodes1), 3);
         
@@ -372,6 +284,116 @@ function collectBIDs(mesh)
         end
     end
     return bids;
+end
+
+# Removes duplicate nodes and updates local to global maps
+function remove_duplicate_nodes(nodes, loc2glb; tol=1e-12, depth=5, mincount=50, other2glb=[])
+    # defaults
+    # depth = 5; # 32768 for 3D
+    # mincount = 50; # don't subdivide if less than this
+    
+    # Strategy: divide nodes into bins compare against nodes in bin
+    tmpNnodes = size(nodes,2);
+    dim = size(nodes,1);
+    replace_with = zeros(Int, tmpNnodes); # holds index of replacement node being kept. 0 if this is kept.
+    abins = zeros(Int, tmpNnodes);
+    bin_ends = [tmpNnodes]; # The last index of each bin
+    
+    # init bins and find extrema
+    xlim = [1e10, -1e10];
+    ylim = [1e10, -1e10];
+    zlim = [1e10, -1e10];
+    for i=1:tmpNnodes
+        abins[i] = i;
+        xyz=nodes[:,i];
+        xlim[1] = min(xlim[1], xyz[1]);
+        xlim[2] = max(xlim[2], xyz[1]);
+        if dim>1
+            ylim[1] = min(ylim[1], xyz[2]);
+            ylim[2] = max(ylim[2], xyz[2]);
+            if dim > 2
+                zlim[1] = min(zlim[1], xyz[3]);
+                zlim[2] = max(zlim[2], xyz[3]);
+            end
+        end
+    end
+    
+    if dim == 1
+        (abins, bin_ends) = partition_nodes_in_bins_1d(nodes, abins, xlim, depth, mincount);
+    elseif dim == 2
+        (abins, bin_ends) = partition_nodes_in_bins_2d(nodes, abins, xlim, ylim, depth, mincount);
+    else # dim==3
+        (abins, bin_ends) = partition_nodes_in_bins_3d(nodes, abins, xlim, ylim, zlim, depth, mincount);
+    end
+    
+    remove_count = 0;
+    startind = 1;
+    # Loop over nodes in bins and put numbers in replace_with where duplicates will be removed.
+    for bini = 1:length(bin_ends)
+        for ni=startind:bin_ends[bini]
+            for nj=startind:(ni-1)
+                # If node[nj] == node[ni], keep nj, remove ni
+                if is_same_node(nodes[:,abins[ni]], nodes[:,abins[nj]], tol)
+                    remove_count += 1;
+                    replace_with[abins[ni]] = abins[nj];
+                    break;
+                end
+            end
+        end
+        startind = bin_ends[bini] + 1;
+    end
+    
+    # println(string(length(bin_ends))*" bins: " )
+    # println(bin_ends);
+    # println("Nnodes before: "*string(tmpNnodes)*" after: "*string(tmpNnodes-remove_count));
+    
+    # Loop over nodes and place in new allnodes array while adjusting replace_with
+    Nnodes = tmpNnodes-remove_count;
+    next_ind = 1;
+    newnodes = zeros(size(nodes,1), Nnodes);
+    new_homes = zeros(Int, tmpNnodes);
+    for i=1:tmpNnodes
+        if replace_with[i] == 0
+            # A node to keep
+            newnodes[:,next_ind] = nodes[:,i];
+            new_homes[i] = next_ind;
+            next_ind += 1;
+        end
+    end
+    for i=1:tmpNnodes
+        if replace_with[i] > 0
+            # A node that was removed. update replace_with with new_homes
+            replace_with[i] = new_homes[replace_with[i]];
+        end
+    end
+    
+    # Loop over each element's nodes and adjust loc2glb
+    for ei=1:size(loc2glb,2) # nel
+        for ni=1:size(loc2glb,1) # Np
+            ind = loc2glb[ni,ei];
+            if replace_with[ind] > 0
+                loc2glb[ni,ei] = replace_with[ind];
+            else
+                loc2glb[ni,ei] = new_homes[ind];
+            end
+        end
+    end
+    
+    # If another 2glb map is present, do the same to it
+    if length(other2glb) > 0
+        for i=1:length(other2glb) # 
+            ind = other2glb[i];
+            if replace_with[ind] > 0
+                other2glb[i] = replace_with[ind];
+            else
+                other2glb[i] = new_homes[ind];
+            end
+        end
+        
+        return (newnodes, loc2glb, other2glb);
+    end
+    
+    return (newnodes, loc2glb);
 end
 
 # recursively subdivide bins of nodes
