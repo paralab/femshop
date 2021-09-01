@@ -191,6 +191,9 @@ end
 
 # zeros the rows and puts a 1 on the diagonal
 function identity_rows(A, rows, N)
+    if length(rows) < 1
+        return A;
+    end
     if issparse(A)
         (I, J, V) = findnz(A);
         eN = length(I);
@@ -204,7 +207,8 @@ function identity_rows(A, rows, N)
         
         # remove duplicates
         newrows = zeros(Int, length(rows));
-        newcount = 0;
+        newcount = 1;
+        newrows[1] = rows[1];
         for i=2:length(rows)
             if rows[i] != rows[i-1] # because sorted
                 newcount += 1;
