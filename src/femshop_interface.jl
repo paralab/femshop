@@ -160,7 +160,7 @@ end
 
 function coefficient(name, val, type=SCALAR, location=NODAL)
     csym = Symbol(name);
-    nfuns = @makeFunctions(val); # if val is constant, nfuns will be 0
+    nfuns = makeFunctions(val); # if val is constant, nfuns will be 0
     return add_coefficient(csym, type, location, val, nfuns);
 end
 
@@ -205,15 +205,31 @@ function index(name; range=[1])
     return idx;
 end
 
-function boundary(var, bid, bc_type, bc_exp=0)
-    nfuns = @makeFunctions(bc_exp);
-    add_boundary_condition(var, bid, bc_type, bc_exp, nfuns);
+function boundary(var, bid, bc_type, bc_exp=0; coupled=false)
+    if coupled
+        # The expression may contain variable symbols.
+        # Parse it, replace variable symbols with the appropriate parts
+        if typeof(bc_exp) <: Array
+            
+        else
+            if typeof(bc_exp) == String
+                ex = Meta.parse(bc_exp);
+                ex = replace_var_symbols_with_values(ex);
+                bc_exp = string(ex);
+            end
+        end
+        nfuns = makeFunctions(bc_exp, args=args);
+        add_boundary_condition(var, bid, bc_type, bc_exp, nfuns);
+    else
+        nfuns = makeFunctions(bc_exp);
+        add_boundary_condition(var, bid, bc_type, bc_exp, nfuns);
+    end
 end
 
 function addBoundaryID(bid, trueOnBdry)
     # trueOnBdry(x, y, z) = something # points with x,y,z on this bdry segment evaluate true here
     if typeof(trueOnBdry) == String
-        @stringToFunction("trueOnBdry", "x,y=0,z=0", trueOnBdry);
+        trueOnBdry = stringToFunction("trueOnBdry", "x,y=0,z=0", trueOnBdry);
     end
     add_boundary_ID_to_grid(bid, trueOnBdry, grid_data);
 end
@@ -231,7 +247,7 @@ function timeInterval(T)
 end
 
 function initial(var, ics)
-    nfuns = @makeFunctions(ics);
+    nfuns = makeFunctions(ics);
     add_initial_condition(var.index, ics, nfuns);
 end
 
@@ -380,17 +396,17 @@ function weakForm(var, wf)
     
     if language == JULIA || language == 0
         args = "args; kwargs...";
-        @makeFunction(args, lhs_code);
+        makeFunction(args, lhs_code);
         set_lhs(var, lhs_string);
         
-        @makeFunction(args, rhs_code);
+        makeFunction(args, rhs_code);
         set_rhs(var, rhs_string);
         
         if length(result_exprs) == 4
-            @makeFunction(args, string(lhs_surf_code));
+            makeFunction(args, string(lhs_surf_code));
             set_lhs_surface(var, lhs_surf_string);
             
-            @makeFunction(args, string(rhs_surf_code));
+            makeFunction(args, string(rhs_surf_code));
             set_rhs_surface(var, rhs_surf_string);
         end
         
@@ -458,10 +474,10 @@ function flux(var, fex)
     
     if language == JULIA || language == 0
         args = "args; kwargs...";
-        @makeFunction(args, string(lhs_code));
+        makeFunction(args, string(lhs_code));
         set_lhs_surface(var, lhs_string);
         
-        @makeFunction(args, string(rhs_code));
+        makeFunction(args, string(rhs_code));
         set_rhs_surface(var, rhs_string);
         
     else
@@ -523,10 +539,10 @@ function source(var, sex)
     
     if language == JULIA || language == 0
         args = "args; kwargs...";
-        @makeFunction(args, string(lhs_code));
+        makeFunction(args, string(lhs_code));
         set_lhs(var, lhs_string);
         
-        @makeFunction(args, string(rhs_code));
+        makeFunction(args, string(rhs_code));
         set_rhs(var, rhs_string);
         
     else
@@ -562,7 +578,7 @@ function assemblyLoops(var, indices)
     
     if language == JULIA || language == 0
         args = "var, source_lhs, source_rhs, flux_lhs, flux_rhs, allocated_vecs, dofs_per_node=1, dofs_per_loop=1, t=0, dt=0";
-        @makeFunction(args, string(loop_code));
+        makeFunction(args, string(loop_code));
         set_assembly_loops(var);
     else
         set_assembly_loops(var, loop_code);
@@ -692,7 +708,7 @@ function importCode(filename)
                 if vfunc_string == ""
                     log_entry("Warning: While importing, no "*LorR*" volume function was found for "*var);
                 else
-                    @makeFunction("args; kwargs...", CodeGenerator.code_string_to_expr(vfunc_string));
+                    makeFunction("args; kwargs...", CodeGenerator.code_string_to_expr(vfunc_string));
                     if LorR == LHS
                         set_lhs(variables[i]);
                     else
@@ -702,7 +718,7 @@ function importCode(filename)
                 if sfunc_string == ""
                     log_entry("Warning: While importing, no "*LorR*" surface function was found for "*var);
                 else
-                    @makeFunction("args; kwargs...", CodeGenerator.code_string_to_expr(sfunc_string));
+                    makeFunction("args; kwargs...", CodeGenerator.code_string_to_expr(sfunc_string));
                     if LorR == LHS
                         set_lhs_surface(variables[i]);
                     else
@@ -712,7 +728,7 @@ function importCode(filename)
                 if afunc_string == ""
                     log_entry("Warning: While importing, no assembly function was found for "*var*" (using default)");
                 else
-                    @makeFunction("args; kwargs...", CodeGenerator.code_string_to_expr(afunc_string));
+                    makeFunction("args; kwargs...", CodeGenerator.code_string_to_expr(afunc_string));
                     set_assembly_loops(variables[i]);
                 end
                 
@@ -1064,7 +1080,11 @@ function solve(var, nlvar=nothing; nonlinear=false)
             loop_func = assembly_loops[varind];
             
             if prob.time_dependent
-                time_stepper = init_stepper(grid_data.allnodes, time_stepper);
+                if fv_grid === nothing
+                    time_stepper = init_stepper(grid_data.allnodes, time_stepper);
+                else
+                    time_stepper = init_stepper(fv_grid.allnodes, time_stepper);
+                end
                 if use_specified_steps
                     time_stepper.dt = specified_dt;
 				    time_stepper.Nsteps = specified_Nsteps;

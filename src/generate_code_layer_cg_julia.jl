@@ -455,8 +455,8 @@ function make_elemental_computation_cg_julia(terms, var, dofsper, offset_ind, lo
                     code *= "element_vector["*rangei*"] = " * submatrices[emi] * "\n";
                 end
             end
+            code *= "return element_vector;\n"
         end
-        code *= "return element_vector;\n"
         
     else # one dof
         terms = terms[1];

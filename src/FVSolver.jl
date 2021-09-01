@@ -285,9 +285,10 @@ function assemble(var, source_lhs, source_rhs, flux_lhs, flux_rhs, allocated_vec
                                 # do nothing
                             elseif prob.bc_type[var[vi].index, fbid] == FLUX
                                 # compute the value and add it to the flux directly
-                                Qvec = (refel.surf_wg[grid_data.faceRefelInd[1,fid]] .* geo_factors.face_detJ[fid])' * (refel.surf_Q[grid_data.faceRefelInd[1,fid]])[:, refel.face2local[grid_data.faceRefelInd[1,fid]]]
-                                Qvec = Qvec ./ geo_factors.area[fid];
-                                bflux = FV_flux_bc_rhs_only(prob.bc_func[var[vi].index, fbid][compo], facex, Qvec, t, dofind, dofs_per_node) .* geo_factors.area[fid];
+                                # Qvec = (refel.surf_wg[grid_data.faceRefelInd[1,fid]] .* geo_factors.face_detJ[fid])' * (refel.surf_Q[grid_data.faceRefelInd[1,fid]])[:, refel.face2local[grid_data.faceRefelInd[1,fid]]]
+                                # Qvec = Qvec ./ geo_factors.area[fid];
+                                # bflux = FV_flux_bc_rhs_only(prob.bc_func[var[vi].index, fbid][compo], facex, Qvec, t, dofind, dofs_per_node) .* geo_factors.area[fid];
+                                bflux = FV_flux_bc_rhs_only_simple(prob.bc_func[var[vi].index, fbid][compo], facex, t) .* geo_factors.area[fid];
                                 
                                 fluxvec[(eid-1)*dofs_per_node + dofind] += (bflux - facefluxvec[(fid-1)*dofs_per_node + dofind]) ./ geo_factors.volume[eid];
                                 facefluxvec[(fid-1)*dofs_per_node + dofind] = bflux;
@@ -303,9 +304,10 @@ function assemble(var, source_lhs, source_rhs, flux_lhs, flux_rhs, allocated_vec
                             # do nothing
                         elseif prob.bc_type[var.index, fbid] == FLUX
                             # compute the value and add it to the flux directly
-                            Qvec = (refel.surf_wg[grid_data.faceRefelInd[1,fid]] .* geo_factors.face_detJ[fid])' * (refel.surf_Q[grid_data.faceRefelInd[1,fid]])[:, refel.face2local[grid_data.faceRefelInd[1,fid]]]
-                            Qvec = Qvec ./ geo_factors.area[fid];
-                            bflux = FV_flux_bc_rhs_only(prob.bc_func[var.index, fbid][d], facex, Qvec, t, dofind, dofs_per_node) .* geo_factors.area[fid];
+                            # Qvec = (refel.surf_wg[grid_data.faceRefelInd[1,fid]] .* geo_factors.face_detJ[fid])' * (refel.surf_Q[grid_data.faceRefelInd[1,fid]])[:, refel.face2local[grid_data.faceRefelInd[1,fid]]]
+                            # Qvec = Qvec ./ geo_factors.area[fid];
+                            # bflux = FV_flux_bc_rhs_only(prob.bc_func[var.index, fbid][d], facex, Qvec, t, dofind, dofs_per_node) .* geo_factors.area[fid];
+                            bflux = FV_flux_bc_rhs_only_simple(prob.bc_func[var.index, fbid][d], facex, t) .* geo_factors.area[fid];
                             
                             fluxvec[(eid-1)*dofs_per_node + dofind] += (bflux - facefluxvec[(fid-1)*dofs_per_node + dofind]) ./ geo_factors.volume[eid];
                             facefluxvec[(fid-1)*dofs_per_node + dofind] = bflux;

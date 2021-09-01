@@ -135,7 +135,7 @@ function grid_from_mesh(mesh)
         
         # vertices and center
         for ni=1:Np
-            el_center .+= allnodes[:,loc2glb[ni,ei]];
+            el_center += allnodes[:,loc2glb[ni,ei]];
             
             for vi=1:n_vert
                 if is_same_node(mesh.nodes[:, mesh.elements[vi,ei]], allnodes[:,loc2glb[ni,ei]], tol)
@@ -181,12 +181,16 @@ function grid_from_mesh(mesh)
                     thisnormal = normals[:, mfi];
                     f_center = zeros(dim);
                     for ni=1:length(tmpf2glb)
-                        f_center .+= allnodes[:, tmpf2glb[ni]];
+                        f_center += allnodes[:, tmpf2glb[ni]];
                     end
                     f_center ./= length(tmpf2glb)
-                    d1 = norm(f_center .+ thisnormal .- el_center);
-                    d2 = norm(f_center .- thisnormal .- el_center);
-                    if d1 < d2 # normal is pointing in the wrong direction
+                    d1 = norm(f_center + thisnormal - el_center);
+                    d2 = norm(f_center - thisnormal - el_center);
+                    fdotn = sum((f_center-el_center) .* thisnormal);
+                    # if d1 < d2 # normal is pointing in the wrong direction
+                    #     thisnormal = -thisnormal;
+                    # end
+                    if fdotn < 0 # normal is pointing in the wrong direction
                         thisnormal = -thisnormal;
                     end
                     facenormals[:, thisfaceind] = thisnormal;
@@ -817,28 +821,24 @@ function add_boundary_ID_to_grid(bid, on_bdry, grid)
                 end
             end
             # Then the faces
+            # Base this decision on the center of the face
             for j=1:length(grid.bdryface[i])
                 fj = grid.bdryface[i][j];
                 nfp = size(grid.face2glb,1)
                 isbdryface = true
+                # find the center
+                fcenter = zeros(size(grid.allnodes,1));
                 for ni=1:nfp
-                    fx = grid.allnodes[:,grid.face2glb[ni,1,fj]];
-                    if config.dimension == 1
-                        if !on_bdry(fx[1])
-                            isbdryface = false;
-                        end
-                    elseif config.dimension == 2
-                        if !on_bdry(fx[1], fx[2])
-                            isbdryface = false;
-                        end
-                    elseif config.dimension == 3
-                        if !on_bdry(fx[1],fx[2],fx[3])
-                            isbdryface = false;
-                        end
-                    end
-                    if !isbdryface
-                        break;
-                    end
+                    fcenter = fcenter + grid.allnodes[:,grid.face2glb[ni,1,fj]];
+                end
+                fcenter = fcenter./nfp;
+                
+                if config.dimension == 1
+                    isbdryface = on_bdry(fcenter[1]);
+                elseif config.dimension == 2
+                    isbdryface = on_bdry(fcenter[1], fcenter[2]);
+                elseif config.dimension == 3
+                    isbdryface = on_bdry(fcenter[1], fcenter[2], fcenter[3]);
                 end
                 
                 if isbdryface

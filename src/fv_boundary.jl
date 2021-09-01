@@ -41,7 +41,7 @@ function FV_flux_bc_rhs_only(val, facex, Qvec, t=0, dofind = 1, totaldofs = 1)
     return b[1];
 end
 
-function FV_flux_bc_rhs_only_simple(val, facex, t=0)
+function FV_flux_bc_rhs_only_simple(val, bctype, facex, t=0)
     if typeof(val) <: Number
         return val;
         
