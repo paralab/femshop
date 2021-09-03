@@ -1,7 +1,16 @@
-if !@isdefined(Femshop)
-    include("../Femshop.jl");
-    using .Femshop
-end
+#=
+1D Burger's equation using 1st order Godunov flux.
+=#
+
+### If the Femshop package has already been added, use this line #########
+using Femshop # Note: to add the package, first do: ]add "https://github.com/paralab/femshop.git"
+
+### If not, use these four lines (working from the examples directory) ###
+# if !@isdefined(Femshop)
+#     include("../Femshop.jl");
+#     using .Femshop
+# end
+##########################################################################
 init_femshop("FVburger1d");
 
 useLog("FVburger1dlog", level=3)
@@ -9,51 +18,53 @@ useLog("FVburger1dlog", level=3)
 # Configuration setup
 domain(1)
 solverType(FV)
-timeStepper(RK4, cfl=.1)
+timeStepper(RK4, cfl=1)
 
 # Mesh
-n = 50 # number of elements
-mesh(LINEMESH, elsperdim=n, bids=2)
+n = 70 # number of elements
+mesh(LINEMESH, elsperdim=n)
 
 # Variables and BCs
 u = variable("u", SCALAR, CELL)
-boundary(u, 1, FLUX, 0)
-boundary(u, 2, NO_BC)
+boundary(u, 1, NO_BC)
 
 v = variable("v", SCALAR, CELL)
-boundary(v, 1, FLUX, 0)
-boundary(v, 2, NO_BC)
+boundary(v, 1, NO_BC)
 
 # Time interval and initial condition
-T = 0.2;
+T = 1;
 timeInterval(T)
-initial(u, "sin(pi*2*x)")
 initial(v, "sin(pi*2*x)")
-# initial(u, "x>0.1 && x<0.5 ? 1 : 0")
-# initial(v, "x>0.1 && x<0.5 ? 1 : 0")
+initial(u, "x<0.5 ? -1 : 1")
 
-# The flux and source terms of the conservation equation
-flux([u,v], ["0.5*burgerGodunov(u,u*u)", "0.5*central(v*v)"]) 
+# The flux term of the conservation equation
+# See the file fv_ops.jl for the definition of burgerGodunov(u, f)
+flux([u,v], ["0.1*burgerGodunov(u,u*u)", "0.1*burgerGodunov(v,v*v)"]) 
 
 # printLatex(u)
 
-#@exportCode("fvad1dcode") # uncomment to export generated code to a file
-#@importCode("fvad1dcode") # uncomment to import code from a file
+# @exportCode("fvburgercode") # uncomment to export generated code to a file
+# @importCode("fvburgercode") # uncomment to import code from a file
 
 solve([u,v])
 
+# output_values([u,v], "burger1d", format="vtk");
+
 finalize_femshop()
 
-##### Uncomment below to compare to plot
+##### Uncomment below to plot #####
 
 x = Femshop.fv_info.cellCenters[:]
 n = length(x);
-ic = zeros(n);
+u_ic = zeros(n);
+v_ic = zeros(n);
 for i=1:n
-    # ic[i] = (x[i]>0.1 && x[i]<0.5) ? 1 : 0
-    ic[i] = sin(2*pi*x[i])
+    u_ic[i] = x[i]<0.5 ? -1 : 1
+    v_ic[i] = sin(2*pi*x[i])
 end
 
 using Plots
 pyplot();
-display(plot([x x x], [u.values[:] v.values[:] ic], markershape=:circle, label=["Godunov" "central" "initial"]))
+pu = plot([x x], [u.values[:] u_ic], markershape=:circle, label=["Godunov" "initial"])
+pv = plot([x x], [v.values[:] v_ic], markershape=:circle, label=["Godunov" "initial"])
+display(plot(pu, pv, layout=2))
