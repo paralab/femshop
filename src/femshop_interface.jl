@@ -13,7 +13,7 @@ export generateFor, useLog, domain, solverType, functionSpace, trialSpace, testS
 
 # Begin configuration setting functions
 
-function generateFor(lang; filename=project_name, header="")
+function generateFor(lang; filename=project_name, header="", params=nothing)
     outputDirPath = pwd()*"/"*uppercasefirst(filename);
     if !isdir(outputDirPath)
         mkdir(outputDirPath);
@@ -38,6 +38,9 @@ function generateFor(lang; filename=project_name, header="")
             framew = 0;
         end
         set_included_gen_target(lang, framew, outputDirPath, filename, head=header);
+    end
+    if !(params === nothing)
+        set_codegen_parameters(params);
     end
 end
 
@@ -205,25 +208,26 @@ function index(name; range=[1])
     return idx;
 end
 
-function boundary(var, bid, bc_type, bc_exp=0; coupled=false)
-    if coupled
-        # The expression may contain variable symbols.
-        # Parse it, replace variable symbols with the appropriate parts
-        if typeof(bc_exp) <: Array
-            
-        else
-            if typeof(bc_exp) == String
-                ex = Meta.parse(bc_exp);
+function boundary(var, bid, bc_type, bc_exp=0)
+    # The expression may contain variable symbols.
+    # Parse it, replace variable symbols with the appropriate parts
+    if typeof(bc_exp) <: Array
+        for i=1:length(bc_exp)
+            if typeof(bc_exp[i]) == String
+                ex = Meta.parse(bc_exp[i]);
                 ex = replace_var_symbols_with_values(ex);
-                bc_exp = string(ex);
+                bc_exp[i] = string(ex);
             end
         end
-        nfuns = makeFunctions(bc_exp, args=args);
-        add_boundary_condition(var, bid, bc_type, bc_exp, nfuns);
     else
-        nfuns = makeFunctions(bc_exp);
-        add_boundary_condition(var, bid, bc_type, bc_exp, nfuns);
+        if typeof(bc_exp) == String
+            ex = Meta.parse(bc_exp);
+            ex = replace_var_symbols_with_values(ex);
+            bc_exp = string(ex);
+        end
     end
+    nfuns = makeFunctions(bc_exp);
+    add_boundary_condition(var, bid, bc_type, bc_exp, nfuns);
 end
 
 function addBoundaryID(bid, trueOnBdry)
@@ -577,7 +581,11 @@ function assemblyLoops(var, indices)
     log_entry("assembly loop function: \n\t"*string(loop_string));
     
     if language == JULIA || language == 0
-        args = "var, source_lhs, source_rhs, flux_lhs, flux_rhs, allocated_vecs, dofs_per_node=1, dofs_per_loop=1, t=0, dt=0";
+        if config.solver_type == FV
+            args = "var, source_lhs, source_rhs, flux_lhs, flux_rhs, allocated_vecs, dofs_per_node=1, dofs_per_loop=1, t=0, dt=0";
+        elseif config.solver_type == CG
+            args = "var, bilinear, linear, allocated_vecs, dofs_per_node=1, dofs_per_loop=1, t=0, dt=0; rhs_only=false";
+        end
         makeFunction(args, string(loop_code));
         set_assembly_loops(var);
     else
@@ -868,8 +876,10 @@ function eval_initial_conditions()
                     # Evaluate at nodes
                     nodal_values = zeros(length(prob.initial[vind]), size(this_grid_data.allnodes,2));
                     for ci=1:length(prob.initial[vind])
-                        Threads.@threads for ni=1:size(this_grid_data.allnodes,2)
-                            if dim == 1
+                        for ni=1:size(this_grid_data.allnodes,2)
+                            if typeof(prob.initial[vind][ci]) <: Number
+                                nodal_values[ci,ni] = prob.initial[vind][ci];
+                            elseif dim == 1
                                 nodal_values[ci,ni] = prob.initial[vind][ci].func(this_grid_data.allnodes[ni],0,0,0);
                             elseif dim == 2
                                 nodal_values[ci,ni] = prob.initial[vind][ci].func(this_grid_data.allnodes[1,ni],this_grid_data.allnodes[2,ni],0,0);
@@ -898,8 +908,10 @@ function eval_initial_conditions()
                     
                 else # scalar
                     nodal_values = zeros(1, size(this_grid_data.allnodes,2));
-                    Threads.@threads for ni=1:size(this_grid_data.allnodes,2)
-                        if dim == 1
+                    for ni=1:size(this_grid_data.allnodes,2)
+                        if typeof(prob.initial[vind]) <: Number
+                            nodal_values[ni] = prob.initial[vind];
+                        elseif dim == 1
                             nodal_values[ni] = prob.initial[vind].func(this_grid_data.allnodes[ni],0,0,0);
                         elseif dim == 2
                             nodal_values[ni] = prob.initial[vind].func(this_grid_data.allnodes[1,ni],this_grid_data.allnodes[2,ni],0,0);
@@ -966,10 +978,29 @@ function solve(var, nlvar=nothing; nonlinear=false)
         # Evaluate initial conditions if not already done
         eval_initial_conditions();
         
+        # If any of the variables are indexed types, generate assembly loops
+        var_indexers = [];
+        if typeof(var) <: Array
+            for vi=1:length(var)
+                if !(var[vi].indexer === nothing)
+                    push!(var_indexers, var[vi].indexer);
+                end
+            end
+        else
+            if !(var.indexer === nothing)
+                var_indexers = [var.indexer];
+            end
+        end
+        if length(var_indexers)>0 && assembly_loops[varind] === nothing
+            log_entry("Indexed variables detected, but no assembly loops specified. Using default.")
+            assemblyLoops(var, ["elements"; var_indexers]);
+        end
+        
         # Use the appropriate solver
         if config.solver_type == CG
             lhs = bilinears[varind];
             rhs = linears[varind];
+            loop_func = assembly_loops[varind];
             
             if prob.time_dependent
                 time_stepper = init_stepper(grid_data.allnodes, time_stepper);
@@ -982,17 +1013,17 @@ function solve(var, nlvar=nothing; nonlinear=false)
                         printerr("Warning: Use implicit stepper for nonlinear problem. cancelling solve.");
                         return;
                     end
-                	t = @elapsed(result = CGSolver.nonlinear_solve(var, nlvar, lhs, rhs, time_stepper));
+                	t = @elapsed(result = CGSolver.nonlinear_solve(var, nlvar, lhs, rhs, time_stepper, assemble_func=loop_func));
 				else
-                	t = @elapsed(result = CGSolver.linear_solve(var, lhs, rhs, time_stepper));
+                	t = @elapsed(result = CGSolver.linear_solve(var, lhs, rhs, time_stepper, assemble_func=loop_func));
 				end
                 # result is already stored in variables
             else
                 # solve it!
 				if (nonlinear)
-                	t = @elapsed(result = CGSolver.nonlinear_solve(var, nlvar, lhs, rhs));
+                	t = @elapsed(result = CGSolver.nonlinear_solve(var, nlvar, lhs, rhs, assemble_func=loop_func));
                 else
-                    t = @elapsed(result = CGSolver.linear_solve(var, lhs, rhs));
+                    t = @elapsed(result = CGSolver.linear_solve(var, lhs, rhs, assemble_func=loop_func));
 				end
                 
                 # place the values in the variable value arrays

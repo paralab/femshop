@@ -125,6 +125,9 @@ function generate_assembly_loops(indices, solver, target)
     if solver == FV && target == JULIA
         code = generate_assembly_loop_fv_julia(indices);
         return (code, code_string_to_expr(code));
+    elseif solver == CG && target == JULIA
+        code = generate_assembly_loop_cg_julia(indices);
+        return (code, code_string_to_expr(code));
     else
         println("assembly loop generation not ready for "*string(solver)*" with "*string(target));
         return ("","");

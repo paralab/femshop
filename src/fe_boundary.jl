@@ -18,13 +18,13 @@ function apply_boundary_conditions_lhs_rhs(var, A, b, t)
         var_to_dofs = [];
         for vi=1:length(var)
             tmp = dofs_per_node;
-            dofs_per_node += length(var[vi].symvar);
+            dofs_per_node += var[vi].total_components;
             push!(var_to_dofs, (tmp+1):dofs_per_node);
             maxvarindex = max(maxvarindex,var[vi].index);
         end
     else
         # one variable
-        dofs_per_node = length(var.symvar);
+        dofs_per_node = var.total_components;
         maxvarindex = var.index;
     end
     
@@ -43,7 +43,7 @@ function apply_boundary_conditions_lhs_rhs(var, A, b, t)
         if multivar
             dofind = 0;
             for vi=1:length(var)
-                for compo=1:length(var[vi].symvar)
+                for compo=1:var[vi].total_components
                     dofind = dofind + 1;
                     for bid=1:bidcount
                         if prob.bc_type[var[vi].index, bid] == NO_BC
@@ -122,9 +122,11 @@ function apply_boundary_conditions_lhs_rhs(var, A, b, t)
         if length(neumann_Is)>0
             A = insert_sparse_rows(A, neumann_Is, neumann_Js, neumann_Vs);
         end
+        # display(A[1:2,1:5]);
         if length(dirichlet_rows)>0
             A = identity_rows(A, dirichlet_rows, length(b));
         end
+        # display(A[1:2,1:5]);
     end
     
     # Reference points
@@ -386,15 +388,15 @@ function evaluate_at_nodes(val, nodes, t=0)
         result = zeros(N);
         if config.dimension == 1
             for i=1:N
-                result[i]=val.value[1].func(grid_data.allnodes[1,nodes[i]],0,0,t);
+                result[i]=val.value[1].func(grid_data.allnodes[1,nodes[i]],0,0,t,nodes[i]);
             end
         elseif config.dimension == 2
             for i=1:N
-                result[i]=val.value[1].func(grid_data.allnodes[1,nodes[i]],grid_data.allnodes[2,nodes[i]],0,t);
+                result[i]=val.value[1].func(grid_data.allnodes[1,nodes[i]],grid_data.allnodes[2,nodes[i]],0,t,nodes[i]);
             end
         else
             for i=1:N
-                result[i]=val.value[1].func(grid_data.allnodes[1,nodes[i]],grid_data.allnodes[2,nodes[i]],grid_data.allnodes[3,nodes[i]],t);
+                result[i]=val.value[1].func(grid_data.allnodes[1,nodes[i]],grid_data.allnodes[2,nodes[i]],grid_data.allnodes[3,nodes[i]],t,nodes[i]);
             end
         end
         
@@ -402,15 +404,15 @@ function evaluate_at_nodes(val, nodes, t=0)
         result = zeros(N);
         if config.dimension == 1
             for i=1:N
-                result[i]=val.func(grid_data.allnodes[1,nodes[i]],0,0,t);
+                result[i]=val.func(grid_data.allnodes[1,nodes[i]],0,0,t,nodes[i]);
             end
         elseif config.dimension == 2
             for i=1:N
-                result[i]=val.func(grid_data.allnodes[1,nodes[i]],grid_data.allnodes[2,nodes[i]],0,t);
+                result[i]=val.func(grid_data.allnodes[1,nodes[i]],grid_data.allnodes[2,nodes[i]],0,t,nodes[i]);
             end
         else
             for i=1:N
-                result[i]=val.func(grid_data.allnodes[1,nodes[i]],grid_data.allnodes[2,nodes[i]],grid_data.allnodes[3,nodes[i]],t);
+                result[i]=val.func(grid_data.allnodes[1,nodes[i]],grid_data.allnodes[2,nodes[i]],grid_data.allnodes[3,nodes[i]],t,nodes[i]);
             end
         end
     end
@@ -633,6 +635,11 @@ function neumann_bc(b, val, bdryface, bid, t=0, dofind = 1, totaldofs = 1)
         S_J = S_J[1:next_S_ind-1];
         S_V = S_V[1:next_S_ind-1];
     end
+    
+    # println("S for "*string(bid)*": ")
+    # println(S_I);
+    # println(S_J);
+    # println(S_V);
     
     return (S_I, S_J, S_V, b);
 end

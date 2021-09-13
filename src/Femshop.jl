@@ -32,7 +32,7 @@ language = 0;
 gen_framework = 0;
 generate_external = false;
 solver = nothing;
-dendro_params = nothing;
+codegen_params = nothing;
 #log
 use_log = false;
 log_file = "";
@@ -98,7 +98,7 @@ function init_femshop(name="unnamedProject")
     global language = JULIA;
     global framework = 0;
     global generate_external = false;
-    global dendro_params = nothing;
+    global codegen_params = nothing;
     global log_file = "";
     global use_log = false;
     global log_line_index = 1;
@@ -156,7 +156,7 @@ end
 # 1. get_external_language_elements() - file extensions, comment chars etc.
 # 2. generate_external_code_layer(var, entities, terms, lorr, vors) - Turns symbolic expressions into code
 # 3. generate_external_files(var, lhs_vol, lhs_surf, rhs_vol, rhs_surf) - Writes all files based on generated code
-function set_custom_gen_target(lang_elements, code_layer, file_maker, dirpath, name; head="")
+function set_custom_gen_target(lang_elements, code_layer, file_maker, dirpath, name; head="", params=nothing)
     global language = CUSTOM_GEN_TARGET;
     global gen_framework = CUSTOM_GEN_TARGET;
     global output_dir = dirpath;
@@ -166,9 +166,9 @@ function set_custom_gen_target(lang_elements, code_layer, file_maker, dirpath, n
     set_generation_target(lang_elements, code_layer, file_maker);
 end
 
-# Specific to Dendro. This should go into the Dendro code gen module eventually.
-function dendro(;max_depth=6, wavelet_tol=0.1, partition_tol=0.3, solve_tol=1e-6, max_iters=100)
-    global dendro_params = (max_depth, wavelet_tol, partition_tol, solve_tol, max_iters);
+# Set parameters used by code generation. This is specific to the target.
+function set_codegen_parameters(params)
+    global codegen_params = params;
 end
 
 # Set the solver module and type
@@ -513,7 +513,13 @@ function add_boundary_condition(var, bid, type, ex, nfuns)
     global prob;
     # make sure the arrays are big enough
     if size(prob.bc_func)[1] < var_count || size(prob.bc_func,2) < bid
-        nbid = length(grid_data.bids);
+        if !(grid_data===nothing)
+            nbid = length(grid_data.bids);
+        else
+            # For some targets no grid is created
+            nbid = 1;
+        end
+        
         tmp1 = Array{String,2}(undef, (var_count, nbid));
         tmp2 = Array{Any,2}(undef, (var_count, nbid));
         tmp3 = zeros(Int, (var_count, nbid));

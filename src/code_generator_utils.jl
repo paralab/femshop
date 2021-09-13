@@ -375,18 +375,25 @@ function separate_factors(ex, var=nothing)
     return (test_part, trial_part, coef_part, test_ind, trial_ind);
 end
 
-function replace_entities_with_symbols(ex)
+function replace_entities_with_symbols(ex; index=nothing)
     if typeof(ex) <: Array
         for i=1:length(ex)
-            ex[i] = replace_entities_with_symbols(ex[i]);
+            ex[i] = replace_entities_with_symbols(ex[i], index=index);
         end
     elseif typeof(ex) == Expr
         for i=1:length(ex.args)
-            ex.args[i] = replace_entities_with_symbols(ex.args[i]);
+            ex.args[i] = replace_entities_with_symbols(ex.args[i], index=index);
         end
     elseif typeof(ex) == SymEntity
         # use make_coef_name
-        return Symbol(make_coef_name(ex));
+        name = make_coef_name(ex)
+        if !(index===nothing)
+            idx = Symbol(index);
+            newex = :(a[$idx]);
+            newex.args[1] = Symbol(name);
+            return newex;
+        end
+        return Symbol(name);
     end
     
     return ex;

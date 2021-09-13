@@ -19,7 +19,7 @@ import ..Femshop: JULIA, CPP, MATLAB, DENDRO, HOMG, CUSTOM_GEN_TARGET,
         LHS, RHS,
         LINEMESH, QUADMESH, HEXMESH
 import ..Femshop: log_entry, printerr
-import ..Femshop: config, prob, variables, mesh_data, grid_data, refel, time_stepper, elemental_order
+import ..Femshop: config, prob, variables, mesh_data, grid_data, refel, time_stepper, elemental_order, genfunctions
 import ..Femshop: Variable, Coefficient, GenFunction
 import ..Femshop: GeometricFactors, geo_factors, geometric_factors, build_deriv_matrix
 
@@ -30,14 +30,43 @@ include("nonlinear.jl")
 include("cg_matrixfree.jl");
 include("cachsim_solve.jl");
 
-function linear_solve(var, bilinear, linear, stepper=nothing)
+function linear_solve(var, bilinear, linear, stepper=nothing; assemble_func=nothing)
     if config.linalg_matrixfree
         return solve_matrix_free_sym(var, bilinear, linear, stepper);
         #return solve_matrix_free_asym(var, bilinear, linear, stepper);
     end
+    
+    # If more than one variable
+    if typeof(var) <: Array
+        # multiple variables being solved for simultaneously
+        dofs_per_node = 0;
+        dofs_per_loop = 0;
+        for vi=1:length(var)
+            dofs_per_loop += length(var[vi].symvar);
+            dofs_per_node += var[vi].total_components;
+        end
+    else
+        # one variable
+        dofs_per_loop = length(var.symvar);
+        dofs_per_node = var.total_components;
+    end
+    N1 = size(grid_data.allnodes,2);
+    Nn = dofs_per_node * N1;
+    Np = refel.Np;
+    nel = mesh_data.nel;
+    
+    # Allocate arrays that will be used by assemble
+    # These vectors will hold the integrated values(one per cell).
+    # They will later be combined.
+    rhsvec = zeros(Nn);
+    lhsmatI = zeros(Int, nel*dofs_per_node*Np*dofs_per_node*Np);
+    lhsmatJ = zeros(Int, nel*dofs_per_node*Np*dofs_per_node*Np);
+    lhsmatV = zeros(nel*dofs_per_node*Np*dofs_per_node*Np);
+    allocated_vecs = [rhsvec, lhsmatI, lhsmatJ, lhsmatV];
+    
     if prob.time_dependent && !(stepper === nothing)
         # First assemble both lhs and rhs
-        assemble_t = @elapsed((A, b) = assemble(var, bilinear, linear, 0, stepper.dt));
+        assemble_t = @elapsed((A, b) = assemble(var, bilinear, linear, allocated_vecs, dofs_per_node, dofs_per_loop, 0, stepper.dt, assemble_loops=assemble_func));
         
         log_entry("Initial assembly took "*string(assemble_t)*" seconds");
 
@@ -49,6 +78,16 @@ function linear_solve(var, bilinear, linear, stepper=nothing)
         linsolve_t = 0;
         last2update = 0;
         last10update = 0;
+        
+        # allocate any temporary storage needed by steppers
+        if stepper.type == LSRK4
+            tmppi = zeros(size(b));
+            tmpki = zeros(size(b));
+        elseif stepper.stages > 1
+            last_result = zeros(size(b));
+            tmpresult = zeros(size(b));
+            tmpki = zeros(length(b), stepper.stages);
+        end
         print("Time stepping progress(%): 0");
         for i=1:stepper.Nsteps
             if stepper.stages > 1
@@ -60,12 +99,11 @@ function linear_solve(var, bilinear, linear, stepper=nothing)
                     #   pi = p(i-1) + bi*ki
                     # u = p5
                     
-                    tmppi = get_var_vals(var);
-                    tmpki = zeros(size(b));
+                    tmppi = get_var_vals(var, tmppi);
                     for rki=1:stepper.stages
                         rktime = t + stepper.c[rki]*stepper.dt;
                         # p(i-1) is currently in u
-                        assemble_t += @elapsed(b = assemble(var, nothing, linear, rktime, stepper.dt; rhs_only = true));
+                        assemble_t += @elapsed(b = assemble(var, nothing, linear, allocated_vecs, dofs_per_node, dofs_per_loop, rktime, stepper.dt; rhs_only = true, assemble_loops=assemble_func));
                         
                         linsolve_t += @elapsed(sol = A\b);
                         if rki == 1 # because a1 == 0
@@ -74,9 +112,6 @@ function linear_solve(var, bilinear, linear, stepper=nothing)
                             tmpki = stepper.a[rki].*tmpki + stepper.dt.*sol;
                         end
                         tmppi = tmppi + stepper.b[rki].*tmpki
-                        
-                        # Need to apply boundary conditions now to tmppi
-                        tmppi = apply_boundary_conditions_rhs_only(var, tmppi, rktime);
                         
                         place_sol_in_vars(var, tmppi, stepper);
                     end
@@ -87,39 +122,36 @@ function linear_solve(var, bilinear, linear, stepper=nothing)
                     # ki = rhs(t+ci*dt, x+dt*sum(aij*kj)))   j < i
                     
                     # will hold the final result
-                    result = get_var_vals(var);
+                    last_result = get_var_vals(var, last_result);
                     # will be placed in var.values for each stage
-                    tmpvals = result;
+                    # tmpvals = tmpresult;
                     # Storage for each stage
-                    tmpki = zeros(length(b), stepper.stages);
+                    # tmpki = zeros(length(b), stepper.stages);
                     for stage=1:stepper.stages
                         stime = t + stepper.c[stage]*stepper.dt;
                         
-                        assemble_t += @elapsed(b = assemble(var, nothing, linear, stime, stepper.dt; rhs_only = true));
+                        assemble_t += @elapsed(b = assemble(var, nothing, linear, allocated_vecs, dofs_per_node, dofs_per_loop, stime, stepper.dt; rhs_only = true, assemble_loops=assemble_func));
                         
                         linsolve_t += @elapsed(tmpki[:,stage] = A\b);
                         
-                        tmpvals = result;
+                        tmpresult = get_var_vals(var, tmpresult);
                         for j=1:(stage-1)
                             if stepper.a[stage, j] > 0
-                                tmpvals += stepper.dt * stepper.a[stage, j] .* tmpki[:,j];
+                                tmpresult += stepper.dt * stepper.a[stage, j] .* tmpki[:,j];
                             end
                         end
-                        
-                        # Need to apply boundary conditions now
-                        tmpvals = apply_boundary_conditions_rhs_only(var, tmpvals, stime);
-                        
-                        place_sol_in_vars(var, tmpvals, stepper);
+                        if stage < stepper.stages
+                            place_sol_in_vars(var, tmpresult, stepper);
+                        end
                     end
                     for stage=1:stepper.stages
-                        result += stepper.dt * stepper.b[stage] .* tmpki[:, stage];
+                        last_result += stepper.dt * stepper.b[stage] .* tmpki[:, stage];
                     end
-                    result = apply_boundary_conditions_rhs_only(var, result, t + stepper.dt);
-                    place_sol_in_vars(var, result, stepper);
+                    place_sol_in_vars(var, last_result, stepper);
                 end
                 
-            else
-                assemble_t += @elapsed(b = assemble(var, nothing, linear, t, stepper.dt; rhs_only = true));
+            else # single stage methods such as Euler
+                assemble_t += @elapsed(b = assemble(var, nothing, linear, allocated_vecs, dofs_per_node, dofs_per_loop, t, stepper.dt; rhs_only = true, assemble_loops=assemble_func));
                 
                 linsolve_t += @elapsed(sol = A\b);
                 
@@ -153,7 +185,7 @@ function linear_solve(var, bilinear, linear, stepper=nothing)
         return sol;
 
     else
-        assemble_t = @elapsed((A, b) = assemble(var, bilinear, linear));
+        assemble_t = @elapsed((A, b) = assemble(var, bilinear, linear, allocated_vecs, dofs_per_node, dofs_per_loop, assemble_loops=assemble_func));
         # uncomment to look at A
         # global Amat = A;
         
@@ -168,7 +200,7 @@ function linear_solve(var, bilinear, linear, stepper=nothing)
     end
 end
 
-function nonlinear_solve(var, nlvar, bilinear, linear, stepper=nothing)
+function nonlinear_solve(var, nlvar, bilinear, linear, stepper=nothing; assemble_loops=nothing)
     if prob.time_dependent && !(stepper === nothing)
         #TODO time dependent coefficients
         
@@ -222,36 +254,24 @@ function nonlinear_solve(var, nlvar, bilinear, linear, stepper=nothing)
 end
 
 # assembles the A and b in Au=b
-function assemble(var, bilinear, linear, t=0.0, dt=0.0; rhs_only = false)
+function assemble(var, bilinear, linear, allocated_vecs, dofs_per_node=1, dofs_per_loop=1, t=0, dt=0; assemble_loops=nothing, rhs_only = false)
+    # If an assembly loop function was provided, use it
+    if !(assemble_loops === nothing)
+        return assemble_loops.func(var, bilinear, linear, allocated_vecs, dofs_per_node, dofs_per_loop, t, dt; rhs_only=rhs_only);
+    end
+    
+    # Label things that were allocated externally
+    b = allocated_vecs[1];
+    if !rhs_only
+        AI = allocated_vecs[2];
+        AJ = allocated_vecs[3];
+        AV = allocated_vecs[4];
+    end
+    # zero b
+    b .= 0;
+    
     Np = refel.Np;
     nel = mesh_data.nel;
-    N1 = size(grid_data.allnodes,2);
-    multivar = typeof(var) <: Array;
-    maxvarindex = 0;
-    if multivar
-        # multiple variables being solved for simultaneously
-        dofs_per_node = 0;
-        var_to_dofs = [];
-        for vi=1:length(var)
-            tmp = dofs_per_node;
-            dofs_per_node += length(var[vi].symvar);
-            push!(var_to_dofs, (tmp+1):dofs_per_node);
-            maxvarindex = max(maxvarindex,var[vi].index);
-        end
-    else
-        # one variable
-        dofs_per_node = length(var.symvar);
-        maxvarindex = var.index;
-    end
-    Nn = dofs_per_node * N1;
-
-    b = zeros(Nn);
-    
-    if !rhs_only
-        AI = zeros(Int, nel*dofs_per_node*Np*dofs_per_node*Np);
-        AJ = zeros(Int, nel*dofs_per_node*Np*dofs_per_node*Np);
-        AV = zeros(nel*dofs_per_node*Np*dofs_per_node*Np);
-    end
     
     # Stiffness and mass are precomputed for uniform grid meshes
     precomputed_mass_stiffness = config.mesh_type == UNIFORM_GRID && config.geometry == SQUARE
@@ -286,14 +306,13 @@ function assemble(var, bilinear, linear, t=0.0, dt=0.0; rhs_only = false)
         
         if !rhs_only
             Astart = (eid-1)*Np*dofs_per_node*Np*dofs_per_node + 1; # The segment of AI, AJ, AV for this element
-            
         end
         
         volargs = (var, eid, 0, grid_data, geo_factors, refel, t, dt, stiffness, mass);
         
         if dofs_per_node == 1
             linchunk = linear.func(volargs);  # get the elemental linear part
-            b[loc2glb] .+= linchunk;
+            b[loc2glb] += linchunk;
             
             if !rhs_only
                 bilinchunk = bilinear.func(volargs); # the elemental bilinear part
@@ -332,148 +351,6 @@ function assemble(var, bilinear, linear, t=0.0, dt=0.0; rhs_only = false)
     else
         (A, b) = apply_boundary_conditions_lhs_rhs(var, A, b, t);
     end
-    # bidcount = length(grid_data.bids); # the number of BIDs
-    # if !rhs_only
-    #     dirichlet_rows = zeros(0);
-    #     neumann_rows = zeros(0);
-    #     neumann_Is = zeros(Int,0);
-    #     neumann_Js = zeros(Int,0);
-    #     neumann_Vs = zeros(0);
-    # end
-    # if dofs_per_node > 1
-    #     if multivar
-    #         dofind = 0;
-    #         for vi=1:length(var)
-    #             for compo=1:length(var[vi].symvar)
-    #                 dofind = dofind + 1;
-    #                 for bid=1:bidcount
-    #                     if prob.bc_type[var[vi].index, bid] == NO_BC
-    #                         # do nothing
-    #                     elseif rhs_only
-    #                         # When doing RHS only, values are simply placed in the vector.
-    #                         b = dirichlet_bc_rhs_only(b, prob.bc_func[var[vi].index, bid][compo], grid_data.bdry[bid], t, dofind, dofs_per_node);
-    #                     elseif prob.bc_type[var[vi].index, bid] == DIRICHLET
-    #                         #(A, b) = dirichlet_bc(A, b, prob.bc_func[var[vi].index, bid][compo], grid_data.bdry[bid], t, dofind, dofs_per_node);
-    #                         (tmprows, b) = dirichlet_bc(A, b, prob.bc_func[var[vi].index, bid][compo], grid_data.bdry[bid], t, dofind, dofs_per_node);
-    #                         append!(dirichlet_rows, tmprows);
-    #                     elseif prob.bc_type[var[vi].index, bid] == NEUMANN
-    #                         #(A, b) = neumann_bc(A, b, prob.bc_func[var[vi].index, bid][compo], grid_data.bdry[bid], bid, t, dofind, dofs_per_node);
-    #                         (tmprows, tmpIs, tmpJs, tmpVs, b) = neumann_bc(A, b, prob.bc_func[var[vi].index, bid][compo], grid_data.bdry[bid], bid, t, dofind, dofs_per_node);
-    #                         append!(neumann_rows, tmprows);
-    #                         append!(neumann_Is, tmpIs);
-    #                         append!(neumann_Js, tmpJs);
-    #                         append!(neumann_Vs, tmpVs);
-    #                     elseif prob.bc_type[var[vi].index, bid] == ROBIN
-    #                         printerr("Robin BCs not ready.");
-    #                     else
-    #                         printerr("Unsupported boundary condition type: "*prob.bc_type[var[vi].index, bid]);
-    #                     end
-    #                 end
-    #             end
-    #         end
-    #     else
-    #         for d=1:dofs_per_node
-    #             dofind = d;
-    #             for bid=1:bidcount
-    #                 if prob.bc_type[var.index, bid] == NO_BC
-    #                     # do nothing
-    #                 elseif rhs_only
-    #                     # When doing RHS only, values are simply placed in the vector.
-    #                     b = dirichlet_bc_rhs_only(b, prob.bc_func[var.index, bid][d], grid_data.bdry[bid], t, d, dofs_per_node);
-    #                 elseif prob.bc_type[var.index, bid] == DIRICHLET
-    #                     #(A, b) = dirichlet_bc(A, b, prob.bc_func[var.index, bid][d], grid_data.bdry[bid], t, dofind, dofs_per_node);
-    #                     (tmprows, b) = dirichlet_bc(A, b, prob.bc_func[var.index, bid][d], grid_data.bdry[bid], t, dofind, dofs_per_node);
-    #                     append!(dirichlet_rows, tmprows);
-    #                 elseif prob.bc_type[var.index, bid] == NEUMANN
-    #                     #(A, b) = neumann_bc(A, b, prob.bc_func[var.index, bid][d], grid_data.bdry[bid], bid, t, dofind, dofs_per_node);
-    #                     (tmprows, tmpIs, tmpJs, tmpVs, b) = neumann_bc(A, b, prob.bc_func[var.index, bid][d], grid_data.bdry[bid], bid, t, dofind, dofs_per_node);
-    #                     append!(neumann_rows, tmprows);
-    #                     append!(neumann_Is, tmpIs);
-    #                     append!(neumann_Js, tmpJs);
-    #                     append!(neumann_Vs, tmpVs);
-    #                 elseif prob.bc_type[var.index, bid] == ROBIN
-    #                     printerr("Robin BCs not ready.");
-    #                 else
-    #                     printerr("Unsupported boundary condition type: "*prob.bc_type[var.index, bid]);
-    #                 end
-    #             end
-    #         end
-    #     end
-    # else
-    #     for bid=1:bidcount
-    #         if prob.bc_type[var.index, bid] == NO_BC
-    #             # do nothing
-    #         elseif rhs_only
-    #             # When doing RHS only, values are simply placed in the vector.
-    #             b = dirichlet_bc_rhs_only(b, prob.bc_func[var.index, bid][1], grid_data.bdry[bid], t);
-    #         elseif prob.bc_type[var.index, bid] == DIRICHLET
-    #             #(A, b) = dirichlet_bc(A, b, prob.bc_func[var.index, bid][1], grid_data.bdry[bid], t);
-    #             (tmprows, b) = dirichlet_bc(A, b, prob.bc_func[var.index, bid][1], grid_data.bdry[bid], t);
-    #             append!(dirichlet_rows, tmprows);
-    #         elseif prob.bc_type[var.index, bid] == NEUMANN
-    #             #(A, b) = neumann_bc(A, b, prob.bc_func[var.index, bid][1], grid_data.bdry[bid], bid, t);
-    #             (tmprows, tmpIs, tmpJs, tmpVs, b) = neumann_bc(A, b, prob.bc_func[var.index, bid][1], grid_data.bdry[bid], bid, t);
-    #             append!(neumann_rows, tmprows);
-    #             append!(neumann_Is, tmpIs);
-    #             append!(neumann_Js, tmpJs);
-    #             append!(neumann_Vs, tmpVs);
-    #         elseif prob.bc_type[var.index, bid] == ROBIN
-    #             printerr("Robin BCs not ready.");
-    #         else
-    #             printerr("Unsupported boundary condition type: "*prob.bc_type[var.index, bid]);
-    #         end
-    #     end
-    # end
-    
-    # if !rhs_only
-    #     if length(dirichlet_rows)>0
-    #         A = identity_rows(A, dirichlet_rows, length(b));
-    #     end
-    #     if length(neumann_rows)>0
-    #         A = insert_sparse_rows(A, neumann_Is, neumann_Js, neumann_Vs);
-    #     end
-    # end
-    
-    # # Reference points
-    # if size(prob.ref_point,1) >= maxvarindex
-    #     if multivar
-    #         posind = zeros(Int,0);
-    #         vals = zeros(0);
-    #         for vi=1:length(var)
-    #             if prob.ref_point[var[vi].index,1]
-    #                 eii = prob.ref_point[var[vi].index, 2];
-    #                 tmp = (grid_data.glbvertex[eii[1], eii[2]] - 1)*dofs_per_node + var_to_dofs[vi][1];
-    #                 if length(prob.ref_point[var[vi].index, 3]) > 1
-    #                     tmp = tmp:(tmp+length(prob.ref_point[var[vi].index, 3])-1);
-    #                 end
-    #                 posind = [posind; tmp];
-    #                 vals = [vals; prob.ref_point[var[vi].index, 3]];
-    #             end
-    #         end
-    #         if length(vals) > 0
-    #             if !rhs_only
-    #                 A = identity_rows(A, posind, length(b));
-    #             end
-    #             b[posind] = vals;
-    #         end
-            
-    #     else
-    #         if prob.ref_point[var.index,1]
-    #             eii = prob.ref_point[var.index, 2];
-    #             posind = (grid_data.glbvertex[eii[1], eii[2]] - 1)*dofs_per_node + 1;
-    #             if length(prob.ref_point[var.index, 3]) > 1
-    #                 posind = posind:(posind+length(prob.ref_point[var[vi].index, 3])-1);
-    #             else
-    #                 posind = [posind];
-    #             end
-    #             if !rhs_only
-    #                 A = identity_rows(A, posind, length(b));
-    #             end
-    #             b[posind] = prob.ref_point[var.index, 3];
-    #         end
-    #     end
-    # end
-    
     bc_time = Base.Libc.time() - bc_time;
     
     if rhs_only
@@ -486,8 +363,8 @@ function assemble(var, bilinear, linear, t=0.0, dt=0.0; rhs_only = false)
     end
 end
 
-function assemble_rhs_only(var, linear, t=0.0, dt=0.0)
-    return assemble(var, nothing, linear, t, dt; rhs_only=true)
+function assemble_rhs_only(var, linear, allocated_vecs, dofs_per_node=1, dofs_per_loop=1, t=0, dt=0; assemble_loops=nothing)
+    return assemble(var, nothing, linear, allocated_vecs, dofs_per_node, dofs_per_loop, t, dt; assemble_loops=assemble_loops, rhs_only=true)
 end
 
 # ######################################################
@@ -711,13 +588,13 @@ function place_sol_in_vars(var, sol, stepper)
         tmp = 0;
         totalcomponents = 0;
         for vi=1:length(var)
-            totalcomponents = totalcomponents + length(var[vi].symvar);
+            totalcomponents = totalcomponents + var[vi].total_components;
         end
         for vi=1:length(var)
-            components = length(var[vi].symvar);
+            components = var[vi].total_components;
             for compi=1:components
                 if stepper.type == EULER_EXPLICIT
-                    var[vi].values[compi,:] += sol[(compi+tmp):totalcomponents:end];
+                    var[vi].values[compi,:] = sol[(compi+tmp):totalcomponents:end];
                 else 
                     var[vi].values[compi,:] = sol[(compi+tmp):totalcomponents:end];
                 end
@@ -725,10 +602,10 @@ function place_sol_in_vars(var, sol, stepper)
             end
         end
     else
-        components = length(var.symvar);
+        components = var.total_components;
         for compi=1:components
             if stepper.type == EULER_EXPLICIT
-                var.values[compi,:] += sol[compi:components:end];
+                var.values[compi,:] = sol[compi:components:end];
             else
                 var.values[compi,:] = sol[compi:components:end];
             end
@@ -736,25 +613,29 @@ function place_sol_in_vars(var, sol, stepper)
     end
 end
 
-function get_var_vals(var)
+function get_var_vals(var, vect=nothing)
     # place the variable values in a vector
     if typeof(var) <: Array
         tmp = 0;
         totalcomponents = 0;
         for vi=1:length(var)
-            totalcomponents = totalcomponents + length(var[vi].symvar);
+            totalcomponents = totalcomponents + var[vi].total_components;
         end
-        vect = zeros(totalcomponents * length(var[1].values[1,:]));
+        if vect === nothing
+            vect = zeros(totalcomponents * length(var[1].values[1,:]));
+        end
         for vi=1:length(var)
-            components = length(var[vi].symvar);
+            components = var[vi].total_components;
             for compi=1:components
                 vect[(compi+tmp):totalcomponents:end] = var[vi].values[compi,:];
                 tmp = tmp + 1;
             end
         end
     else
-        components = length(var.symvar);
-        vect = zeros(components * length(var.values[1,:]));
+        components = var.total_components;
+        if vect === nothing
+            vect = zeros(totalcomponents * length(var.values[1,:]));
+        end
         for compi=1:components
             vect[compi:components:end] = var.values[compi,:];
         end

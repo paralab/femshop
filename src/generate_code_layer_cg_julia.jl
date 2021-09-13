@@ -36,6 +36,16 @@ function prepare_needed_values_cg_julia(entities, var, lorr, vors)
     need_deriv_matrix = false;
     
     code = "";
+    
+    # First label the index values
+    for i=1:length(indexers)
+        if indexers[i].symbol === :elements || indexers[i].symbol === :cells
+            # not needed
+        else
+            code *= "INDEX_VAL_"*string(indexers[i].symbol)*" = kwargs["*string(i)*"]\n";
+        end
+    end
+    
     for i=1:length(entities)
         cname = make_coef_name(entities[i]);
         if is_test_function(entities[i])
@@ -168,7 +178,7 @@ function prepare_needed_values_cg_julia(entities, var, lorr, vors)
                             code *= cname * " = RD"*string(entities[i].derivs[di])*" * " * cname * 
                                     "; # Apply d/d"*xyzchar[entities[i].derivs[di]]*".\n";
                         end
-                        code *= cname * " = " * cname * "[refel.face2local[frefelind[1]]; # extract face values only.";
+                        code *= cname * " = " * cname * "[refel.face2local[frefelind[1]]]; # extract face values only.";
                         need_deriv_matrix = true;
                         piece_needed[3] = true;
                         
@@ -184,8 +194,28 @@ function prepare_needed_values_cg_julia(entities, var, lorr, vors)
                 
             elseif ctype == 3 # a known variable value
                 # This generates something like: coef_u_1 = copy((Femshop.variables[1]).values[1, loc2glb])
+                if typeof(entities[i].index) <: Array
+                    # It is an indexed variable
+                    if length(entities[i].index) == 1
+                        indstr = "INDEX_VAL_"*entities[i].index[1];
+                    else
+                        # There is more than one index. Need to form an expression for it.
+                        indstr = "(INDEX_VAL_"*entities[i].index[1];
+                        indices = variables[cval].indexer;
+                        for indi=2:length(entities[i].index)
+                            indstr *= " + ("*string(length(indices[indi-1].range))*"*(INDEX_VAL_"*entities[i].index[indi]*"-1)";
+                        end
+                        for indi=1:length(entities[i].index)
+                            indstr *= ")";
+                        end
+                    end
+                    
+                else
+                    indstr = string(entities[i].index);
+                end
+                
                 if vors == "volume"
-                    code *= cname * " = copy((Femshop.variables["*string(cval)*"]).values["*string(entities[i].index)*", loc2glb]);\n";
+                    code *= cname * " = copy((Femshop.variables["*string(cval)*"]).values["*indstr*", loc2glb]);\n";
                     # Apply any needed derivative operators.
                     if length(entities[i].derivs) > 0
                         xyzchar = ["x","y","z"];
@@ -202,7 +232,7 @@ function prepare_needed_values_cg_julia(entities, var, lorr, vors)
                 else # surface
                     # If derivatives are needed, must evaluate at all volume nodes.
                     if length(entities[i].derivs) > 0
-                        code *= cname * " = copy((Femshop.variables["*string(cval)*"]).values["*string(entities[i].index)*", loc2glb[1]]);\n";
+                        code *= cname * " = copy((Femshop.variables["*string(cval)*"]).values["*indstr*", loc2glb[1]]);\n";
                         xyzchar = ["x","y","z"];
                         for di=1:length(entities[i].derivs)
                             code *= cname * " = RD"*string(entities[i].derivs[di])*" * " * cname * 
@@ -213,12 +243,78 @@ function prepare_needed_values_cg_julia(entities, var, lorr, vors)
                         piece_needed[2] = true;
                         
                     else # no derivatives
-                        code *= cname * " = copy((Femshop.variables["*string(cval)*"]).values["*string(entities[i].index)*", loc2glb[1]]);\n";
+                        code *= cname * " = copy((Femshop.variables["*string(cval)*"]).values["*indstr*", loc2glb[1]]);\n";
                         # piece_needed[5] = true;
                         piece_needed[2] = true;
                     end
                     
                     #     code *= cname * " = refel.surf_Q[frefelind[1]][:,refel.face2local[frefelind[1]]] * " * cname * "; # Interpolate at quadrature points.\n";
+                end
+                
+            elseif ctype == 4 # an indexed coefficient
+                # This generates something like:
+                ######################################
+                # coef_n_1 = zeros(refel.Np); # allocate
+                # for coefi = 1:refel.Np
+                #     coef_k_1[coefi] = (Femshop.coefficients[cval]).value[INDEX_VAL_i].func(x[1,coefi], x[2,coefi],x[3,coefi],time); # evaluate at nodes
+                # end
+                ######################################
+                if vors == "surface" && length(entities[i].derivs) == 0
+                    nodesymbol = "facex"
+                    piece_needed[6] = true;
+                else
+                    nodesymbol = "nodex"
+                    piece_needed[3] = true;
+                end
+                cargs = "("*nodesymbol*"[coefi], 0, 0, time)";
+                if config.dimension == 2
+                    cargs = "("*nodesymbol*"[1, coefi], "*nodesymbol*"[2, coefi], 0, time)";
+                elseif config.dimension == 3
+                    cargs = "("*nodesymbol*"[1, coefi], "*nodesymbol*"[2, coefi], "*nodesymbol*"[3, coefi], time)";
+                end
+                
+                indstr = "";
+                for indi=1:length(entities[i].index)
+                    if indi>1
+                        indstr *= ",";
+                    end
+                    indstr *= "INDEX_VAL_"*entities[i].index[indi];
+                end
+                
+                if vors == "volume"
+                    code *= cname * " = zeros(refel.Np);\n";
+                    code *= "for coefi = 1:refel.Np " * cname * "[coefi] = (Femshop.coefficients["*string(cval)*"]).value["*indstr*"].func" * cargs * " end\n";
+                    # Apply any needed derivative operators. Interpolate at quadrature points.
+                    if length(entities[i].derivs) > 0
+                        xyzchar = ["x","y","z"];
+                        for di=1:length(entities[i].derivs)
+                            code *= cname * " = RQ"*string(entities[i].derivs[di])*" * " * cname * 
+                                    "; # Apply d/d"*xyzchar[entities[i].derivs[di]]*" and interpolate at quadrature points.\n";
+                        end
+                        need_deriv_matrix = true;
+                    else
+                        code *= cname * " = refel.Q * " * cname * "; # Interpolate at quadrature points.\n";
+                    end
+                    
+                else # surface
+                    # Apply any needed derivative operators. Interpolate at quadrature points.
+                    if length(entities[i].derivs) > 0
+                        code *= cname * " = zeros(refel.Np);\n";
+                        code *= "for coefi = 1:refel.Np " * cname * "[coefi] = (Femshop.coefficients["*string(cval)*"]).value["*indstr*"].func" * cargs * " end\n";
+                        xyzchar = ["x","y","z"];
+                        for di=1:length(entities[i].derivs)
+                            code *= cname * " = RQ"*string(entities[i].derivs[di])*" * " * cname * 
+                                    "; # Apply d/d"*xyzchar[entities[i].derivs[di]]*".\n";
+                        end
+                        code *= cname * " = " * cname * "[refel.face2local[frefelind[1]]]; # extract face values only.";
+                        need_deriv_matrix = true;
+                        
+                    else # no derivatives, only need surface nodes
+                        code *= cname * " = zeros(refel.Nfp[frefelind[1]]);\n";
+                        code *= "for coefi = 1:refel.Nfp[frefelind[1]] " * cname * "[coefi] = (Femshop.coefficients["*string(cval)*"]).value["*indstr*"].func" * cargs * " end\n";
+                    end
+                    # Interpolate at surface quadrature points
+                    code *= cname * " = refel.surf_Q[frefelind[1]][:,refel.face2local[frefelind[1]]] * " * cname * "; # Interpolate at quadrature points.\n";
                 end
                 
             end
@@ -546,4 +642,195 @@ function generate_term_calculation_cg_julia(term, var, lorr, vors)
     end
     
     return (result, test_ind, trial_ind);
+end
+
+# Generate the assembly loop structures and insert the content
+function generate_assembly_loop_cg_julia(indices)
+    # Each of the indices must be passed to the functions in a named tuple.
+    # Pass all defined indexers.
+    index_args = "";
+    for i=1:length(indexers)
+        if i > 1
+            index_args *= ", ";
+        end
+        index_args *= "index_val_"*string(indexers[i].symbol)*"=indexing_variable_"*string(indexers[i].symbol);
+    end
+    if length(indexers) == 0
+        index_args = "empty_index = 1";
+    end
+    
+    # Make sure the elemental loop is included
+    elements_included = false;
+    for i=1:length(indices)
+        if indices[i] == "elements" || indices[i] == "cells"
+            elements_included = true;
+        end
+    end
+    # If elements were not included, make them the outermost loop
+    if !elements_included
+        indices = ["elements"; indices];
+    end
+    
+    code = 
+"# Label things that were allocated externally
+b = allocated_vecs[1];
+if !rhs_only
+    AI = allocated_vecs[2];
+    AJ = allocated_vecs[3];
+    AV = allocated_vecs[4];
+end
+# zero b
+b .= 0;
+
+Np = refel.Np;
+nel = mesh_data.nel;
+
+# Stiffness and mass are precomputed for uniform grid meshes
+precomputed_mass_stiffness = config.mesh_type == UNIFORM_GRID && config.geometry == SQUARE
+if precomputed_mass_stiffness
+    wdetj = refel.wg .* geo_factors.detJ[1];
+    J = geo_factors.J[1];
+    
+    if config.dimension == 1
+        (RQ1, RD1) = build_deriv_matrix(refel, J);
+        TRQ1 = RQ1';
+        stiffness = [(TRQ1 * diagm(wdetj) * RQ1)];
+    elseif config.dimension == 2
+        (RQ1, RQ2, RD1, RD2) = build_deriv_matrix(refel, J);
+        (TRQ1, TRQ2) = (RQ1', RQ2');
+        stiffness = [(TRQ1 * diagm(wdetj) * RQ1) , (TRQ2 * diagm(wdetj) * RQ2)];
+    else
+        (RQ1, RQ2, RQ3, RD1, RD2, RD3) = build_deriv_matrix(refel, J);
+        (TRQ1, TRQ2, TRQ3) = (RQ1', RQ2', RQ3');
+        stiffness = [(TRQ1 * diagm(wdetj) * RQ1) , (TRQ2 * diagm(wdetj) * RQ2) , (TRQ3 * diagm(wdetj) * RQ3)];
+    end
+    mass = (refel.Q)' * diagm(wdetj) * refel.Q;
+else
+    stiffness = 0;
+    mass = 0;
+end
+
+loop_time = Base.Libc.time();
+
+"
+    # generate the loop structures
+    code *= "# Loops\n"
+    loop_start = ""
+    loop_end = ""
+    ind_offset = ""
+    prev_ind = ""
+    for i=1:length(indices)
+        if indices[i] == "elements" || indices[i] == "cells"
+            loop_start *= "for eid in elemental_order\n";
+            # loop_start *= "face_done .= 0; # Reset face_done in elemental loop\n";
+            loop_end *= "end # loop for elements\n";
+        else
+            loop_start *= "for indexing_variable_"*string(indices[i].symbol)*" in "*string(indices[i].range)*"\n";
+            loop_end *= "end # loop for "*string(indices[i].symbol)*"\n";
+            if length(prev_ind) == 0
+                ind_offset *= "(indexing_variable_"*string(indices[i].symbol);
+                prev_ind = string(length(indices[i].range));
+            else
+                ind_offset *= " + "*prev_ind*" * (indexing_variable_"*string(indices[i].symbol)*" - 1";
+                prev_ind = string(length(indices[i].range));
+            end
+        end
+    end
+    for i=2:length(indices)
+        ind_offset *= ")";
+    end
+    # index_offset = "dofs_per_loop * ("*ind_offset*" - 1 + dofs_per_node * (eid - 1)) + 1"
+    # face_index_offset = "dofs_per_loop * ("*ind_offset*" - 1 + dofs_per_node * (fid - 1)) + 1"
+    
+    code *= loop_start;
+    
+    # insert the content
+    code *= "
+    loc2glb = grid_data.loc2glb[:,eid]; # global indices of this element's nodes
+    
+    # determine index in global vector
+    dof_index = (loc2glb .- 1) .* dofs_per_node .+ "*ind_offset*";
+    #println(\"dof index \"*string(dof_index))
+    
+    if !rhs_only
+        Astart = (eid-1)*Np*Np*dofs_per_node + 1; # The segment of AI, AJ, AV for this element
+        #println(\"Astart \"*string(Astart))
+    end
+    
+    volargs = (var, eid, 0, grid_data, geo_factors, refel, t, dt, stiffness, mass);
+    linchunk = linear.func(volargs; "*index_args*");  # get the elemental linear part
+    if !rhs_only
+        bilinchunk = bilinear.func(volargs; "*index_args*"); # the elemental bilinear part
+    end
+    
+    if dofs_per_node == 1
+        b[loc2glb] += linchunk;
+        if !rhs_only
+            for jj=1:Np
+                offset = Astart - 1 + (jj-1)*Np;
+                for ii=1:Np
+                    AI[offset + ii] = loc2glb[ii];
+                    AJ[offset + ii] = loc2glb[jj];
+                    AV[offset + ii] = bilinchunk[ii, jj];
+                end
+            end
+        end
+        
+    else # more than one DOF per node
+        b[dof_index] += linchunk;
+        if !rhs_only
+            #print(\"offsets \")
+            for jj=1:Np
+                offset = Astart + Np*Np*("*ind_offset*"-1) + (jj-1)*Np - 1;
+                #print(\", \"*string(offset))
+                for ii=1:Np
+                    AI[offset + ii] = dof_index[ii];
+                    AJ[offset + ii] = dof_index[jj];
+                    AV[offset + ii] = bilinchunk[ii,jj];
+                end
+            end
+            #println()
+        end
+    end
+"
+    # close loops
+    code *= loop_end;
+    
+    # finish
+    code *=
+"
+loop_time = Base.Libc.time() - loop_time;
+
+if !rhs_only
+    # Build the sparse A. Uses default + to combine overlaps
+    #println(\"AI \"*string(AI))
+    #println(\"AJ \"*string(AJ))
+    #println(\"AV \"*string(AV))
+    A = sparse(AI[1:nel*Np*Np*dofs_per_node], AJ[1:nel*Np*Np*dofs_per_node], AV[1:nel*Np*Np*dofs_per_node]);
+end
+
+# Boundary conditions
+bc_time = Base.Libc.time();
+if rhs_only
+    b = CGSolver.apply_boundary_conditions_rhs_only(var, b, t);
+else
+    (A, b) = CGSolver.apply_boundary_conditions_lhs_rhs(var, A, b, t);
+end
+bc_time = Base.Libc.time() - bc_time;
+
+if rhs_only
+    return b;
+    
+else
+    log_entry(\"Elemental loop time:     \"*string(loop_time));
+    log_entry(\"Boundary condition time: \"*string(bc_time));
+    #println(size(A))
+    #println(size(b))
+    #display(Array(A))
+    #println(b)
+    return (A, b);
+end
+"
+    # println(code)
+    return code;
 end
