@@ -947,8 +947,7 @@ end
 # This will either solve the problem or generate the code for an external target.
 function solve(var, nlvar=nothing; nonlinear=false)
     if use_cachesim
-        printerr("Use cachesim_solve(var) for generating cachesim output. Try again.");
-        return nothing;
+        return cachesimSolve(var);
     end
     
     global time_stepper; # This should not be necessary. It will go away eventually
@@ -1158,7 +1157,7 @@ function cachesimSolve(var, nlvar=nothing; nonlinear=false)
         lhs = bilinears[varind];
         rhs = linears[varind];
         
-        t = @elapsed(result = CGSolver.linear_solve_cachesim(var, lhs, rhs));
+        t = @elapsed(result = linear_solve_cachesim(var, lhs, rhs));
         log_entry("Generated cachesim ouput for "*varnames*".(took "*string(t)*" seconds)", 1);
     end
 end

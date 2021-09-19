@@ -28,7 +28,6 @@ using LinearAlgebra, SparseArrays
 include("fe_boundary.jl");
 include("nonlinear.jl")
 include("cg_matrixfree.jl");
-include("cachsim_solve.jl");
 
 function linear_solve(var, bilinear, linear, stepper=nothing; assemble_func=nothing)
     if config.linalg_matrixfree

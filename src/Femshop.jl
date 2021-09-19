@@ -336,46 +336,47 @@ end
 # Adds a variable and allocates everything associated with it.
 function add_variable(var)
     global var_count += 1;
-    if language == JULIA || language == 0
-        # adjust values arrays
-        if var.location == CELL
-            if fv_grid === nothing
-                N = size(grid_data.loc2glb, 2);
-            else
-                N = size(fv_grid.loc2glb, 2);
-            end
+
+    # adjust values arrays
+    if var.location == CELL
+        if fv_grid === nothing
+            N = size(grid_data.loc2glb, 2);
         else
-            N = size(grid_data.allnodes,2);
+            N = size(fv_grid.loc2glb, 2);
         end
-        
-        if var.type == SCALAR
-            val_size = (1, N);
+    else
+        N = size(grid_data.allnodes,2);
+    end
+    
+    if var.type == SCALAR
+        val_size = (1, N);
+        comps = 1;
+    elseif var.type == VECTOR
+        val_size = (config.dimension, N);
+        comps = config.dimension;
+    elseif var.type == TENSOR
+        val_size = (config.dimension*config.dimension, N);
+        comps = config.dimension*config.dimension;
+    elseif var.type == SYM_TENSOR
+        val_size = (Int((config.dimension*(config.dimension+1))/2), N);
+        comps = val_size[1];
+    elseif var.type == VAR_ARRAY
+        if typeof(var.indexer) <: Array
             comps = 1;
-        elseif var.type == VECTOR
-            val_size = (config.dimension, N);
-            comps = config.dimension;
-        elseif var.type == TENSOR
-            val_size = (config.dimension*config.dimension, N);
-            comps = config.dimension*config.dimension;
-        elseif var.type == SYM_TENSOR
-            val_size = (Int((config.dimension*(config.dimension+1))/2), N);
-            comps = val_size[1];
-        elseif var.type == VAR_ARRAY
-            if typeof(var.indexer) <: Array
-                comps = 1;
-                for i=1:length(var.indexer)
-                    comps *= length(var.indexer[i].range);
-                end
-            elseif typeof(var.indexer) == Indexer
-                comps = length(var.indexer.range);
-            else
-                comps = 1;
+            for i=1:length(var.indexer)
+                comps *= length(var.indexer[i].range);
             end
-            val_size = (comps, N);
+        elseif typeof(var.indexer) == Indexer
+            comps = length(var.indexer.range);
+        else
+            comps = 1;
         end
-        
+        val_size = (comps, N);
+    end
+    var.total_components = comps;
+    
+    if language == JULIA || language == 0
         var.values = zeros(val_size);
-        var.total_components = comps;
     end
     
     # make symbolic layer variable symbols

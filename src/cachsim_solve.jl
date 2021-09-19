@@ -1,28 +1,32 @@
 # cachsim output
-export cachesim_solve
-import ..Femshop: init_cachesimout, add_cachesim_array, cachesim_load, cachesim_store, cachesim_load_range, cachesim_store_range
+export linear_solve_cachesim
+# import ..Femshop: init_cachesimout, add_cachesim_array, cachesim_load, cachesim_store, cachesim_load_range, cachesim_store_range
 
 function linear_solve_cachesim(var, bilinear, linear, stepper=nothing)
     # if config.linalg_matrixfree
     #     return solve_matrix_free_sym(var, bilinear, linear, stepper);
     #     #return solve_matrix_free_asym(var, bilinear, linear, stepper);
     # end
-    N1 = size(grid_data.allnodes,2);
-    multivar = typeof(var) <: Array;
-    if multivar
+    # If more than one variable
+    if typeof(var) <: Array
         # multiple variables being solved for simultaneously
         dofs_per_node = 0;
-        var_to_dofs = [];
+        dofs_per_loop = 0;
         for vi=1:length(var)
-            tmp = dofs_per_node;
-            dofs_per_node += length(var[vi].symvar);
-            push!(var_to_dofs, (tmp+1):dofs_per_node);
+            dofs_per_loop += length(var[vi].symvar);
+            dofs_per_node += var[vi].total_components;
         end
     else
         # one variable
-        dofs_per_node = length(var.symvar);
+        dofs_per_loop = length(var.symvar);
+        dofs_per_node = var.total_components;
     end
-    init_cachesimout(N1, refel, mesh_data.nel, dofs_per_node, variables);
+    N1 = size(grid_data.allnodes,2);
+    Nn = dofs_per_node * N1;
+    Np = refel.Np;
+    nel = mesh_data.nel;
+    
+    init_cachesimout(N1, refel, nel, dofs_per_node, variables);
     
     if prob.time_dependent && !(stepper === nothing)
         #TODO time dependent coefficients
@@ -66,15 +70,15 @@ function assemble_cachesim(var, bilinear, linear, t=0.0, dt=0.0)
     if multivar
         # multiple variables being solved for simultaneously
         dofs_per_node = 0;
-        var_to_dofs = [];
+        dofs_per_loop = 0;
         for vi=1:length(var)
-            tmp = dofs_per_node;
-            dofs_per_node += length(var[vi].symvar);
-            push!(var_to_dofs, (tmp+1):dofs_per_node);
+            dofs_per_loop += length(var[vi].symvar);
+            dofs_per_node += var[vi].total_components;
         end
     else
         # one variable
-        dofs_per_node = length(var.symvar);
+        dofs_per_loop = length(var.symvar);
+        dofs_per_node = var.total_components;
     end
     Nn = dofs_per_node * N1;
     
@@ -98,8 +102,8 @@ function assemble_cachesim(var, bilinear, linear, t=0.0, dt=0.0)
         Astart = (e-1)*Np*dofs_per_node*Np*dofs_per_node + 1; # The segment of AI, AJ, AV for this element
         
         # The linear part. Compute the elemental linear part for each dof
-        rhsargs = (var, xe, glb, refel, RHS, t, dt);
-        lhsargs = (var, xe, glb, refel, LHS, t, dt);
+        rhsargs = (var, e, 0, grid_data, geo_factors, refel, t, dt, 0, 0);
+        lhsargs = (var, e, 0, grid_data, geo_factors, refel, t, dt, 0, 0);
         if dofs_per_node == 1
             linchunk = linear.func(rhsargs);  # get the elemental linear part
             #b[glb] .+= linchunk;
@@ -164,7 +168,7 @@ function assemble_rhs_only_cachesim(var, linear, t=0.0, dt=0.0)
         glb = grid_data.loc2glb[:,e];                 # global indices of this element's nodes for extracting values from var arrays
         xe = grid_data.allnodes[:,glb[:]];  # coordinates of this element's nodes for evaluating coefficient functions
 
-        rhsargs = (var, xe, glb, refel, RHS, t, dt);
+        rhsargs = (var, e, 0, grid_data, geo_factors, refel, t, dt, 0, 0);
 
         #linchunk = linear.func(args);  # get the elemental linear part
         if dofs_per_node == 1

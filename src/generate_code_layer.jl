@@ -74,6 +74,10 @@ function generate_code_layer(symex, var, lorr, vors, solver, language, framework
     # println(terms)
     
     ###### Below are target specific code generation functions ############################################
+    if use_cachesim
+        return generate_code_layer_cachesim(var, entities, terms, lorr, vors);
+    end
+    
     if language == JULIA || language == 0
         if solver == CG
             handle_input_args_fun = handle_input_args_cg_julia;

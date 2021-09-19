@@ -52,6 +52,7 @@ include("tiled_ordering.jl");
 include("ef_ordering.jl");
 include("bad_ordering.jl");
 
+include("general_utils.jl");
 include("function_utils.jl");
 include("symexpression.jl");
 include("variables.jl");
@@ -66,6 +67,7 @@ include("grid_parent_child.jl");
 include("polyharmonic_interp.jl");
 
 include("output_data.jl");
+include("cachsim_solve.jl");
 
 # Femshop submodules
 include("cachesim/CachesimOut.jl");

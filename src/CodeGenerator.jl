@@ -63,7 +63,7 @@ include("generate_code_layer_fv_julia.jl");
 # include("generate_code_layer_dendro.jl");
 # include("generate_code_layer_homg.jl");
 # include("generate_code_layer_matlab.jl");
-# include("generate_code_layer_cachesim.jl");
+include("generate_code_layer_cachesim.jl");
 
 # Surface integrals should be handled in the same place TODO
 #include("generate_code_layer_surface.jl");

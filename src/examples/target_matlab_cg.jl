@@ -45,17 +45,17 @@ function generate_external_code_layer(var, entities, terms, lorr, vors)
         end
     end
     if need_derivs
-        code *= customtarget_build_derivative_matrices(lorr, vors);
+        code *= matlabtarget_build_derivative_matrices(lorr, vors);
         code *= "\n";
     end
     
     # Allocate/Evaluate or fetch the values for each needed entity.
     # Note: This could be staged and interleaved with the calculation part for complex problems. TODO
-    code *= customtarget_prepare_needed_values(entities, var, lorr, vors);
+    code *= matlabtarget_prepare_needed_values(entities, var, lorr, vors);
     code *= "\n";
     
     # Form the final elemental calculation
-    code *= customtarget_make_elemental_computation(terms, var, lorr, vors);
+    code *= matlabtarget_make_elemental_computation(terms, var, lorr, vors);
     
     return code;
 end
@@ -64,16 +64,16 @@ end
 # The input are code strings generated above. They will be inserted into their appropriate files.
 function generate_external_files(var, lhs_vol, lhs_surf, rhs_vol, rhs_surf)
     # Again, this can be split up into smaller functions as you wish.
-    custom_utils_file();
-    custom_main_file(var);
-    custom_config_file();
-    custom_prob_file();
-    custom_mesh_file();
-    custom_genfunction_file();
-    custom_bilinear_file(lhs_vol);
-    custom_linear_file(rhs_vol);
-    # custom_stepper_file(); # TODO
-    custom_output_file();
+    matlab_utils_file();
+    matlab_main_file(var);
+    matlab_config_file();
+    matlab_prob_file(var);
+    matlab_mesh_file();
+    matlab_genfunction_file();
+    matlab_bilinear_file(lhs_vol, var);
+    matlab_linear_file(rhs_vol, var);
+    # matlab_stepper_file(); # TODO
+    matlab_output_file();
 end
 
 #########################################################
@@ -83,7 +83,7 @@ end
 # numbers: 2 -> "2"
 # strings: "thing" -> "'thing'"
 # arrays: [1 2; 3 4] -> "[1 2; 3 4]"
-function custom_gen_string(v)
+function matlab_gen_string(v)
     if typeof(v) == String
         return "'"*v*"'";
         
@@ -91,28 +91,36 @@ function custom_gen_string(v)
         return string(v);
         
     elseif typeof(v) <: Array
+        if length(v)>0 && typeof(v[1]) == String
+            # need to use a cell array
+            bracket1 = "{";
+            bracket2 = "}";
+        else
+            bracket1 = "[";
+            bracket2 = "]";
+        end
         if ndims(v) == 1 # "[a; b; c]"
             n = length(v);
-            str = "[";
+            str = bracket1;
             for i=1:n
-                str = str*custom_gen_string(v[i]);
+                str = str*matlab_gen_string(v[i]);
                 if i < n
                     str = str*"; ";
                 end
             end
-            str = str*"]";
+            str = str*bracket2;
         elseif ndims(v) == 2 # "[a b ; c d]
             (n,m) = size(v);
-            str = "[";
+            str = bracket1;
             for i=1:n
                 for j=1:m
-                    str = str*custom_gen_string(v[i,j])*" ";
+                    str = str*matlab_gen_string(v[i,j])*" ";
                 end
                 if i < n
                     str = str*"; ";
                 end
             end
-            str = str*"]";
+            str = str*bracket2;
         end
         return str;
         
@@ -124,7 +132,7 @@ function custom_gen_string(v)
 end
 
 # Returns a string like "fread(f, [3, 15], 'double')" for an array with size (3,15) and type Float64
-function custom_fread(A)
+function matlab_fread(A)
     if typeof(A) <: Array
         if length(A) == 0
             return "0";
@@ -136,8 +144,15 @@ function custom_fread(A)
         end
         if length(size(A)) == 1
             sz = "["*string(length(A))*",1]";
-        else
+        elseif length(size(A)) == 2
             sz = "["*string(size(A,1))*","*string(size(A,2))*"]";
+        else # Matlab's fread can only handle 2D arrays! Just smash the rest together.
+            sz = "[" * string(size(A,1));
+            second_dim = 1;
+            for i=2:length(size(A))
+                second_dim = second_dim * size(A,i);
+            end
+            sz *= ", " * string(second_dim) * "]";
         end
         return "fread(f, "*sz*", "*typ*")"
     else
@@ -150,19 +165,19 @@ function custom_fread(A)
     end
 end
 
-# produces code to read a binary struct into custom
+# produces code to read a binary struct into matlab
 # The struct is labeled with the name and has the same fieldnames as s
-function custom_struct_reader(name, s)
+function matlab_struct_reader(name, s)
     code = "";
     for fn in fieldnames(typeof(s))
         f = getfield(s,fn);
         if typeof(f) <: Array && length(f) > 0 && typeof(f[1]) <: Array
             code = code * name * "." * string(fn) * " = cell([" * string(length(f)) * ", 1]);\n";
             for i=1:length(f)
-                code = code * name * "." * string(fn) * "{" * string(i) * "} = " * custom_fread(f[i]) * ";\n";
+                code = code * name * "." * string(fn) * "{" * string(i) * "} = " * matlab_fread(f[i]) * ";\n";
             end
         else
-            code = code * name * "." * string(fn) * " = " * custom_fread(f) * ";\n";
+            code = code * name * "." * string(fn) * " = " * matlab_fread(f) * ";\n";
         end
     end
     return code;
@@ -172,7 +187,7 @@ end
 # Write code files
 #######################################################
 
-function custom_main_file(var)
+function matlab_main_file(var)
     file = add_generated_file(project_name*".m", dir="src");
     
     println(file, "clear;");
@@ -194,14 +209,23 @@ function custom_main_file(var)
     
     # place values in named variable arrays
     if typeof(var) <: Array
-        # multiple variables
-        # TODO
-    elseif length(var.symvar) > 1
-        # multiple components for this variable
-        # TODO
+        counter = 0;
+        for vi=1:length(var)
+            for i=1:var[vi].total_components
+                counter += 1;
+                println(file, string(var.symbol) * "_"*string(counter)*" = result("*string(counter)*":dofspernode:length(result));");
+            end
+        end
+        println(file, "total_components = "*string(counter)*";");
+    elseif var.total_components > 1
+        for i=1:var.total_components
+            println(file, string(var.symbol) * "_"*string(i)*" = result("*string(i)*":dofspernode:length(result));");
+        end
+        println(file, "total_components = "*string(var.total_components)*";");
     else
         # single component
         println(file, string(var.symbol) * " = result;");
+        println(file, "total_components = 1;");
     end
     
     println(file, "");
@@ -211,7 +235,7 @@ function custom_main_file(var)
 end
 
 # This is a class containing various utility functions like tensor math, geometric factors, linear solve
-function custom_utils_file()
+function matlab_utils_file()
     utilsfile = add_generated_file("Utils.m", dir="src");
     
     content = "
@@ -364,41 +388,53 @@ end
     println(utilsfile, content);
 end
 
-function custom_config_file()
+function matlab_config_file()
     file = add_generated_file("Config.m", dir="src");
     # Duplicate the config struct
     for f in fieldnames(Femshop.Femshop_config)
-        println(file, "config."*string(f)*" = "*custom_gen_string(getfield(Femshop.config, f))*";");
+        println(file, "config."*string(f)*" = "*matlab_gen_string(getfield(Femshop.config, f))*";");
     end
     println(file, "order = config.basis_order_min;");
 end
 
-function custom_prob_file()
+function matlab_prob_file(var)
     file = add_generated_file("Problem.m", dir="src");
     # Duplicate the prob struct
     for f in fieldnames(Femshop.Femshop_prob)
-        println(file, "prob."*string(f)*" = "*custom_gen_string(getfield(Femshop.prob, f))*";");
+        println(file, "prob."*string(f)*" = "*matlab_gen_string(getfield(Femshop.prob, f))*";");
     end
+    # count dofs per node
+    multivar = typeof(var) <:Array;
+    dofsper = 0;
+    if multivar
+        dofsper = var[1].total_components;
+        for i=2:length(var)
+            dofsper = dofsper + var[i].total_components;
+        end
+    else
+        dofsper = var.total_components;
+    end
+    println(file, "dofspernode = "*string(dofsper)*";");
 end
 
 #=
 The mesh file contains any code related to setting up the mesh.
 The meshdata file contains all of the data from the Refel, MeshData and Grid structs
-These are to be read into custom by a custom custom function in the mesh file.
+These are to be read into matlab by a matlab matlab function in the mesh file.
 =#
-function custom_mesh_file()
+function matlab_mesh_file()
     file = add_generated_file("Mesh.m", dir="src");
     
     println(file, "f = fopen('MeshData','r');");
     println(file, "% Reference element");
-    println(file, custom_struct_reader("refel", refel));
+    println(file, matlab_struct_reader("refel", refel));
     println(file, "% mesh data");
-    println(file, custom_struct_reader("mesh_data", mesh_data));
+    println(file, matlab_struct_reader("mesh_data", mesh_data));
     println(file, "% grid data");
-    println(file, custom_struct_reader("grid_data", grid_data));
+    println(file, matlab_struct_reader("grid_data", grid_data));
     println(file, "fclose(f);");
     
-    datfile = add_generated_file("MeshData", dir="src");
+    datfile = add_generated_file("MeshData", dir="src", make_header_text=false);
     # refel
     Femshop.CodeGenerator.write_binary_struct(datfile, refel);
     # mesh_data
@@ -408,7 +444,7 @@ function custom_mesh_file()
 end
 
 # Functions for boundary conditions, coeficients, etc.
-function custom_genfunction_file()
+function matlab_genfunction_file()
     file = add_generated_file("Genfunction.m", dir="src");
     
     for i = 1:length(genfunctions)
@@ -458,17 +494,32 @@ end
 
 # This is the matrix assembly loop.
 # It requires code that was generated for this target.
-function custom_bilinear_file(code)
+function matlab_bilinear_file(code, var)
     file = add_generated_file("Bilinear.m", dir="src");
+    
+    Ddotn_part = "
+                                Ddotn = RD1(bdrylocal(j),:) * normal(1)";
+                                
+    if config.dimension > 1
+        Ddotn_part *= " + ...
+                                RD2(bdrylocal(j),:) * normal(2)";
+    end
+    if config.dimension > 2
+        Ddotn_part *= " + ...
+                                RD3(bdrylocal(j),:) * normal(3)";
+    end
+    Ddotn_part *= ";";
+    
     # insert the code part into this skeleton
     content = 
 "
 dof = size(grid_data.allnodes,2);
 ne  = mesh_data.nel;
 Np = refel.Np;
-I = zeros(ne * Np*Np, 1);
-J = zeros(ne * Np*Np, 1);
-val = zeros(ne * Np*Np, 1);
+glbdof = zeros(Np*dofspernode,1);
+I = zeros(ne * Np*Np*dofspernode*dofspernode, 1);
+J = zeros(ne * Np*Np*dofspernode*dofspernode, 1);
+val = zeros(ne * Np*Np*dofspernode*dofspernode, 1);
 
 %temporary
 time = 0;
@@ -477,45 +528,74 @@ var = 0;
 
 % loop over elements
 for e=1:ne
-    gbl = grid_data.loc2glb(:,e)\';
-    nodex = grid_data.allnodes(:,gbl);
+    glb = grid_data.loc2glb(:,e)\';
+    nodex = grid_data.allnodes(:,glb);
     [detJ, Jac]  = Utils.geometric_factors(refel, nodex);
     wdetj = refel.wg .* detJ;
     
-    ind1 = repmat(gbl,Np,1);
-    ind2 = reshape(repmat(gbl',Np,1),Np*Np,1);
-    st = (e-1)*Np*Np+1;
-    en = e*Np*Np;
+    for di=1:dofspernode
+        glbdof(((di-1)*Np + 1):(di*Np)) = (glb - 1).*dofspernode + di;
+    end
+    
+    ind1 = repmat(glbdof,Np*dofspernode,1);
+    ind2 = reshape(repmat(glbdof',Np*dofspernode,1),Np*Np*dofspernode*dofspernode,1);
+    
+    st = (e-1)*Np*Np*dofspernode*dofspernode+1;
+    en = e*Np*Np*dofspernode*dofspernode;
     I(st:en) = ind1;
     J(st:en) = ind2;
     
-"*code*";
+    % Generated elemental computation ############################
+"*code*"
+    % End generated elemental computation ########################
+    
+    % handle boundary conditions
+    for f=1:length(grid_data.element2face(:,e))
+        fid = grid_data.element2face(f,e);
+        bid = grid_data.facebid(fid);
+        if bid > 0
+            % boundary face
+            for di=1:dofspernode
+                bdrylocaldof = refel.face2local{f} + Np*(di-1);
+                bdrylocal = refel.face2local{f};
+                % zero those rows in element_matrix
+                element_matrix(bdrylocaldof, :) = 0;
+                if prob.bc_type{bid}(1) == 'D'
+                    for j=1:length(bdrylocaldof)
+                        element_matrix(bdrylocaldof(j), bdrylocaldof(j)) = 1;
+                    end
+                elseif prob.bc_type{bid}(1) == 'N'
+                    normal = grid_data.facenormals(:,fid);
+                    for j=1:length(bdrylocal)
+"*Ddotn_part*"
+                        element_matrix(bdrylocaldof(j), ((di-1)*Np+1):(di*Np)) = Ddotn;
+                    end
+                end
+            end
+        end
+    end
     
     val(st:en) = element_matrix(:);
 end
-LHS = sparse(I,J,val,dof,dof);";
-    println(file, content);
+LHS = sparse(I,J,val,dof*dofspernode,dof*dofspernode);";
     
-    # boundary condition
-    println(file, "
-for i=1:length(grid_data.bdry)
-    LHS(grid_data.bdry{i},:) = 0;
-    LHS((size(LHS,1)+1)*(grid_data.bdry{i}-1)+1) = 1;
-end"); # dirichlet bc
-    
+    println(file, content)
+    println(file, "");
 end
 
 # This is the vector assembly loop.
 # It requires code that was generated for this target.
-function custom_linear_file(code)
+function matlab_linear_file(code, var)
     file = add_generated_file("Linear.m", dir="src");
     # insert the code part into this skeleton
     content = 
 "
-dof = size(grid_data.allnodes,2);
+nnodes= size(grid_data.allnodes,2);
 ne  = mesh_data.nel;
 Np = refel.Np;
-RHS = zeros(dof,1);
+dofspernode = 3;
+RHS = zeros(nnodes*dofspernode,1);
+glbdof = zeros(Np*dofspernode,1);
 
 %temporary
 time = 0;
@@ -524,48 +604,73 @@ var = 0;
 
 % loop over elements
 for e=1:ne
-    gbl = grid_data.loc2glb(:,e)\';
-    nodex = grid_data.allnodes(:,gbl);
+    glb = grid_data.loc2glb(:,e)\';
+    nodex = grid_data.allnodes(:,glb);
     [detJ, Jac]  = Utils.geometric_factors(refel, nodex);
     wdetj = refel.wg .* detJ;
     
-"*code*";
+    for di=1:dofspernode
+        glbdof(((di-1)*Np + 1):(di*Np)) = (glb - 1).*dofspernode + di;
+    end
     
-    RHS(gbl) = element_vector;
+"*code*"
+    
+    RHS(glbdof) = element_vector;
 end
 ";
     println(file, content);
     
     # boundary condition
     println(file, "
-for i=1:length(grid_data.bdry)
-    RHS(grid_data.bdry{i}) = prob.bc_func(grid_data.bdry{i});
-end"); # dirichlet bc
+    for i=1:length(grid_data.bdry)
+        bdrynode = grid_data.bdry{i};
+        for di=1:dofspernode
+            bdrydof = (bdrynode-1)*dofspernode + di;
+            RHS(bdrydof) = prob.bc_func(di, i);
+        end
+    end");
     
 end
 
 # Nothing here yet. TODO: time stepper
-function custom_stepper_file()
+function matlab_stepper_file()
     file = add_generated_file("Stepper.m", dir="src");
 end
 
 # Right now this just tries to plot
-function custom_output_file()
+function matlab_output_file()
     file = add_generated_file("Output.m", dir="src");
     
-    content = "
+    if config.dimension == 1
+        content = "
+gxy = grid_data.allnodes';
+
+X = gxy(:,1);
+
+for figi = 1:total_components
+    figure(figi);
+    plot(X, result(figi:dofspernode:length(result)));
+end
+"
+    elseif config.dimension == 2
+        content = "
 gxy = grid_data.allnodes';
 
 X = gxy(:,1);
 Y = gxy(:,2);
 
 DT = delaunay(gxy);
-Tu = triangulation(DT, X, Y, u);
 
-figure();
-trisurf(Tu, 'edgecolor', 'none')
-view(2);
+for figi = 1:total_components
+    figure(figi);
+    trisurf(triangulation(DT, X, Y, result(figi:dofspernode:length(result))), 'edgecolor', 'none')
+    view(2);
+end
 "
+    else
+        content = "% figure output not ready for 3D."
+    end
+    
     println(file, content)
     println(file, "");
 end
@@ -575,7 +680,7 @@ end
 ###########################################################################################################
 
 # If needed, build derivative matrices
-function customtarget_build_derivative_matrices(lorr, vors)
+function matlabtarget_build_derivative_matrices(lorr, vors)
     code = 
 "
 % Note on derivative matrices:
@@ -627,7 +732,7 @@ function customtarget_build_derivative_matrices(lorr, vors)
 end
 
 # Allocate, compute, or fetch all needed values
-function customtarget_prepare_needed_values(entities, var, lorr, vors)
+function matlabtarget_prepare_needed_values(entities, var, lorr, vors)
     code = "";
     for i=1:length(entities)
         cname = CodeGenerator.make_coef_name(entities[i]);
@@ -697,9 +802,9 @@ function customtarget_prepare_needed_values(entities, var, lorr, vors)
                 end
                 
             elseif ctype == 3 # a known variable value
-                # This generates something like: coef_u_1 = copy((Femshop.variables[1]).values[1, gbl])
+                # This generates something like: coef_u_1 = copy((Femshop.variables[1]).values[1, glb])
                 if vors == "volume"
-                    code *= cname * " = variables("*string(cval)*")("*string(entities[i].index)*", gbl);\n";
+                    code *= cname * " = variables("*string(cval)*")("*string(entities[i].index)*", glb);\n";
                     # Apply any needed derivative operators.
                     if length(entities[i].derivs) > 0
                         xyzchar = ["x","y","z"];
@@ -721,7 +826,7 @@ function customtarget_prepare_needed_values(entities, var, lorr, vors)
     return code;
 end
 
-function customtarget_make_elemental_computation(terms, var, lorr, vors)
+function matlabtarget_make_elemental_computation(terms, var, lorr, vors)
     # Here is where I make some assumption about the form of the expression.
     # Since it was expanded by the parser it should look like a series of terms: t1 + t2 + t3...
     # Where each term is multiplied by one test function component, and if LHS, involves one unknown component.
@@ -773,7 +878,7 @@ function customtarget_make_elemental_computation(terms, var, lorr, vors)
                 # Process the terms for this variable
                 for ci=1:length(terms[vi]) # components
                     for i=1:length(terms[vi][ci])
-                        (term_result, test_ind, trial_ind) = customtarget_generate_term_calculation(terms[vi][ci][i], var, lorr);
+                        (term_result, test_ind, trial_ind) = matlabtarget_generate_term_calculation(terms[vi][ci][i], var, lorr);
                         
                         # println(terms)
                         # println(terms[vi])
@@ -792,7 +897,7 @@ function customtarget_make_elemental_computation(terms, var, lorr, vors)
                         
                         
                         if length(submatrices[submat_ind]) > 1
-                            submatrices[submat_ind] *= " .+ " * term_result;
+                            submatrices[submat_ind] *= " + " * term_result;
                         else
                             submatrices[submat_ind] = term_result;
                         end
@@ -805,7 +910,7 @@ function customtarget_make_elemental_computation(terms, var, lorr, vors)
             # Process the terms for this variable
             for ci=1:length(terms) # components
                 for i=1:length(terms[ci])
-                    (term_result, test_ind, trial_ind) = customtarget_generate_term_calculation(terms[ci][i], var, lorr);
+                    (term_result, test_ind, trial_ind) = matlabtarget_generate_term_calculation(terms[ci][i], var, lorr);
                     
                     # Find the appropriate submatrix for this term
                     if lorr == LHS
@@ -815,7 +920,7 @@ function customtarget_make_elemental_computation(terms, var, lorr, vors)
                     end
                     
                     if length(submatrices[submat_ind]) > 1
-                        submatrices[submat_ind] *= " .+ " * term_result;
+                        submatrices[submat_ind] *= " + " * term_result;
                     else
                         submatrices[submat_ind] = term_result;
                     end
@@ -831,17 +936,17 @@ function customtarget_make_elemental_computation(terms, var, lorr, vors)
                     if length(submatrices[emi, emj]) > 1
                         rangei = "("*string(emi-1)*"*refel.Np + 1):("*string(emi)*"*refel.Np)";
                         rangej = "("*string(emj-1)*"*refel.Np + 1):("*string(emj)*"*refel.Np)";
-                        code *= "element_matrix("*rangei*", "*rangej*") = " * submatrices[emi,emj] * "\n";
+                        code *= "element_matrix("*rangei*", "*rangej*") = " * submatrices[emi,emj] * ";\n";
                     end
                 end
             end
-            code *= "return element_matrix;\n"
+            #code *= "return element_matrix;\n"
             
         else # RHS
             for emi=1:dofsper
                 if length(submatrices[emi]) > 1
-                    rangei = "(("*string(emi)*"-1)*refel.Np + 1):("*string(emi)*"*refel.Np)";
-                    code *= "element_vector("*rangei*") = " * submatrices[emi] * "\n";
+                    rangei = "(("*string(emi-1)*")*refel.Np + 1):("*string(emi)*"*refel.Np)";
+                    code *= "element_vector("*rangei*") = " * submatrices[emi] * ";\n";
                 end
             end
         end
@@ -857,7 +962,7 @@ function customtarget_make_elemental_computation(terms, var, lorr, vors)
         
         #process each term
         for i=1:length(terms)
-            (term_result, test_ind, trial_ind) = customtarget_generate_term_calculation(terms[i], var, lorr);
+            (term_result, test_ind, trial_ind) = matlabtarget_generate_term_calculation(terms[i], var, lorr);
             
             if i > 1
                 result *= " + " * term_result;
@@ -866,9 +971,9 @@ function customtarget_make_elemental_computation(terms, var, lorr, vors)
             end
         end
         if lorr == LHS
-            code *= "element_matrix = " * result;
+            code *= "element_matrix = " * result * ";\n";
         else
-            code *= "element_vector = " * result;
+            code *= "element_vector = " * result * ";\n";
         end
         #code *= "return " * result * ";\n";
     end
@@ -876,7 +981,7 @@ function customtarget_make_elemental_computation(terms, var, lorr, vors)
     return code;
 end
 
-function customtarget_generate_term_calculation(term, var, lorr)
+function matlabtarget_generate_term_calculation(term, var, lorr)
     result = "";
     
     if lorr == LHS
