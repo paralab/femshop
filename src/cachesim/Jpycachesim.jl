@@ -17,22 +17,22 @@ all_cache_ptrs = [];    # Pointers to all constructed caches
 include("pcs_structs.jl");
 
 function pcs_get_cachesim_from_file(filename)
-    global cache = ccall((:get_cacheSim_from_file, "./cachesim/backend.so"), Ptr{Cache}, (Cstring,), filename);
+    global cache = ccall((:get_cacheSim_from_file, "./pycachesim/backend.so"), Ptr{Cache}, (Cstring,), filename);
     return cache;
 end
 
 function pcs_load(addr, len=1, c=cache)
     range = addr_range(addr,len);
-    return ccall((:Cache__load, "./cachesim/backend.so"), Cint, (Ptr{Cache},addr_range), c, range);
+    return ccall((:Cache__load, "./pycachesim/backend.so"), Cint, (Ptr{Cache},addr_range), c, range);
 end
 
 function pcs_store(addr, len=1, c=cache)
     range = addr_range(addr,len);
-    ccall((:Cache__store, "./cachesim/backend.so"), Cvoid, (Ptr{Cache},addr_range, Cint), c, range, 0);
+    ccall((:Cache__store, "./pycachesim/backend.so"), Cvoid, (Ptr{Cache},addr_range, Cint), c, range, 0);
 end
 
 function pcs_print_stats(c=cache)
-    ccall((:printStats, "./cachesim/backend.so"), Cvoid, (Ptr{Cache},), c);
+    ccall((:printStats, "./pycachesim/backend.so"), Cvoid, (Ptr{Cache},), c);
 end
 
 function pcs_print_stats_simple(c=cache)
@@ -61,7 +61,7 @@ end
 
 function pcs_build_cache(levels)
     # write to file, read from file, remove file
-    file = open("cachesim/tmp_jpycachesim_cache_def","w");
+    file = open("src/cachesim/tmp_jpycachesim_cache_def","w");
     println(file, string(length(levels)));
     for i=1:(length(levels))
         line  = "name=L"*string(i);
@@ -84,7 +84,7 @@ function pcs_build_cache(levels)
     end
     close(file);
     
-    return pcs_get_cachesim_from_file("cachesim/tmp_jpycachesim_cache_def");
+    return pcs_get_cachesim_from_file("src/cachesim/tmp_jpycachesim_cache_def");
 end
 
 end #module

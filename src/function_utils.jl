@@ -42,7 +42,7 @@ function makeFunction(args, fun)
 end
 
 # Makes either: a constant number, a genfunction, or an array of genfunctions
-function makeFunctions(ex; args="x=0,y=0,z=0,t=0")
+function makeFunctions(ex; args="x=0,y=0,z=0,t=0,node_index=1")
     nfuns = 0;
     if typeof(ex) <: Array
         for i=1:length(ex)
