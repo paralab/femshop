@@ -338,14 +338,18 @@ function add_variable(var)
     global var_count += 1;
 
     # adjust values arrays
-    if var.location == CELL
-        if fv_grid === nothing
-            N = size(grid_data.loc2glb, 2);
-        else
-            N = size(fv_grid.loc2glb, 2);
-        end
+    if grid_data === nothing
+        N = 1;
     else
-        N = size(grid_data.allnodes,2);
+        if var.location == CELL
+            if fv_grid === nothing
+                N = size(grid_data.loc2glb, 2);
+            else
+                N = size(fv_grid.loc2glb, 2);
+            end
+        else
+            N = size(grid_data.allnodes,2);
+        end
     end
     
     if var.type == SCALAR

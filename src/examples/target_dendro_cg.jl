@@ -279,13 +279,13 @@ function dendro_main_file(var)
     if prob.time_dependent
         solvepart = "double currentT = 0.0;
         for(int ti=0; ti<tN; ti++){
-            rhsVec.computeVec("*valvec*",rhs,1.0);
+            rhsVec.computeVec(rhs,rhs,1.0);
             lhsMat.cgSolve("*valvec*",rhs,solve_max_iters,solve_tol,0);
             currentT += dt;
         }";
     else
         solvepart = "// This uses the generated RHS code to compute the RHS vector.
-        rhsVec.computeVec("*valvec*",rhs,1.0);
+        rhsVec.computeVec(rhs,rhs,1.0);
         
         // Solve the linear system. 
         lhsMat.cgSolve("*valvec*",rhs,solve_max_iters,solve_tol,0);";
@@ -463,7 +463,7 @@ function dendro_config_file(dparams=(5, 1, 0.3, 0.000001, 100))
 end
 
 function dendro_prob_file()
-    file = add_generated_file("Problem.m", dir="src");
+    file = add_generated_file("Problem.cpp", dir="src");
     # variable and coefficient DOFs
     dofs = 0;
     varpart = "";
@@ -533,7 +533,7 @@ end
 function dendro_bilinear_file(code)
     file = add_generated_file("Bilinear.cpp", dir="src");
     skeleton_file = add_generated_file("bilinear_skel.cpp", dir="src");
-    skeleton_headerfile = add_generated_file("bilinear_skel.h", dir="src");
+    skeleton_headerfile = add_generated_file("bilinear_skel.h", dir="include");
     
     print(file, code);
     
@@ -895,7 +895,7 @@ end
 function dendro_linear_file(code)
     file = add_generated_file("Linear.cpp", dir="src");
     skeleton_file = add_generated_file("linear_skel.cpp", dir="src");
-    skeleton_headerfile = add_generated_file("linear_skel.h", dir="src");
+    skeleton_headerfile = add_generated_file("linear_skel.h", dir="include");
     
     print(file, code);
     
@@ -1109,7 +1109,7 @@ function dendro_output_file()
 end
 
 function dendro_cmake_file()
-    file = add_generated_file("CMakeLists.txt", dir="");
+    file = add_generated_file("CMakeLists.txt", dir="", make_header_text=false);
     content = """
 cmake_minimum_required(VERSION 2.8)
 project("""*CodeGenerator.genFileName*""")
@@ -1145,7 +1145,7 @@ target_link_libraries("""*CodeGenerator.genFileName*""" dendro5 \${LAPACK_LIBRAR
 end
 
 function dendro_readme_file()
-    file = add_generated_file("README.txt", dir="");
+    file = add_generated_file("README.txt", dir="", make_header_text=false);
     content = """
 Basic instructions for compiling this generated code with dendro.
     1. Place this generated directory in the Dendro directory.
@@ -1224,8 +1224,9 @@ function dendrotarget_prepare_needed_values(entities, var, lorr, vors)
             elseif ctype == 2 # a coefficient function
                 if vors == "volume"
                     push!(to_delete, cname);
+                    short_name = split(cname, "coef_")[end];
                     code *= "double* "*cname*" = new double[nPe];\n";
-                    code *= "m_uiOctDA->getElementNodalValues(m_uiOctDA->getVecPointerToDof(grandDofVecPtr, VAR::M_UI"*cname*", false,false), "*cname*", m_uiOctDA->curr(), m_uiDof);\n";
+                    code *= "m_uiOctDA->getElementNodalValues(m_uiOctDA->getVecPointerToDof(grandDofVecPtr, VAR::M_UI"*short_name*", false,false), "*cname*", m_uiOctDA->curr(), m_uiDof);\n";
                     
                     # Apply any needed derivative operators. Interpolate at quadrature points.
                     if length(entities[i].derivs) > 0

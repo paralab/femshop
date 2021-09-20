@@ -161,7 +161,7 @@ function variable(name, type=SCALAR, location=NODAL; index=nothing)
     return var;
 end
 
-function coefficient(name, val, type=SCALAR, location=NODAL)
+function coefficient(name, val, type=SCALAR, location=NODAL; index=nothing)
     csym = Symbol(name);
     nfuns = makeFunctions(val); # if val is constant, nfuns will be 0
     return add_coefficient(csym, type, location, val, nfuns);
