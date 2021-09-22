@@ -530,9 +530,9 @@ function add_boundary_condition(var, bid, type, ex, nfuns)
         tmp3 = zeros(Int, (var_count, nbid));
         fill!(tmp1, "");
         fill!(tmp2, GenFunction("","","",0,0));
-        tmp1[1:size(prob.bc_func)[1], 1:size(prob.bc_func)[2]] = Base.deepcopy(prob.bc_type);
-        tmp2[1:size(prob.bc_func)[1], 1:size(prob.bc_func)[2]] = Base.deepcopy(prob.bc_func);
-        tmp3[1:size(prob.bc_func)[1], 1:size(prob.bc_func)[2]] = prob.bid;
+        tmp1[1:size(prob.bc_func,1), 1:size(prob.bc_func,2)] = Base.deepcopy(prob.bc_type);
+        tmp2[1:size(prob.bc_func,1), 1:size(prob.bc_func,2)] = Base.deepcopy(prob.bc_func);
+        tmp3[1:size(prob.bc_func,1), 1:size(prob.bc_func,2)] = prob.bid;
         prob.bc_type = tmp1;
         prob.bc_func = tmp2;
         prob.bid = tmp3;

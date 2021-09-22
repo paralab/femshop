@@ -65,6 +65,9 @@ function generate_external_files(var, lhs_vol, lhs_surf, rhs_vol, rhs_surf)
     dendro_genfunction_file();      # Functions for coefficients, boundary conditions etc.
     dendro_bilinear_file(lhs_vol);  # The matrix part (feMatrix)
     dendro_linear_file(rhs_vol);    # The vector part (feVector)
+    if Femshop.prob.time_dependent
+        dendro_stepper_file();      # time stepper
+    end
     dendro_output_file();           # Output code
     dendro_cmake_file();            # Writes a cmake file
     dendro_readme_file();           # readme
@@ -209,6 +212,28 @@ function dendro_swap_symbol(a, b, ex)
     end
 end
 
+# changes the math operators in the expr
+function dendro_change_math_ops(ex)
+    if typeof(ex) == Expr
+        if ex.head === :.
+            # a broadcast operator, change to call
+            ex.head = :call
+            ex.args = [ex.args[1]; ex.args[2].args];
+        end
+        for i=1:length(ex.args)
+            ex.args[i] = dendro_change_math_ops(ex.args[i]);
+        end
+    elseif typeof(ex) == Symbol
+        if ex === :.+   ex = :+; end
+        if ex === :.-   ex = :-; end
+        if ex === :.*   ex = :*; end
+        if ex === :./   ex = :/; end
+        if (ex === :.^ || ex === :^)   ex = :pow; end
+        if ex === :abs   ex = :fabs; end
+    end
+    return ex;
+end
+
 # builds a c++ functional for a constant
 function dendro_number_to_function(name, val)
     indent = "";
@@ -226,6 +251,7 @@ function dendro_genfunction_to_string(genfun)
     newex = dendro_swap_symbol(:y, :(gridY_to_Y(y)), newex); # swap y for gridY_to_Y(y)
     newex = dendro_swap_symbol(:z, :(gridZ_to_Z(z)), newex); # swap z for gridZ_to_Z(z)
     newex = dendro_swap_symbol(:pi, :M_PI, newex); # swap pi for M_PI
+    newex = dendro_change_math_ops(newex); # change operators to match C++
     s = string(newex);
     ns = replace(s, r"([\d)])([(A-Za-z])" => s"\1*\2"); # explicitly multiply with "*"
     return ns;
@@ -249,21 +275,26 @@ function dendro_main_file(var)
     
     alloc_dof = "";
     set_dof = "";
+    init_fun = "";
     for i=1:length(variables)
         for j=1:length(variables[i].symvar)
             nam = string(variables[i].symvar[j]);
             # if initial condition, use it, otherwise zero
             if length(prob.initial) >= i && !(prob.initial[i] === nothing)
                 if typeof(prob.initial[i]) <: Array
-                    fun = cpp_gen_string(prob.initial[i][j]);
+                    init_fun = cpp_gen_string(prob.initial[i][j]);
                 else
-                    fun = cpp_gen_string(prob.initial[i]);
+                    init_fun = cpp_gen_string(prob.initial[i]);
                 end
             else
-                fun = "zero_init"
+                init_fun = "zero_init"
             end
             alloc_dof = alloc_dof*"double * "*nam*"=octDA->getVecPointerToDof(uSolVecPtr,VAR::M_UI"*nam*", false,false);\n";
-            set_dof = set_dof*"octDA->setVectorByFunction("*nam*","*fun*",false,false,1);\n";
+            set_dof = set_dof*"octDA->setVectorByFunction("*nam*","*init_fun*",false,false,1);\n";
+            if prob.time_dependent
+                alloc_dof = alloc_dof*"double * "*nam*"_next=octDA->getVecPointerToDof(uSolVecPtr,VAR::M_UI"*nam*"_NEXT, false,false);\n";
+                set_dof = set_dof*"octDA->setVectorByFunction("*nam*"_next,"*init_fun*",false,false,1);\n";
+            end
         end
     end
     for i=1:length(coefficients)
@@ -275,14 +306,22 @@ function dendro_main_file(var)
         end
     end
     
+    # What to base the initial mesh refinement on
+    if length(coefficients) > 0 && typeof(coefficients[1].value[1]) == GenFunction
+        mesh_base = cpp_gen_string(coefficients[1].value[1]);
+    elseif prob.time_dependent
+        mesh_base = init_fun;
+    else
+        mesh_base = "zero_init";
+    end
+    
     solvepart = "";
     if prob.time_dependent
-        solvepart = "double currentT = 0.0;
-        for(int ti=0; ti<tN; ti++){
-            rhsVec.computeVec(rhs,rhs,1.0);
-            lhsMat.cgSolve("*valvec*",rhs,solve_max_iters,solve_tol,0);
-            currentT += dt;
-        }";
+        solvepart = "
+        //////////////will be generated/////////////////////////////////////////////
+        #include \"Stepper.cpp\"
+        ////////////////////////////////////////////////////////////////////////////
+        ";
     else
         solvepart = "// This uses the generated RHS code to compute the RHS vector.
         rhsVec.computeVec(rhs,rhs,1.0);
@@ -380,9 +419,7 @@ function dendro_main_file(var)
         _InitializeHcurve(m_uiDim);
         RefElement refEl(m_uiDim,eOrder);
         
-        // This is the tricky part. Octree generation could be based on a function or other variable. This will need to be generated.
-        // But for now just use this
-        ot::DA* octDA=new ot::DA("""* cpp_gen_string(coefficients[1].value[1]) *""",1,comm,eOrder,wavelet_tol,100,partition_tol,ot::FEM_CG);
+        ot::DA* octDA=new ot::DA("""* mesh_base *""",1,comm,eOrder,wavelet_tol,100,partition_tol,ot::FEM_CG);
         
         // Variable info will also be generated, but for now assume a single scalar variable
         std::vector<double> uSolVec;
@@ -398,8 +435,8 @@ function dendro_main_file(var)
         rhsVec.setGlobalDofVec(uSolVecPtr);
         
         // This assumes some things
-        lhsMat.setBdryFunction("""* cpp_gen_string(prob.bc_func[1,1]) *""");
-        rhsVec.setBdryFunction("""* cpp_gen_string(prob.bc_func[1,1]) *""");
+        lhsMat.setBdryFunction("""* cpp_gen_string(prob.bc_func[1,1][1]) *""");
+        rhsVec.setBdryFunction("""* cpp_gen_string(prob.bc_func[1,1][1]) *""");
         
         // Allocate dofs
         """*alloc_dof*"""
@@ -476,6 +513,12 @@ function dendro_prob_file()
                 varpart = varpart*"=0";
             end
             varpart = varpart*", ";
+            if prob.time_dependent
+                # Also add next versions for the next time step
+                varpart = varpart*"M_UI"*string(variables[i].symvar[j])*"_NEXT, ";
+                varnames = varnames*"\"m_ui"*string(variables[i].symvar[j])*"_next\", ";
+                dofs = dofs + 1;
+            end
             dofs = dofs+1;
         end
     end
@@ -501,8 +544,6 @@ function dendro_prob_file()
     if prob.time_dependent
         println(file, "double tBegin = 0;");
         println(file, "double tEnd = "*string(prob.end_time)*";");
-        println(file, "double dt = "*string(time_stepper.dt)*";");
-        println(file, "int tN = "*string(time_stepper.Nsteps)*";");
     end
 end
 
@@ -545,6 +586,10 @@ function dendro_bilinear_file(code)
                 varpart = varpart*"=0";
             end
             varpart = varpart*", ";
+            if prob.time_dependent
+                # Also add next versions for the next time step
+                varpart = varpart*"M_UI"*string(variables[i].symvar[j])*"_NEXT, ";
+            end
         end
     end
     coefpart = "";
@@ -676,6 +721,11 @@ function dendro_bilinear_file(code)
     {
         double Rg_z=((1u<<m_uiMaxDepth)-0);
         return (((z)/(Rg_z))*((m_uiPtMax.z()-m_uiPtMin.z()))+m_uiPtMin.z());
+    }
+    
+    void FemshopDendroSkeleton::LHSMat::setDt(double newdt)
+    {
+        dt = newdt;
     }
 
     int FemshopDendroSkeleton::LHSMat::cgSolve(double * x ,double * b,int max_iter, double& tol,unsigned int var)
@@ -851,6 +901,8 @@ function dendro_bilinear_file(code)
             // coefficient vectors
             double* grandDofVecPtr;
             """*"enum VAR{"*varpart*coefpart*"M_UI_RHS};"*"""
+            // time step
+            double dt;
 
         public:
             /**@brief: constructor*/
@@ -880,6 +932,8 @@ function dendro_bilinear_file(code)
             double gridY_to_Y(double y);
             /**@brief octree grid z to domin z*/
             double gridZ_to_Z(double z);
+            
+            void setDt(double dt);
 
             int cgSolve(double * x ,double * b,int max_iter, double& tol,unsigned int var=0);
         };
@@ -907,6 +961,10 @@ function dendro_linear_file(code)
                 varpart = varpart*"=0";
             end
             varpart = varpart*", ";
+            if prob.time_dependent
+                # Also add next versions for the next time step
+                varpart = varpart*"M_UI"*string(variables[i].symvar[j])*"_NEXT, ";
+            end
         end
     end
     coefpart = "";
@@ -1039,6 +1097,11 @@ function dendro_linear_file(code)
         double Rg_z=((1u<<m_uiMaxDepth)-0);
         return (((z)/(Rg_z))*((m_uiPtMax.z()-m_uiPtMin.z()))+m_uiPtMin.z());
     }
+    
+    void FemshopDendroSkeleton::RHSVec::setDt(double newdt)
+    {
+        dt = newdt;
+    }
     """
     print(skeleton_file, content);
     
@@ -1062,6 +1125,8 @@ function dendro_linear_file(code)
             // coefficient vectors
             double* grandDofVecPtr;
             """*"enum VAR{"*varpart*coefpart*"M_UI_RHS};"*"""
+            // time step
+            double dt;
 
         public:
             RHSVec(ot::DA* da,unsigned int dof=1);
@@ -1086,6 +1151,8 @@ function dendro_linear_file(code)
             double gridY_to_Y(double y);
             /**@brief octree grid z to domin z*/
             double gridZ_to_Z(double z);
+            
+            void setDt(double dt);
         };
     }
 
@@ -1097,6 +1164,23 @@ end
 # Nothing here yet. TODO: time stepper
 function dendro_stepper_file()
     file = add_generated_file("Stepper.cpp", dir="src");
+    valvec = string(variables[1].symvar[1]);
+    content = "
+double currentT = tBegin;
+// Time stepper parameters
+int Nsteps = "*string(50)*";
+double dt = tEnd / Nsteps;
+rhsVec.setDt(dt);
+lhsMat.setDt(dt);
+
+for(int ti=0; ti<Nsteps; ti++){
+    rhsVec.computeVec(rhs,rhs,1.0);
+    lhsMat.cgSolve("*valvec*"_next,rhs,solve_max_iters,solve_tol,0);
+    std::swap("*valvec*", "*valvec*"_next);
+    currentT += dt;
+}";
+    
+    print(file, content);
 end
 
 # Right now this just tries to plot
@@ -1246,9 +1330,13 @@ function dendrotarget_prepare_needed_values(entities, var, lorr, vors)
                 end
                 
             elseif ctype == 3 # a known variable value
+                # This should only occur for time dependent problems
+                # Use the values from the previous time step
                 if vors == "volume"
-                    # How do I get variable values? Probably the same as getting a coefficient, but I need to think about it.
-                    # TODO
+                    push!(to_delete, cname);
+                    short_name = split(cname, "coef_")[end];
+                    code *= "double* "*cname*" = new double[nPe];\n";
+                    code *= "m_uiOctDA->getElementNodalValues(m_uiOctDA->getVecPointerToDof(grandDofVecPtr, VAR::M_UI"*short_name*", false,false), "*cname*", m_uiOctDA->curr(), m_uiDof);\n";
                 else
                     #TODO surface
                 end
@@ -1386,7 +1474,13 @@ function dendrotarget_make_elemental_computation(terms, to_delete, var, lorr, vo
     
     # Put the pieces together
     code = "// Allocate temporary storage for each term.\n"
-    code *= temp_alloc * "\n";
+    code *= temp_alloc;
+    if lorr == RHS && length(loop_code) > 0
+        code *= "double* rhscoefvec = new double[nPe];\n";
+        dealloc *= "delete [] rhscoefvec;\n";
+    end
+    code *= "\n";
+    
     if lorr==LHS
         code *= "// Trial function factors.\n"
     end
@@ -1475,7 +1569,7 @@ DENDRO_TENSOR_AIIX_APPLY_ELEM(nrp,DgT,imV2,"*out_name*");\n";
                 # This will eventually be ??
                 printerr("Derivative index problem in "*string(test_part));
             else
-                printerr("Derivative index problem in "*string(ftest_part));
+                printerr("Derivative index problem in "*string(test_part));
             end
         else # no derivatives
             test_code *= 
@@ -1490,7 +1584,7 @@ DENDRO_TENSOR_AIIX_APPLY_ELEM(nrp,QT1d,imV2,"*out_name*");\n";
     end
     
     # Then the trial function
-    if !(trial_part === nothing)
+    if !(trial_part === nothing) && lorr == LHS
         trial_code = "// Multiply by trial function factor: "*string(trial_part)*"\n";
         if length(trial_part.derivs) > 0
             trial_deriv = trial_part.derivs[1];
@@ -1513,7 +1607,7 @@ DENDRO_TENSOR_AIIX_APPLY_ELEM(nrp,Dg,imV2,"*out_name*");\n";
                 # This will eventually be ??
                 printerr("Derivative index problem in "*string(trial_part));
             else
-                printerr("Derivative index problem in "*string(ftrial_part));
+                printerr("Derivative index problem in "*string(trial_part));
             end
         else # no derivatives
             trial_code *= 
@@ -1546,15 +1640,26 @@ DENDRO_TENSOR_AIIX_APPLY_ELEM(nrp,Q1d,imV2,"*out_name*");\n";
     if lorr == RHS
         idxstr = "[coefi]";
     end
-    if !(coef_part === nothing)
-        coef_string = string(CodeGenerator.replace_entities_with_symbols(coef_part, index="coefi"));
+    if !(coef_part === nothing) || (lorr == RHS && !(trial_part === nothing))
+        if !(coef_part === nothing)
+            coef_string = string(dendro_change_math_ops(CodeGenerator.replace_entities_with_symbols(coef_part, index="coefi")));
+        else
+            coef_string = "";
+        end
+        # for time dependent parts there can be variable parts on RHS
+        if lorr == RHS && !(trial_part === nothing)
+            if length(coef_string)>0
+                coef_string = coef_string * " * " * string(dendro_change_math_ops(CodeGenerator.replace_entities_with_symbols(trial_part, index="coefi")));
+            else
+                coef_string = string(dendro_change_math_ops(CodeGenerator.replace_entities_with_symbols(trial_part, index="coefi")));
+            end
+        end
         
         if lorr == LHS
             weight_code = weight_code*" * "*coef_string;
         else
             rhscoef_code = 
-"double* rhscoefvec = new double[nPe];
-for(int coefi=0; coefi<nPe; coefi++){
+"for(int coefi=0; coefi<nPe; coefi++){
     rhscoefvec[coefi] = "*coef_string*";
 }
 ";
@@ -1571,13 +1676,12 @@ for(int coefi=0; coefi<nPe; coefi++){
     coef_code = out_name*idxstr*"*=(("*jacobian_factors[test_deriv+1, trial_deriv+1]*")*"*weight_code*");";
     
     # If there was no trial part, it's an RHS and we need to finish the quadrature with this
-    if trial_part === nothing && lorr == RHS
-        trial_code = 
-    rhscoef_code*
+    if lorr == RHS
+        trial_code = rhscoef_code*
 "// For RHS, multiply by refel.Q to interpolate to quadrature points.
 DENDRO_TENSOR_IIAX_APPLY_ELEM(nrp,Q1d,rhscoefvec,imV1);
 DENDRO_TENSOR_IAIX_APPLY_ELEM(nrp,Q1d,imV1,imV2);
-DENDRO_TENSOR_AIIX_APPLY_ELEM(nrp,Q1d,imV2,"*out_name*");\n delete rhscoefvec;\n";
+DENDRO_TENSOR_AIIX_APPLY_ELEM(nrp,Q1d,imV2,"*out_name*");\n";
     end
     
     return (trial_code, coef_code, test_code, test_ind, trial_ind);

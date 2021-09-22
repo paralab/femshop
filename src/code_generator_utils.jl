@@ -387,7 +387,7 @@ function replace_entities_with_symbols(ex; index=nothing)
     elseif typeof(ex) == SymEntity
         # use make_coef_name
         name = make_coef_name(ex)
-        if !(index===nothing)
+        if !(index===nothing) && !(name == "dt")
             idx = Symbol(index);
             newex = :(a[$idx]);
             newex.args[1] = Symbol(name);
