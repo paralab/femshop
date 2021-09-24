@@ -1,32 +1,29 @@
 #=
-# 3D heat, Dirichlet bc
+# 3D Poisson, Dirichlet bc
 # Uses Dendro imported as a custom gen target
 =#
 if !@isdefined(Femshop)
     include("../Femshop.jl");
     using .Femshop
 end
-init_femshop("heat3ddendro");
+init_femshop("poisson3ddendro");
 
-useLog("heat3ddendrolog", level=3)
+useLog("poisson3ddendrolog", level=3)
 
 # default values (max_depth=6, wavelet_tol = 0.1, partition_tol = 0.3, solve_tol = 1e-6, max_iters = 100)
-generateFor("target_dendro_cg.jl", params=(7, 0.01, 0.3, 0.000001, 100))
+generateFor("target_dendro_cg.jl", params=(6, 0.1, 0.3, 0.000001, 100))
 
 domain(3)
 functionSpace(order=2)
-timeStepper(EULER_IMPLICIT)
-timeInterval(1)
 
 u = variable("u")
 testSymbol("v")
 
 boundary(u, 1, DIRICHLET, "0")
-initial(u, "(sin(pi*x)*sin(pi*y)*sin(pi*z))^4")
 
 # Write the weak form 
-coefficient("f", "2*sin(6*pi*x)*sin(pi*x)*sin(6*pi*y)*sin(pi*y)*sin(pi*z)")
-weakForm(u, "Dt(u*v) + 0.01 * dot(grad(u),grad(v)) - f*v")
+coefficient("f", "-14*pi*pi*sin(3*pi*x)*sin(2*pi*y)*sin(pi*z)")
+weakForm(u, "-dot(grad(u),grad(v)) - f*v")
 
 solve(u);
 

@@ -347,12 +347,17 @@ function dendro_main_file(var)
     #include "refel.h"
     #include "operators.h"
     #include "cg.h"
+    #include <iostream>
+    #include <sys/time.h>
     
     #include "linear_skel.h"
     #include "bilinear_skel.h"
 
-    int main (int argc, char** argv)
-    {
+    double rtclock();
+
+    int main (int argc, char** argv){
+        
+        double t_setup, t_solve;
 
         MPI_Init(&argc, &argv);
         MPI_Comm comm = MPI_COMM_WORLD;
@@ -360,6 +365,9 @@ function dendro_main_file(var)
         int rank, npes;
         MPI_Comm_rank(comm, &rank);
         MPI_Comm_size(comm, &npes);
+        
+        if(!rank)
+            t_setup = rtclock();
         
         m_uiMaxDepth = 4; // a default value, but should be set in config.cpp
         
@@ -408,12 +416,11 @@ function dendro_main_file(var)
         #include "Problem.cpp"
         /////////////////////////////////////////////////////////////////////////////
         
-        // Uncomment to display various parameters
         if (!rank) {
-        //     std::cout << YLW << "maxDepth: " << m_uiMaxDepth << NRM << std::endl;
-        //     std::cout << YLW << "wavelet_tol: " << wavelet_tol << NRM << std::endl;
-        //     std::cout << YLW << "partition_tol: " << partition_tol << NRM << std::endl;
-        //     std::cout << YLW << "eleOrder: " << eOrder << NRM << std::endl;
+             std::cout << YLW << "maxDepth: " << m_uiMaxDepth << NRM << std::endl;
+             std::cout << YLW << "wavelet_tol: " << wavelet_tol << NRM << std::endl;
+             std::cout << YLW << "partition_tol: " << partition_tol << NRM << std::endl;
+             std::cout << YLW << "eleOrder: " << eOrder << NRM << std::endl;
         }
 
         _InitializeHcurve(m_uiDim);
@@ -447,7 +454,27 @@ function dendro_main_file(var)
         octDA->setVectorByFunction(rhs,zero_init,false,false,1); // zeros
         
         // Solve
+        if(!rank){
+            t_setup = rtclock() - t_setup;
+            t_solve = rtclock();
+        }
         """*solvepart*"""
+        
+        if(!rank)
+            t_solve = rtclock() - t_solve;
+        
+        if(!rank){
+            std::cout<<"setup time: "<<t_setup<<std::endl;
+            std::cout<<"solve time: "<<t_solve<<std::endl;
+            std::ofstream logfile;
+            logfile.open ("""*"\""*CodeGenerator.genFileName*"_timelog.txt\""*""", std::ios::out | std::ios::app);
+            logfile<<"----------------------------------"<<std::endl;
+            logfile<<"num. procs: "<<npes<<std::endl;
+            logfile<<"setup time: "<<t_setup<<std::endl;
+            logfile<<"solve time: "<<t_solve<<std::endl;
+            logfile<<"----------------------------------"<<std::endl;
+            logfile.close();
+        }
         
         // Output
         //////////////will be generated/////////////////////////////////////////////
@@ -463,6 +490,17 @@ function dendro_main_file(var)
 
         MPI_Finalize();
         return 0;
+    }
+    
+    double rtclock(){
+        struct timezone Tzp;
+        struct timeval Tp;
+        int stat;
+        stat = gettimeofday(&Tp, &Tzp);
+        if(stat != 0){
+            printf("Error returned from gettimeofday\n");
+        }
+        return (Tp.tv_sec + Tp.tv_usec * 1.0e-6);
     }
     """
     print(file, content);
@@ -567,6 +605,47 @@ function dendro_genfunction_file()
             end
         end
     end
+end
+
+# Time stepper (Only added for time dependent problems)
+function dendro_stepper_file()
+    file = add_generated_file("Stepper.cpp", dir="src");
+    varvec = string(variables[1].symvar[1]);
+    varvec_next = string(variables[1].symvar[1])*"_next";
+    content = "
+double currentT = tBegin;
+// Time stepper parameters
+int Nsteps = "*string(50)*";
+double dt = tEnd / Nsteps;
+rhsVec.setDt(dt);
+lhsMat.setDt(dt);
+
+for(int ti=0; ti<Nsteps; ti++){
+    int activeRank=octDA->getRankActive();
+    if(!activeRank)
+        std::cout<<\"step \"<<ti<<\" (t=\"<<currentT<<\")\"<<std::endl;
+        
+    rhsVec.computeVec(rhs,rhs,1.0);
+    lhsMat.cgSolve("*varvec_next*",rhs,solve_max_iters,solve_tol,0);
+    
+    // Exchange ghosts and copy u_next to u
+    double* _tmpvec=NULL;
+    
+    octDA->nodalVecToGhostedNodal(uSolVecPtr,_tmpvec,false,DOF);
+    
+    octDA->readFromGhostBegin(_tmpvec, DOF);
+    octDA->readFromGhostEnd(_tmpvec, DOF);
+    
+    octDA->ghostedNodalToNodalVec(_tmpvec, uSolVecPtr,false,DOF);
+    
+    octDA->destroyVector(_tmpvec);
+    
+    octDA->copyVectors("*varvec*", "*varvec_next*", false, false, 1);
+    
+    currentT += dt;
+}";
+    
+    print(file, content);
 end
 
 # This is the matrix assembly code.
@@ -1102,6 +1181,22 @@ function dendro_linear_file(code)
     {
         dt = newdt;
     }
+    
+    void FemshopDendroSkeleton::RHSVec::getCorrectElementalValues(const VECType *in, VECType* out) {
+        VECType* _in=NULL;
+        
+        m_uiOctDA->nodalVecToGhostedNodal(in,_in,false,m_uiDof);
+        
+        m_uiOctDA->readFromGhostBegin(_in, m_uiDof);
+        
+        m_uiOctDA->getElementNodalValues(_in, out, m_uiOctDA->curr(), m_uiDof);
+        
+        m_uiOctDA->readFromGhostEnd(_in, m_uiDof);
+        
+        m_uiOctDA->destroyVector(_in);
+        
+        return;
+    }
     """
     print(skeleton_file, content);
     
@@ -1153,34 +1248,14 @@ function dendro_linear_file(code)
             double gridZ_to_Z(double z);
             
             void setDt(double dt);
+            
+            void getCorrectElementalValues(const VECType *in, VECType* out);
         };
     }
 
     #endif //DENDRO_5_0_LINEAR_SKEL_H
     """
     print(skeleton_headerfile, content);
-end
-
-# Nothing here yet. TODO: time stepper
-function dendro_stepper_file()
-    file = add_generated_file("Stepper.cpp", dir="src");
-    valvec = string(variables[1].symvar[1]);
-    content = "
-double currentT = tBegin;
-// Time stepper parameters
-int Nsteps = "*string(50)*";
-double dt = tEnd / Nsteps;
-rhsVec.setDt(dt);
-lhsMat.setDt(dt);
-
-for(int ti=0; ti<Nsteps; ti++){
-    rhsVec.computeVec(rhs,rhs,1.0);
-    lhsMat.cgSolve("*valvec*"_next,rhs,solve_max_iters,solve_tol,0);
-    std::swap("*valvec*", "*valvec*"_next);
-    currentT += dt;
-}";
-    
-    print(file, content);
 end
 
 # Right now this just tries to plot
@@ -1310,8 +1385,8 @@ function dendrotarget_prepare_needed_values(entities, var, lorr, vors)
                     push!(to_delete, cname);
                     short_name = split(cname, "coef_")[end];
                     code *= "double* "*cname*" = new double[nPe];\n";
-                    code *= "m_uiOctDA->getElementNodalValues(m_uiOctDA->getVecPointerToDof(grandDofVecPtr, VAR::M_UI"*short_name*", false,false), "*cname*", m_uiOctDA->curr(), m_uiDof);\n";
-                    
+                    # WRONG-> code *= "m_uiOctDA->getElementNodalValues(m_uiOctDA->getVecPointerToDof(grandDofVecPtr, VAR::M_UI"*short_name*", false,false), "*cname*", m_uiOctDA->curr(), m_uiDof);\n";
+                    code *= "FemshopDendroSkeleton::RHSVec::getCorrectElementalValues(m_uiOctDA->getVecPointerToDof(grandDofVecPtr, VAR::M_UI"*short_name*", false,false), "*cname*");\n";
                     # Apply any needed derivative operators. Interpolate at quadrature points.
                     if length(entities[i].derivs) > 0
                         println("coefficient derivatives not ready: "*string(entities[i]))
