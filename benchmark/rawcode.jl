@@ -1,4 +1,7 @@
 # Find a way to run these example in isolation
+using Femshop
+
+
 init_femshop("poisson1d")
 
 useLog("poisson1dlog")
@@ -16,5 +19,23 @@ coefficient("f", "-100*pi*pi*sin(10*pi*x)*sin(pi*x) -
              pi*pi*sin(10*pi*x)*sin(pi*x) + 20*pi*pi*cos(10*pi*x)*cos(pi*x)")
 weakForm(u, "-grad(u)*grad(v) - f*v")
 
-SUITE["poisson1d-assemble"] = @benchmarkable Femshop.CGSolver.assemble($u,
-                         $Femshop.bilinears[u.index], $Femshop.linears[u.index])
+import Femshop: grid_data, mesh_data, refel 
+dofs_per_node = 1
+
+N1 = size(grid_data.allnodes,2);
+Nn = dofs_per_node * N1;
+Np = refel.Np;
+nel = mesh_data.nel;
+
+rhsvec = zeros(Nn);
+lhsmatI = zeros(Int, nel*dofs_per_node*Np*dofs_per_node*Np);
+lhsmatJ = zeros(Int, nel*dofs_per_node*Np*dofs_per_node*Np);
+lhsmatV = zeros(nel*dofs_per_node*Np*dofs_per_node*Np);
+allocated_vecs = [rhsvec, lhsmatI, lhsmatJ, lhsmatV];
+
+Femshop.CGSolver.assemble(u, Femshop.bilinears[u.index], Femshop.linears[u.index], allocated_vecs)
+
+print("END")
+
+#SUITE["poisson1d-assemble"] = @benchmarkable Femshop.CGSolver.assemble($u,
+                         #$Femshop.bilinears[u.index], $Femshop.linears[u.index])
