@@ -79,7 +79,7 @@ dt =        args[8]
 end
 
 # Allocate, compute, or fetch all needed values
-function prepare_needed_values_cachsim(entities, var, lorr, vors)
+function prepare_needed_values_cachesim(entities, var, lorr, vors)
     # Only gather the pieces that are used. See the end of this function.
     if vors == "volume"
         # el, loc2glb, nodex, detj, J
@@ -407,25 +407,25 @@ function prepare_needed_values_cachsim(entities, var, lorr, vors)
         if need_deriv_matrix
             needed_pieces *= "# Build derivative matrices"
             
-            needed_pieces *= "Femshop.cachesim_load_range(13)";
-            needed_pieces *= "Femshop.cachesim_load_range(14)";
-            needed_pieces *= "Femshop.cachesim_load_range(15)";
-            needed_pieces *= "Femshop.cachesim_load_range(16)";
+            needed_pieces *= "Femshop.cachesim_load_range(13)\n";
+            needed_pieces *= "Femshop.cachesim_load_range(14)\n";
+            needed_pieces *= "Femshop.cachesim_load_range(15)\n";
+            needed_pieces *= "Femshop.cachesim_load_range(16)\n";
             if config.dimension == 1
-                needed_pieces *= "Femshop.cachesim_load_range(7)";
-                needed_pieces *= "Femshop.cachesim_load_range(10)";
+                needed_pieces *= "Femshop.cachesim_load_range(7)\n";
+                needed_pieces *= "Femshop.cachesim_load_range(10)\n";
             elseif config.dimension == 2
-                needed_pieces *= "Femshop.cachesim_load_range(7)";
-                needed_pieces *= "Femshop.cachesim_load_range(8)";
-                needed_pieces *= "Femshop.cachesim_load_range(10)";
-                needed_pieces *= "Femshop.cachesim_load_range(11)";
+                needed_pieces *= "Femshop.cachesim_load_range(7)\n";
+                needed_pieces *= "Femshop.cachesim_load_range(8)\n";
+                needed_pieces *= "Femshop.cachesim_load_range(10)\n";
+                needed_pieces *= "Femshop.cachesim_load_range(11)\n";
             elseif config.dimension == 3
-                needed_pieces *= "Femshop.cachesim_load_range(7)";
-                needed_pieces *= "Femshop.cachesim_load_range(8)";
-                needed_pieces *= "Femshop.cachesim_load_range(9)";
-                needed_pieces *= "Femshop.cachesim_load_range(10)";
-                needed_pieces *= "Femshop.cachesim_load_range(11)";
-                needed_pieces *= "Femshop.cachesim_load_range(12)";
+                needed_pieces *= "Femshop.cachesim_load_range(7)\n";
+                needed_pieces *= "Femshop.cachesim_load_range(8)\n";
+                needed_pieces *= "Femshop.cachesim_load_range(9)\n";
+                needed_pieces *= "Femshop.cachesim_load_range(10)\n";
+                needed_pieces *= "Femshop.cachesim_load_range(11)\n";
+                needed_pieces *= "Femshop.cachesim_load_range(12)\n";
             end
         end
         
@@ -499,13 +499,13 @@ Nfp = refel.Nfp[frefelind[1]]; # number of face nodes\n
     return code;
 end
 
-function make_elemental_computation_cachsim(terms, var, dofsper, offset_ind, lorr, vors)
+function make_elemental_computation_cachesim(terms, var, dofsper, offset_ind, lorr, vors)
     # don't actually do anything here. maybe later
     return "";
 end
 
 # Generate the assembly loop structures and insert the content
-function generate_assembly_loop_cachsim(indices)
+function generate_assembly_loop_cachesim(indices)
     # Each of the indices must be passed to the functions in a named tuple.
     # Pass all defined indexers.
     index_args = "";

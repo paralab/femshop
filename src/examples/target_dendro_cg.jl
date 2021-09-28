@@ -304,9 +304,9 @@ function dendro_main_file(var)
             # if initial condition, use it, otherwise zero
             if length(prob.initial) >= i && !(prob.initial[i] === nothing)
                 if typeof(prob.initial[i]) <: Array
-                    init_fun = cpp_gen_string(prob.initial[i][j]);
+                    init_fun = "special_"*cpp_gen_string(prob.initial[i][j]);
                 else
-                    init_fun = cpp_gen_string(prob.initial[i]);
+                    init_fun = "special_"*cpp_gen_string(prob.initial[i]);
                 end
             else
                 init_fun = "zero_init"

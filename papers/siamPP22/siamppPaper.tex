@@ -40,6 +40,8 @@
 \usepackage{ltexpprt}
 \usepackage{hyperref}
 
+\usepackage{graphicx}
+
 \begin{document}
 
 %
@@ -216,17 +218,59 @@ There are other ways to improve performance within FMshop besides the major para
 
 It would not be practical to run the cache simulator in the background during a real computation, and when there are a large number of elements it may not be practical to simulate the full system. Instead the cache simulator is essentially another target for code generation. Rather than performing the mathematical computation, the approximate sequence of memory accesses is fed into the simlator. At the end of the computation the cache statistics are recorded and analyzed. This presents FMshop with a tool for tuning and measuring the effectiveness of changes in data structures and loop arrangements.
 
-To demonstrate this, a number of data organization options are available. Beginning with a mesh from the built-in mesh generation utility, which initially provides a two-layer lexicographic ordering, meaning nodes are ordered lexicographically within each element and elements are also ordered lexicographically. In order to improve spatial locality, the elements are rearranged either into a space-filling curve, such as a Hilbert or Morton curve, or into tiles. A random ordering was also included to demonstrate a very poor arrangement. A comparison of cache simulation results for these various configurations shows a clear difference in the number of cache misses. Although the differences are not very large, this represents an inexpensive way to get some improvement. 
-\\
+A number of data organization options are available. A mesh from the built-in mesh generation utility provides a two-layer lexicographic ordering, meaning nodes are ordered lexicographically within each element and elements are also ordered lexicographically. In order to improve spatial locality, the elements can be rearranged either into a space-filling curve, such as a Hilbert or Morton curve, or into tiles. The following commands will accomplish this.
+\begin{verbatim}
+hilbert_elements([n,n,n])
+morton_elements([n,n,n])
+tiled_elements([n,n,n],[t1,t2,t3])
+\end{verbatim}
 
-TODO: add plot
-\\
+Similar options are available to reorder the nodes in the grid if desired.
 
 \section{Demonstrations}
 Some example applications are outlined here. The focus is more toward the DSL aspect and the types of problems that this tool is designed for, rather than performance benchmarks. Since external code generation relys on the parallel capabilities of the target framework, we refer the reader to the demonstrated performance measurements of those. For example, the Dendro framework has shown competetive scalability for large scale simulations\cite{dendro}\cite{dendro2}. For FMshop's internal performance, parallelization strategies are currently under development, and competetive benchmarks have not yet been established.
 
-\subsection{TODO: example problem}
-An example showing ...
+\subsection{Steady-state Advection-diffusion-reaction Equation}
+The following equation(\ref{eq:adr}) was used to demonstrate the ability to easily select code generation targets and to highlight the accessability of high performance solutions. 
+\begin{equation}
+\label{eq:adr}
+\nabla \cdot (D\nabla u) + \textbf{s} \cdot \nabla u - c u = f
+\end{equation}
+\[
+u(x\in \partial \Omega) = 0
+\]
+Here all of the coefficients have constant value to simplify analysis, but are intentionally generated as functions of $(x,y,z)$ to increase computational complexity. The motivation for this is to demonstrate the performance for a more challenging problem. The function $f$ was chosen such that $u$ satisfies \ref{eq:sol}.
+\begin{equation}
+\label{eq:sol}
+u(x,y,z) = \sin(3\pi x) \sin(2\pi y) \sin(\pi z)
+\end{equation}
+
+The weak form expression provided to FMshop was
+\begin{verbatim}
+weakForm(u,"-D*dot(grad(u),grad(v)) + 
+            dot(s, grad(u))*v - c*u*v - f*v")
+\end{verbatim}
+
+The problem was first solved internally with the Julia CG-FE target using a uniform $20\times 20\times 20$ mesh of hexahedral elements. The polynomial order was set to $p=2$, which resulted in 68921 nodal degrees of freedom. This is reasonable for sequential execution in roughly one minute on a typical laptop computer, and can be thought of as a coarse prototype.
+
+The next step was to switch the target to Matlab while keeping the same mesh configuration. To accomplish this, only one line was added to the script: \begin{verbatim}
+generateFor("target_matlab_cg.jl")
+\end{verbatim}
+ 
+After testing these coarse prototypes, a much finer version was solved using the Dendro target. Three lines in the script were modified to generate code for this target. 
+\begin{verbatim}
+generateFor("target_dendro_cg.jl", 
+            params=(8,0.01,0.3,1e-6,500))
+build_octree_with(f);
+# removed: mesh(HEXMESH, elsperdim=20)
+\end{verbatim}
+The generated code was then compiled using the Dendro library. The resulting adaptively refined mesh produced by Dendro contained abount $3.9\times 10^{6}$ nodes, which is more suited to parallel execution on a cluster. It was tested on the Notchpeak cluster at the Univeristy of Utah's CHPC using eight dual Intel XeonSP Skylake nodes with 32 cores each. Figure \ref{fig:scaling} shows that the computation scales well up to at least 128 processes at which point mesh generation and other overhead become dominant.
+
+\begin{figure}
+\label{fig:scaling}
+\includegraphics[width=\linewidth]{figures/scaling.eps}
+\caption{Strong scaling on CHPC's Notchpeak cluster using 8 nodes with 32 cores each for the advection-diffusion-reaction equation example. The generated code scales consistently up to 256 cores at which point mesh generation and overhead dominate.}
+\end{figure}
 
 \subsection{Complex Systems of PDEs}
 A key principle of this DSL is to simplify the translation from mathematical expressions to code. Complex systems of equations present a challenge in this respect due to the need to manage a large number of components and interactions. A good example of this is the phonon Boltzman transport equation. We refer the reader to \cite{bte2} and \cite{bte3} for the physical background and derivation of the equations. There are a number of different approaches to solving these equations. A deterministic approach that has lent itself well to parallelization is outlined in \cite{bte}, and we will adopt that formulation here. The resulting conservation-type FV equation in terms of the phonon intensity $I_{i,j}$ corresponding to directional vector $\textbf{s}_{i}$ and frequency band $\omega_{j}$ will be Eq.\ref{eq-bte}.

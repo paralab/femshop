@@ -89,6 +89,10 @@ function assemble_cachesim(var, bilinear, linear, t=0.0, dt=0.0)
     AV = 0;
     
     allnodes_id = add_cachesim_array(size(grid_data.allnodes),8);
+    ak_id = add_cachesim_array(Np*Np*dofs_per_node*dofs_per_node,8);
+    aktmp_id = add_cachesim_array(Np*Np*dofs_per_node*dofs_per_node,8);
+    bk_id = add_cachesim_array(Np*dofs_per_node,8);
+    bktmp_id = add_cachesim_array(Np*dofs_per_node,8);
     
     #  Elemental loop follows elemental ordering
     for e=elemental_order;
@@ -99,6 +103,9 @@ function assemble_cachesim(var, bilinear, linear, t=0.0, dt=0.0)
         cachesim_load_range(allnodes_id, gis[:], 1:refel.dim);
         cachesim_load_range(allnodes_id, glb[:], 1:refel.dim);
         
+        cachesim_load_range(aktmp_id);
+        cachesim_load_range(bktmp_id);
+        
         Astart = (e-1)*Np*dofs_per_node*Np*dofs_per_node + 1; # The segment of AI, AJ, AV for this element
         
         # The linear part. Compute the elemental linear part for each dof
@@ -108,29 +115,29 @@ function assemble_cachesim(var, bilinear, linear, t=0.0, dt=0.0)
             linchunk = linear.func(rhsargs);  # get the elemental linear part
             #b[glb] .+= linchunk;
             cachesim_load_range(2, glb);
-            cachesim_load_range(5);
+            cachesim_load_range(bk_id);
             cachesim_store_range(2, glb);
 
             bilinchunk = bilinear.func(lhsargs); # the elemental bilinear part
             #A[glb, glb] .+= bilinchunk;         # This will be very inefficient for sparse A
             Arange = Astart:(Astart + Np*Np*dofs_per_node*dofs_per_node);
             cachesim_load_range(1, Arange, 1:3);
-            cachesim_load_range(4);
+            cachesim_load_range(ak_id);
             cachesim_store_range(1, Arange, 1:3);
             
         elseif typeof(var) == Variable
             # only one variable, but more than one dof
             linchunk = linear.func(rhsargs);
-            insert_linear_cachesim!(b, linchunk, glb, 1:dofs_per_node, dofs_per_node);
+            insert_linear_cachesim!(bk_id, linchunk, glb, 1:dofs_per_node, dofs_per_node);
 
             bilinchunk = bilinear.func(lhsargs);
-            insert_bilinear_cachesim!(AI, AJ, AV, Astart, bilinchunk, glb, 1:dofs_per_node, dofs_per_node);
+            insert_bilinear_cachesim!(ak_id, Astart, bilinchunk, glb, 1:dofs_per_node, dofs_per_node);
         else
             linchunk = linear.func(rhsargs);
-            insert_linear_cachesim!(b, linchunk, glb, 1:dofs_per_node, dofs_per_node);
+            insert_linear_cachesim!(bk_id, linchunk, glb, 1:dofs_per_node, dofs_per_node);
 
             bilinchunk = bilinear.func(lhsargs);
-            insert_bilinear_cachesim!(AI, AJ, AV, Astart, bilinchunk, glb, 1:dofs_per_node, dofs_per_node);
+            insert_bilinear_cachesim!(ak_id, Astart, bilinchunk, glb, 1:dofs_per_node, dofs_per_node);
         end
     end
     
@@ -178,11 +185,11 @@ function assemble_rhs_only_cachesim(var, linear, t=0.0, dt=0.0)
         elseif typeof(var) == Variable
             # only one variable, but more than one dof
             linchunk = linear.func(rhsargs);
-            insert_linear_cachesim!(b, linchunk, glb, 1:dofs_per_node, dofs_per_node);
+            insert_linear_cachesim!(bk_id, linchunk, glb, 1:dofs_per_node, dofs_per_node);
 
         else
             linchunk = linear.func(rhsargs);
-            insert_linear_cachesim!(b, linchunk, glb, 1:dofs_per_node, dofs_per_node);
+            insert_linear_cachesim!(bk_id, linchunk, glb, 1:dofs_per_node, dofs_per_node);
 
         end
     end
@@ -191,7 +198,7 @@ function assemble_rhs_only_cachesim(var, linear, t=0.0, dt=0.0)
 end
 
 # Inset the single dof into the greater construct
-function insert_linear_cachesim!(b, bel, glb, dof, Ndofs)
+function insert_linear_cachesim!(bk_id, bel, glb, dof, Ndofs)
     # group nodal dofs
     for d=1:length(dof)
         ind = glb.*Ndofs .- (Ndofs-dof[d]);
@@ -200,12 +207,12 @@ function insert_linear_cachesim!(b, bel, glb, dof, Ndofs)
         #b[ind] = b[ind] + bel[ind2];
         
         cachesim_load_range(2,ind);
-        cachesim_load_range(5,ind2);
+        cachesim_load_range(bk_id,ind2);
         cachesim_store_range(2,ind);
     end
 end
 
-function insert_bilinear_cachesim!(AI, AJ, AV, Astart, ael, glb, dof, Ndofs)
+function insert_bilinear_cachesim!(ak_id, Astart, ael, glb, dof, Ndofs)
     Np = length(glb);
     # group nodal dofs
     for dj=1:length(dof)
@@ -219,7 +226,7 @@ function insert_bilinear_cachesim!(AI, AJ, AV, Astart, ael, glb, dof, Ndofs)
                 offset = Astart + (jj-1 + Np*(dj-1))*Np*Ndofs + Np*(di-1) - 1;
                 Arange = (offset+1):(offset + Np);
                 cachesim_load_range(1, Arange, 1:3);
-                cachesim_load_range(4, indi2, indj2);
+                cachesim_load_range(ak_id, indi2, indj2);
                 cachesim_store_range(1, Arange, 1:3);
             end
         end
