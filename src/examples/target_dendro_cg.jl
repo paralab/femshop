@@ -73,6 +73,28 @@ function generate_external_files(var, lhs_vol, lhs_surf, rhs_vol, rhs_surf)
     dendro_readme_file();           # readme
 end
 
+# 
+global octree_building_function = nothing;
+function build_octree_with(a)
+    if typeof(a) == Coefficient && typeof(a.value[1]) == GenFunction
+        global octree_building_function = a.value[1];
+    elseif typeof(a) == GenFunction
+        global octree_building_function = a;
+    elseif typeof(a) == String
+        for c in coefficients
+            if a == string(c.symbol) && typeof(c.value[1]) == GenFunction
+                global octree_building_function = c.value[1];
+            end
+        end
+        if octree_building_function === nothing
+            printerr("Unexpected input to build_octree_with(). Using default.")
+        end
+    else
+        printerr("Unexpected input to build_octree_with(). Using default.")
+    end
+end
+export build_octree_with;
+
 #########################################################
 # code writing utilities
 #########################################################
@@ -246,10 +268,10 @@ function dendro_number_to_function(name, val)
     return cpp_functional(indent, name, args, argtypes, ret, rettype, captures, content);
 end
 
-function dendro_genfunction_to_string(genfun)
-    newex = dendro_swap_symbol(:x, :(gridX_to_X(x)), genfun.expr); # swap x for gridX_to_X(x)
-    newex = dendro_swap_symbol(:y, :(gridY_to_Y(y)), newex); # swap y for gridY_to_Y(y)
-    newex = dendro_swap_symbol(:z, :(gridZ_to_Z(z)), newex); # swap z for gridZ_to_Z(z)
+function dendro_genfunction_to_string(genfun; xsym=:(gridX_to_X(x)), ysym=:(gridY_to_Y(y)), zsym=:(gridZ_to_Z(z)))
+    newex = dendro_swap_symbol(:x, xsym, genfun.expr); # swap x for xsym
+    newex = dendro_swap_symbol(:y, ysym, newex); # swap y for ysym
+    newex = dendro_swap_symbol(:z, zsym, newex); # swap z for zsym
     newex = dendro_swap_symbol(:pi, :M_PI, newex); # swap pi for M_PI
     newex = dendro_change_math_ops(newex); # change operators to match C++
     s = string(newex);
@@ -297,20 +319,33 @@ function dendro_main_file(var)
             end
         end
     end
-    for i=1:length(coefficients)
-        for j=1:length(coefficients[i].symvar)
-            nam = string(coefficients[i].symvar[j]);
-            fun = cpp_gen_string(coefficients[i].value[j]);
-            alloc_dof = alloc_dof*"double * "*nam*"=octDA->getVecPointerToDof(uSolVecPtr,VAR::M_UI"*nam*", false,false);\n";
-            set_dof = set_dof*"octDA->setVectorByFunction("*nam*","*fun*",false,false,1);\n";
-        end
+    # # Now coefficients are not stored as dofs
+    # for i=1:length(coefficients)
+    #     for j=1:length(coefficients[i].symvar)
+    #         nam = string(coefficients[i].symvar[j]);
+    #         fun = cpp_gen_string(coefficients[i].value[j]);
+    #         alloc_dof = alloc_dof*"double * "*nam*"=octDA->getVecPointerToDof(uSolVecPtr,VAR::M_UI"*nam*", false,false);\n";
+    #         set_dof = set_dof*"octDA->setVectorByFunction("*nam*","*fun*",false,false,1);\n";
+    #     end
+    # end
+    
+    # functionals used for initially setting values and refining the mesh
+    functional_defs = "";
+    for i = 1:length(genfunctions)
+        str = dendro_genfunction_to_string(genfunctions[i]);
+        functional_defs *= "
+    std::function<void(double,double,double,double*)> special_"*genfunctions[i].name*" = [gridX_to_X, gridY_to_Y, gridZ_to_Z](const double x,const double y,const double z,double *var){
+        var[0] = FemshopDendroGenfunctions::"*genfunctions[i].name*"(x,y,z,0.0);
+    };";
     end
     
     # What to base the initial mesh refinement on
-    if length(coefficients) > 0 && typeof(coefficients[1].value[1]) == GenFunction
-        mesh_base = cpp_gen_string(coefficients[1].value[1]);
-    elseif prob.time_dependent
-        mesh_base = init_fun;
+    if !(octree_building_function === nothing)
+        mesh_base = "special_"*cpp_gen_string(octree_building_function);
+    elseif length(coefficients) > 0 && typeof(coefficients[1].value[1]) == GenFunction
+        mesh_base = "special_"*cpp_gen_string(coefficients[1].value[1]);
+    elseif prob.time_dependent && !(init_fun == "zero_init")
+        mesh_base = "special_"*init_fun;
     else
         mesh_base = "zero_init";
     end
@@ -352,6 +387,7 @@ function dendro_main_file(var)
     
     #include "linear_skel.h"
     #include "bilinear_skel.h"
+    #include "genfunctions.h"
 
     double rtclock();
 
@@ -369,11 +405,16 @@ function dendro_main_file(var)
         if(!rank)
             t_setup = rtclock();
         
-        m_uiMaxDepth = 4; // a default value, but should be set in config.cpp
-        
         //////////////will be generated/////////////////////////////////////////////
         #include "Config.cpp"
         ////////////////////////////////////////////////////////////////////////////
+        
+        if (argc > 4) {
+            m_uiMaxDepth = atoi(argv[1]);
+            wavelet_tol = atof(argv[2]);
+            partition_tol = atof(argv[3]);
+            eOrder = atoi(argv[4]);
+        }
         
         Point domain_min(0,0,0);
         Point domain_max(1,1,1);
@@ -411,8 +452,9 @@ function dendro_main_file(var)
             var[0]=0;
         };
         
+        """*functional_defs*"""
+        
         //////////////will be generated/////////////////////////////////////////////
-        #include "Genfunction.cpp"
         #include "Problem.cpp"
         /////////////////////////////////////////////////////////////////////////////
         
@@ -422,7 +464,9 @@ function dendro_main_file(var)
              std::cout << YLW << "partition_tol: " << partition_tol << NRM << std::endl;
              std::cout << YLW << "eleOrder: " << eOrder << NRM << std::endl;
         }
-
+        
+        FemshopDendroGenfunctions::setDepth(m_uiMaxDepth);
+        
         _InitializeHcurve(m_uiDim);
         RefElement refEl(m_uiDim,eOrder);
         
@@ -442,8 +486,8 @@ function dendro_main_file(var)
         rhsVec.setGlobalDofVec(uSolVecPtr);
         
         // This assumes some things
-        lhsMat.setBdryFunction("""* cpp_gen_string(prob.bc_func[1,1][1]) *""");
-        rhsVec.setBdryFunction("""* cpp_gen_string(prob.bc_func[1,1][1]) *""");
+        lhsMat.setBdryFunction(FemshopDendroGenfunctions::"""* cpp_gen_string(prob.bc_func[1,1][1]) *""");
+        rhsVec.setBdryFunction(FemshopDendroGenfunctions::"""* cpp_gen_string(prob.bc_func[1,1][1]) *""");
         
         // Allocate dofs
         """*alloc_dof*"""
@@ -498,7 +542,7 @@ function dendro_main_file(var)
         int stat;
         stat = gettimeofday(&Tp, &Tzp);
         if(stat != 0){
-            printf("Error returned from gettimeofday\n");
+            printf("Error returned from gettimeofday\\n");
         }
         return (Tp.tv_sec + Tp.tv_usec * 1.0e-6);
     }
@@ -562,13 +606,14 @@ function dendro_prob_file()
     end
     coefpart = "";
     coefnames = "";
-    for i=1:length(coefficients)
-        for j=1:length(coefficients[i].symvar)
-            coefpart = coefpart*"M_UI"*string(coefficients[i].symvar[j])*", ";
-            coefnames = coefnames*"\"m_ui"*string(coefficients[i].symvar[j])*"\", ";
-            dofs = dofs+1;
-        end
-    end
+    # # Now coefficients are not stored as dofs
+    # for i=1:length(coefficients)
+    #     for j=1:length(coefficients[i].symvar)
+    #         coefpart = coefpart*"M_UI"*string(coefficients[i].symvar[j])*", ";
+    #         coefnames = coefnames*"\"m_ui"*string(coefficients[i].symvar[j])*"\", ";
+    #         dofs = dofs+1;
+    #     end
+    # end
     dofs += 1; # for linear part
     println(file, "enum VAR{"*varpart*coefpart*"M_UI_RHS}; // variables, coefficients, linear part");
     println(file, "const char * VAR_NAMES[]={"*varnames*coefnames*"\"m_uiRHS\"};");
@@ -587,24 +632,87 @@ end
 
 # Functions for boundary conditions, coeficients, etc.
 function dendro_genfunction_file()
-    file = add_generated_file("Genfunction.cpp", dir="src");
+    file = add_generated_file("genfunctions.cpp", dir="src");
+    header = add_generated_file("genfunctions.h", dir="include");
+    
+    content = "
+#include \"genfunctions.h\"
+#include <math.h>
+
+unsigned int genfunction_maxDepth, genfunction_grid_max;
+// set the max depth of the grid
+void FemshopDendroGenfunctions::setDepth(unsigned int d){
+    genfunction_maxDepth = d;
+    genfunction_grid_max = 1u<<genfunction_maxDepth;
+}
+// Converts grid coordinates to spatial coordinates
+double FemshopDendroGenfunctions::gridCoordToCoord(const double x, const int comp) {
+    // cx = cmin + gx * (cmax-cmin) / (gmax-gmin)
+    // Note that gmin=0, gmax = grid_max, cmax and cmin are generated.
+    double cx=0.0;
+    switch(comp){
+        case(0):
+            cx = 0.0 + x * 1.0 / genfunction_grid_max;
+            break;
+        case(1):
+            cx = 0.0 + x * 1.0 / genfunction_grid_max;
+            break;
+        case(2):
+            cx = 0.0 + x * 1.0 / genfunction_grid_max;
+            break;
+    }
+    return cx;
+}
+
+// The genfunctions
+";
     
     indent = "";
-    args = ["x"; "y"; "z"; "var"];
-    argtypes = ["double"; "double"; "double"; "double*"];
-    rettype = "void";
-    
+    args = ["x"; "y"; "z"; "t"];
+    argtypes = ["const double"; "const double"; "const double"; "const double"];
+    rettype = "double";
+    genfunction_list = "";
     for i = 1:length(genfunctions)
-        if true #isfunction(genfunctions[i])
-            str = dendro_genfunction_to_string(genfunctions[i]);
-            content = "var[0] = "*str*";";
-            #lines = cpp_function_def(indent, genfunctions[i].name, args, argtypes, rettype, content);
-            lines = ["std::function<void(double,double,double,double*)> "*genfunctions[i].name*" = [gridX_to_X, gridY_to_Y, gridZ_to_Z](const double x,const double y,const double z,double *var){", content, "};"];
-            for j=1:length(lines)
-                println(file, lines[j]);
-            end
+        str = dendro_genfunction_to_string(genfunctions[i], xsym=:cx , ysym=:cy , zsym=:cz );
+        fun = [];
+        try
+            num = parse(Float64, str)
+            # If this works, just return that number.
+            append!(fun, ["return "*str*";"]);
+        catch
+            append!(fun, [
+                "double cx = FemshopDendroGenfunctions::gridCoordToCoord(x, 0);",
+                "double cy = FemshopDendroGenfunctions::gridCoordToCoord(y, 1);",
+                "double cz = FemshopDendroGenfunctions::gridCoordToCoord(z, 2);",
+                "return "*str*";"
+                ]);
         end
+        
+        lines = cpp_function_def(indent, "FemshopDendroGenfunctions::"*genfunctions[i].name, args, argtypes, rettype, fun);
+        for j=1:length(lines)
+            content *= lines[j] * "\n";
+        end
+        
+        genfunction_list *= "    double "*genfunctions[i].name*"(const double x, const double y, const double z, const double t);\n";
     end
+    
+    print(file, content);
+    
+    hcontent = "
+#ifndef DENDRO_5_0_GENFUNCTIONS_H
+#define DENDRO_5_0_GENFUNCTIONS_H
+
+namespace FemshopDendroGenfunctions
+{
+    void setDepth(unsigned int d);
+    double gridCoordToCoord(const double x, const int comp);
+    
+"*genfunction_list*"
+}
+
+#endif //DENDRO_5_0_GENFUNCTIONS_H
+    ";
+    print(header, hcontent);
 end
 
 # Time stepper (Only added for time dependent problems)
@@ -742,7 +850,7 @@ function dendro_bilinear_file(code)
         ////////////////////////////////////////////////////////////////////////////
     }
     
-    void FemshopDendroSkeleton::LHSMat::setBdryFunction(std::function<void(double,double,double,double*)> bdry){
+    void FemshopDendroSkeleton::LHSMat::setBdryFunction(std::function<double(double,double,double,double)> bdry){
         bdry_function = bdry;
     }
     
@@ -963,6 +1071,7 @@ function dendro_bilinear_file(code)
 
     #include "oda.h"
     #include "feMatrix.h"
+    #include "genfunctions.h"
 
     namespace FemshopDendroSkeleton
     {
@@ -976,7 +1085,7 @@ function dendro_bilinear_file(code)
             double* Qy;
             double* Qz;
             // function for boundary
-            std::function<void(double,double,double,double*)> bdry_function;
+            std::function<double(double,double,double,double)> bdry_function;
             // coefficient vectors
             double* grandDofVecPtr;
             """*"enum VAR{"*varpart*coefpart*"M_UI_RHS};"*"""
@@ -994,7 +1103,7 @@ function dendro_bilinear_file(code)
             virtual void elementalMatVec(const VECType* in,VECType* out, double*coords=NULL,double scale=1.0);
             
             /**@brief set boundary function*/	
-            void setBdryFunction(std::function<void(double,double,double,double*)> bdry);
+            void setBdryFunction(std::function<double(double,double,double,double)> bdry);
             
             /**@brief set pointer to global dof vector*/	
                 void setGlobalDofVec(double* gdv);
@@ -1106,7 +1215,7 @@ function dendro_linear_file(code)
         ////////////////////////////////////////////////////////////////////////////
     }
     
-    void FemshopDendroSkeleton::RHSVec::setBdryFunction(std::function<void(double,double,double,double*)> bdry){
+    void FemshopDendroSkeleton::RHSVec::setBdryFunction(std::function<double(double,double,double,double)> bdry){
         bdry_function = bdry;
     }
     
@@ -1123,14 +1232,14 @@ function dendro_linear_file(code)
 
         m_uiOctDA->getOctreeBoundaryNodeIndices(bdyIndex,bdyCoords);
         
-        double x,y,z,val;
+        double x,y,z,t;
         for(unsigned int i=0;i<bdyIndex.size();i++){
             x = bdyCoords[i*3+0];
             y = bdyCoords[i*3+1];
             z = bdyCoords[i*3+2];
-            bdry_function(x,y,z,&val);
+            t = 0.0;
             
-            out[bdyIndex[i]] = val;
+            out[bdyIndex[i]] = bdry_function(x,y,z,t);
         }
 
         return true;
@@ -1144,14 +1253,14 @@ function dendro_linear_file(code)
 
         m_uiOctDA->getOctreeBoundaryNodeIndices(bdyIndex,bdyCoords);
 
-        double x,y,z,val;
+        double x,y,z,t;
         for(unsigned int i=0;i<bdyIndex.size();i++){
             x = bdyCoords[i*3+0];
             y = bdyCoords[i*3+1];
             z = bdyCoords[i*3+2];
-            bdry_function(x,y,z,&val);
+            t = 0.0;
             
-            out[bdyIndex[i]] = val;
+            out[bdyIndex[i]] = bdry_function(x,y,z,t);
         }
 
         return true;
@@ -1206,6 +1315,7 @@ function dendro_linear_file(code)
 
     #include "oda.h"
     #include "feVector.h"
+    #include "genfunctions.h"
 
     namespace FemshopDendroSkeleton
     {
@@ -1216,7 +1326,7 @@ function dendro_linear_file(code)
             double * imV1;
             double * imV2;
             // function for boundary
-            std::function<void(double,double,double,double*)> bdry_function;
+            std::function<double(double,double,double,double)> bdry_function;
             // coefficient vectors
             double* grandDofVecPtr;
             """*"enum VAR{"*varpart*coefpart*"M_UI_RHS};"*"""
@@ -1231,7 +1341,7 @@ function dendro_linear_file(code)
             virtual void elementalComputVec(const VECType* in,VECType* out, double*coords=NULL,double scale=1.0);
             
             /**@brief set boundary function*/	
-            void setBdryFunction(std::function<void(double,double,double,double*)> bdry);
+            void setBdryFunction(std::function<double(double,double,double,double)> bdry);
             
             /**@brief set pointer to global dof vector*/	
                 void setGlobalDofVec(double* gdv);
@@ -1275,10 +1385,12 @@ project("""*CodeGenerator.genFileName*""")
 
 set("""*CodeGenerator.genFileName*"""_INC include/linear_skel.h
             include/bilinear_skel.h
+            include/genfunctions.h
         )
 
 set("""*CodeGenerator.genFileName*"""_SRC src/linear_skel.cpp
             src/bilinear_skel.cpp
+            src/genfunctions.cpp
         )
 
 set(SOURCE_FILES src/"""*CodeGenerator.genFileName*""".cpp \${"""*CodeGenerator.genFileName*"""_INC} \${"""*CodeGenerator.genFileName*"""_SRC})
@@ -1344,6 +1456,8 @@ function dendrotarget_prepare_needed_values(entities, var, lorr, vors)
     to_delete = []; # arrays allocated with new that need deletion
     
     code = "";
+    coef_loop = "";
+    coef_interp = "";
     for i=1:length(entities)
         cname = CodeGenerator.make_coef_name(entities[i]);
         if CodeGenerator.is_test_function(entities[i])
@@ -1385,8 +1499,9 @@ function dendrotarget_prepare_needed_values(entities, var, lorr, vors)
                     push!(to_delete, cname);
                     short_name = split(cname, "coef_")[end];
                     code *= "double* "*cname*" = new double[nPe];\n";
-                    # WRONG-> code *= "m_uiOctDA->getElementNodalValues(m_uiOctDA->getVecPointerToDof(grandDofVecPtr, VAR::M_UI"*short_name*", false,false), "*cname*", m_uiOctDA->curr(), m_uiDof);\n";
-                    code *= "FemshopDendroSkeleton::RHSVec::getCorrectElementalValues(m_uiOctDA->getVecPointerToDof(grandDofVecPtr, VAR::M_UI"*short_name*", false,false), "*cname*");\n";
+                    # code *= "m_uiOctDA->getElementNodalValues(m_uiOctDA->getVecPointerToDof(grandDofVecPtr, VAR::M_UI"*short_name*", false,false), "*cname*", m_uiOctDA->curr(), m_uiDof);\n";
+                    # BREAKS?? -> code *= "FemshopDendroSkeleton::RHSVec::getCorrectElementalValues(m_uiOctDA->getVecPointerToDof(grandDofVecPtr, VAR::M_UI"*short_name*", false,false), "*cname*");\n";
+                    coef_loop *= "    "*cname*"[coefi] = FemshopDendroGenfunctions::genfunction_"*string(cval-1)*"(coords[coefi*3+0], coords[coefi*3+1], coords[coefi*3+2], 0.0);\n";
                     # Apply any needed derivative operators. Interpolate at quadrature points.
                     if length(entities[i].derivs) > 0
                         println("coefficient derivatives not ready: "*string(entities[i]))
@@ -1397,7 +1512,10 @@ function dendrotarget_prepare_needed_values(entities, var, lorr, vors)
                         # end
                     else
                         if lorr==LHS
-                            code *= "//TODO: "*cname * " = refel.Q * " * cname * "; // Interpolate at quadrature points.\n";
+                            coef_interp *=
+"DENDRO_TENSOR_IIAX_APPLY_ELEM(nrp,Q1d,"*cname*",imV1);
+DENDRO_TENSOR_IAIX_APPLY_ELEM(nrp,Q1d,imV1,imV2);
+DENDRO_TENSOR_AIIX_APPLY_ELEM(nrp,Q1d,imV2,"*cname*");\n\n";
                         end
                     end
                 else
@@ -1412,6 +1530,7 @@ function dendrotarget_prepare_needed_values(entities, var, lorr, vors)
                     short_name = split(cname, "coef_")[end];
                     code *= "double* "*cname*" = new double[nPe];\n";
                     code *= "m_uiOctDA->getElementNodalValues(m_uiOctDA->getVecPointerToDof(grandDofVecPtr, VAR::M_UI"*short_name*", false,false), "*cname*", m_uiOctDA->curr(), m_uiDof);\n";
+                    # code *= "FemshopDendroSkeleton::RHSVec::getCorrectElementalValues(m_uiOctDA->getVecPointerToDof(grandDofVecPtr, VAR::M_UI"*short_name*", false,false), "*cname*");\n";
                 else
                     #TODO surface
                 end
@@ -1419,6 +1538,17 @@ function dendrotarget_prepare_needed_values(entities, var, lorr, vors)
             end
         end # if coefficient
     end # entity loop
+    
+    # Compute any coefficients at nodes
+    code *= 
+"for(int coefi=0; coefi<nPe; coefi++){
+"*coef_loop*"
+}";
+    
+    if length(coef_interp)>0
+        code *= "// Interpolate at quadrature points.\n";
+        code *= coef_interp;
+    end
     
     return (code, to_delete);
 end
@@ -1562,9 +1692,11 @@ function dendrotarget_make_elemental_computation(terms, to_delete, var, lorr, vo
     code *= preloop_code;
     code *= "// Multiply quadrature weights, geometric factors and coefficients.\n"
     code *= 
-"for(unsigned int k=0;k<(eleOrder+1);k++){
+"unsigned int node_index;
+for(unsigned int k=0;k<(eleOrder+1);k++){
     for(unsigned int j=0;j<(eleOrder+1);j++){
         for(unsigned int i=0;i<(eleOrder+1);i++){
+            node_index = (k*nrp+j)*nrp+i;
 ";
     code *= loop_code;
     code *= "
@@ -1713,20 +1845,22 @@ DENDRO_TENSOR_AIIX_APPLY_ELEM(nrp,Q1d,imV2,"*out_name*");\n";
     # Multiply by coefficients inside integral if needed
     # need to change the index for rhs
     if lorr == RHS
-        idxstr = "[coefi]";
+        idxstr = "coefi";
+    else
+        idxstr = "node_index";
     end
     if !(coef_part === nothing) || (lorr == RHS && !(trial_part === nothing))
         if !(coef_part === nothing)
-            coef_string = string(dendro_change_math_ops(CodeGenerator.replace_entities_with_symbols(coef_part, index="coefi")));
+            coef_string = string(dendro_change_math_ops(CodeGenerator.replace_entities_with_symbols(coef_part, index=idxstr)));
         else
             coef_string = "";
         end
         # for time dependent parts there can be variable parts on RHS
         if lorr == RHS && !(trial_part === nothing)
             if length(coef_string)>0
-                coef_string = coef_string * " * " * string(dendro_change_math_ops(CodeGenerator.replace_entities_with_symbols(trial_part, index="coefi")));
+                coef_string = coef_string * " * " * string(dendro_change_math_ops(CodeGenerator.replace_entities_with_symbols(trial_part, index=idxstr)));
             else
-                coef_string = string(dendro_change_math_ops(CodeGenerator.replace_entities_with_symbols(trial_part, index="coefi")));
+                coef_string = string(dendro_change_math_ops(CodeGenerator.replace_entities_with_symbols(trial_part, index=idxstr)));
             end
         end
         
@@ -1743,7 +1877,7 @@ DENDRO_TENSOR_AIIX_APPLY_ELEM(nrp,Q1d,imV2,"*out_name*");\n";
     end
     
     # build the inner weight/coef loop
-    idxstr = "[(k*nrp+j)*nrp+i]";
+    idxstr = "[node_index]";
     jacobian_factors = ["Jx*Jy*Jz"  "Jy*Jz"     "Jx*Jz"     "Jx*Jy";
                         "Jy*Jz"     "Jy*Jz/Jx"  "Jz"        "Jy";
                         "Jx*Jz"     "Jz"        "Jx*Jz/Jy"  "Jy";
