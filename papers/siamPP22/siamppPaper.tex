@@ -260,16 +260,21 @@ generateFor("target_matlab_cg.jl")
 After testing these coarse prototypes, a much finer version was solved using the Dendro target. Three lines in the script were modified to generate code for this target. 
 \begin{verbatim}
 generateFor("target_dendro_cg.jl", 
-            params=(8,0.01,0.3,1e-6,500))
+            params=(8,0.001,0.3,1e-6,500))
 build_octree_with(f);
 # removed: mesh(HEXMESH, elsperdim=20)
 \end{verbatim}
-The generated code was then compiled using the Dendro library. The resulting adaptively refined mesh produced by Dendro contained abount $3.9\times 10^{6}$ nodes, which is more suited to parallel execution on a cluster. It was tested on the Notchpeak cluster at the Univeristy of Utah's CHPC using eight dual Intel XeonSP Skylake nodes with 32 cores each. Figure \ref{fig:scaling} shows that the computation scales well up to at least 128 processes at which point mesh generation and other overhead become dominant.
+The generated code was then compiled using the Dendro library. The resulting adaptively refined mesh produced by Dendro contained abount $10.6\times 10^{6}$ nodes, which is more suited to parallel execution on a cluster. It was tested on the Notchpeak cluster at the Univeristy of Utah's CHPC using two-socket Intel XeonSP Skylake nodes with 32 cores each. For one to 32 processes, one node was used. For more processes additional nodes were added as needed. Figure \ref{fig:scaling1} shows that the assembly and solve portion of the computation scales well up to 256 processes. Figure \ref{fig:scaling2}, however, shows that for large numbers of processes the mesh setup and other overhead become dominant and limit the optimal number of processes depeding on mesh refinement.
 
 \begin{figure}
-\label{fig:scaling}
-\includegraphics[width=\linewidth]{figures/scaling.eps}
-\caption{Strong scaling on CHPC's Notchpeak cluster using 8 nodes with 32 cores each for the advection-diffusion-reaction equation example. The generated code scales consistently up to 256 cores at which point mesh generation and overhead dominate.}
+\label{fig:scaling1}
+\includegraphics[width=\linewidth]{figures/solvescaling.eps}
+\caption{Scaling of the assembly and solve steps. Solid lines show strong scaling for different mesh refinements(number of degrees of freedom). Dashed lines show interpolated weak scaling contours. For 1 to 32 processes, one dual socket node with 32 cores was used. For 64, 128 and 256 processes, 2, 4, and 8 similar nodes were used.}
+\end{figure}
+\begin{figure}
+\label{fig:scaling2}
+\includegraphics[width=\linewidth]{figures/totalscaling.eps}
+\caption{Scaling of the total execution time including mesh setup and refinement. details are similar to figure \ref{fig:scaling1}. Unlike the assembly and solve steps, the optimal number of processors for total execution time is limited depending on the mesh refinement.}
 \end{figure}
 
 \subsection{Complex Systems of PDEs}
