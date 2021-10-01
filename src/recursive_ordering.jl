@@ -9,7 +9,7 @@
 # 
 # Morton is the simplest with one rule [s1,s2,s3,s4] and ordering [1,2,3,4]
 =#
-export get_recursive_order, reorder_grid_recursive
+export get_recursive_order, reorder_grid_recursive!
 export HILBERT_ORDERING, MORTON_ORDERING
 
 struct RecursiveOrdering
@@ -104,55 +104,16 @@ function get_recursive_order(type, dim, griddim)
 end
 
 # Use this to reorder the nodes in a given grid.
-function reorder_grid_recursive(grid, griddim, type)
+function reorder_grid_recursive!(grid, griddim, type)
     dim = size(grid.allnodes,1);
-    nnodes = size(grid.allnodes,2);
-    nel = size(grid.loc2glb,2);
-    nfc = size(grid.face2glb,2);
     
     # get the ordering
     rordering = get_recursive_order(type, dim, griddim);
     # invert it for transfering the grid
     rordering = invert_ordering(rordering);
     
-    newnodes = zeros(size(grid.allnodes));
-    newbdry = copy(grid.bdry);
-    newloc2glb = copy(grid.loc2glb);
-    newglbvertex = copy(grid.glbvertex);
-    newface2glb = copy(grid.face2glb);
-    newfaceVertex2glb = copy(grid.faceVertex2glb);
-    
-    for mi=1:length(rordering)
-        for d=1:dim
-            newnodes[d,rordering[mi]] = grid.allnodes[d,mi];
-        end
-    end
-    
-    for bid=1:length(newbdry)
-        for i=1:length(newbdry[bid])
-            newbdry[bid][i] = rordering[grid.bdry[bid][i]];
-        end
-    end
-    
-    for ei=1:nel
-        for ni=1:size(newloc2glb,1)
-            newloc2glb[ni,ei] = rordering[grid.loc2glb[ni,ei]];
-        end
-        for ni=1:size(newglbvertex,1)
-            newglbvertex[ni,ei] = rordering[grid.glbvertex[ni,ei]];
-        end
-    end
-    
-    for fi=1:nfc
-        for ni=1:size(newface2glb,1)
-            newface2glb[ni,fi] = rordering[grid.face2glb[ni,fi]];
-        end
-        for ni=1:size(newfaceVertex2glb,1)
-            newfaceVertex2glb[ni,fi] = rordering[grid.faceVertex2glb[ni,fi]];
-        end
-    end
-    
-    return Femshop.Grid(newnodes, newbdry, grid.bdryface, grid.bdrynorm, grid.bids, newloc2glb, newglbvertex, newface2glb, newfaceVertex2glb);
+    reorder_grid_nodes!(grid, rordering);
+    return grid;
 end
 
 

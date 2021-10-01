@@ -908,3 +908,57 @@ function add_boundary_ID_to_grid(bid, on_bdry, grid)
     log_entry("Added boundary ID: "*string(bid)*" including "*string(node_count)*" nodes, "*string(face_count)*" faces.");
     
 end
+
+# Reorder the nodes and update the maps accordingly
+# new_map maps old to new index 
+# newnodes[:,new_map[i]] = oldnodes[:,i]
+# newloc2glb[ni,ei] = new_map[oldloc2glb[ni,ei]]
+function reorder_grid_nodes!(grid, new_map)
+    # Need to change:
+    # - allnodes
+    # - bdry
+    # - loc2glb
+    # - glbvertex
+    # - face2glb
+    # These are temporary copies
+    copy_nodes = copy(grid.allnodes);
+    copy_bdry = copy(grid.bdry);
+    copy_loc2glb = copy(grid.loc2glb);
+    copy_glbvertex = copy(grid.glbvertex);
+    copy_face2glb = copy(grid.face2glb);
+    
+    N = size(grid.allnodes,2);
+    nel = size(grid.loc2glb,2);
+    nface = size(grid.face2glb,3);
+    
+    # allnodes
+    for ni=1:N
+        grid.allnodes[:,new_map[ni]] = copy_nodes[:,ni];
+    end
+    
+    # bdry
+    for bi=1:length(grid.bids)
+        for ni=1:length(grid.bdry[bi])
+            grid.bdry[bi][ni] = new_map[copy_bdry[bi][ni]];
+        end
+    end
+    
+    # loc2glb, glbvertex
+    for ei=1:nel
+        for ni=1:size(grid.loc2glb,1)
+            grid.loc2glb[ni,ei] = new_map[copy_loc2glb[ni,ei]];
+        end
+        for vi=1:size(grid.glbvertex,1)
+            grid.glbvertex[vi,ei] = new_map[copy_glbvertex[vi,ei]];
+        end
+    end
+    
+    # face2glb
+    for fi=1:nface
+        for gi=1:size(grid.face2glb,2)
+            for ni=1:size(grid.face2glb,1)
+                grid.face2glb[ni,gi,fi] = new_map[copy_face2glb[ni,gi,fi]];
+            end
+        end
+    end
+end

@@ -1206,23 +1206,25 @@ function cachesim(use)
 end
 
 function morton_nodes(griddim)
-    t = @elapsed(global grid_data = reorder_grid_recursive(grid_data, griddim, MORTON_ORDERING));
+    t = @elapsed(global grid_data = reorder_grid_recursive!(grid_data, griddim, MORTON_ORDERING));
     log_entry("Reordered nodes to Morton. Took "*string(t)*" sec.", 2);
 end
 
 function morton_elements(griddim)
     global elemental_order = get_recursive_order(MORTON_ORDERING, config.dimension, griddim);
     log_entry("Reordered elements to Morton.", 2);
+    ef_nodes();
 end
 
 function hilbert_nodes(griddim)
-    t = @elapsed(global grid_data = reorder_grid_recursive(grid_data, griddim, HILBERT_ORDERING));
+    t = @elapsed(global grid_data = reorder_grid_recursive!(grid_data, griddim, HILBERT_ORDERING));
     log_entry("Reordered nodes to Hilbert. Took "*string(t)*" sec.", 2);
 end
 
 function hilbert_elements(griddim)
     global elemental_order = get_recursive_order(HILBERT_ORDERING, config.dimension, griddim);
     log_entry("Reordered elements to Hilbert.", 2);
+    ef_nodes();
 end
 
 function tiled_nodes(griddim, tiledim)
@@ -1233,19 +1235,21 @@ end
 function tiled_elements(griddim, tiledim)
     global elemental_order = get_tiled_order(config.dimension, griddim, tiledim, true);
     log_entry("Reordered elements to tiled("*string(tiledim)*").", 2);
+    ef_nodes();
 end
 
 function ef_nodes()
-    t = @elapsed(global grid_data = reorder_grid_element_first(grid_data, config.basis_order_min, elemental_order));
+    t = @elapsed(global grid_data = reorder_grid_element_first!(grid_data, config.basis_order_min, elemental_order));
     log_entry("Reordered nodes to EF. Took "*string(t)*" sec.", 2);
 end
 
 function random_nodes(seed = 17)
-    t = @elapsed(global grid_data = reorder_grid_random(grid_data, seed));
+    t = @elapsed(global grid_data = reorder_grid_random!(grid_data, seed));
     log_entry("Reordered nodes to random. Took "*string(t)*" sec.", 2);
 end
 
 function random_elements(seed = 17)
     global elemental_order = random_order(mesh_data.nel, seed);
     log_entry("Reordered elements to random.", 2);
+    random_nodes(seed);
 end
