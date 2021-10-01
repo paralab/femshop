@@ -18,6 +18,7 @@ import ..Femshop: JULIA, CPP, MATLAB, DENDRO, HOMG, CUSTOM_GEN_TARGET,
         SCALAR, VECTOR, TENSOR, SYM_TENSOR, VAR_ARRAY,
         LHS, RHS,
         LINEMESH, QUADMESH, HEXMESH
+        
 import ..Femshop: log_entry, printerr
 import ..Femshop: config, prob, variables, mesh_data, grid_data, refel, time_stepper, elemental_order, genfunctions
 import ..Femshop: Variable, Coefficient, GenFunction
@@ -28,6 +29,7 @@ using LinearAlgebra, SparseArrays
 include("fe_boundary.jl");
 include("nonlinear.jl")
 include("cg_matrixfree.jl");
+include("level_benchmark.jl");
 
 function linear_solve(var, bilinear, linear, stepper=nothing; assemble_func=nothing)
     if config.linalg_matrixfree
@@ -271,7 +273,7 @@ function assemble(var, bilinear, linear, allocated_vecs, dofs_per_node=1, dofs_p
     
     Np = refel.Np;
     nel = mesh_data.nel;
-    
+
     # Stiffness and mass are precomputed for uniform grid meshes
     precomputed_mass_stiffness = config.mesh_type == UNIFORM_GRID && config.geometry == SQUARE
     if precomputed_mass_stiffness
@@ -279,7 +281,7 @@ function assemble(var, bilinear, linear, allocated_vecs, dofs_per_node=1, dofs_p
         J = geo_factors.J[1];
         
         if config.dimension == 1
-            (RQ1, RD1) = build_deriv_matrix(refel, J);
+            (RQ1, RD1) = @level_bench Level1 build_deriv_matrix(refel, J);
             TRQ1 = RQ1';
             stiffness = [(TRQ1 * diagm(wdetj) * RQ1)];
         elseif config.dimension == 2
@@ -310,7 +312,7 @@ function assemble(var, bilinear, linear, allocated_vecs, dofs_per_node=1, dofs_p
         volargs = (var, eid, 0, grid_data, geo_factors, refel, t, dt, stiffness, mass);
         
         if dofs_per_node == 1
-            linchunk = linear.func(volargs);  # get the elemental linear part
+            linchunk = @level_bench Level1 linear.func(volargs);  # get the elemental linear part
             b[loc2glb] += linchunk;
             
             if !rhs_only
@@ -332,7 +334,7 @@ function assemble(var, bilinear, linear, allocated_vecs, dofs_per_node=1, dofs_p
             
             if !rhs_only
                 bilinchunk = bilinear.func(volargs);
-                insert_bilinear!(AI, AJ, AV, Astart, bilinchunk, loc2glb, 1:dofs_per_node, dofs_per_node);
+                @level_bench Level1  insert_bilinear!(AI, AJ, AV, Astart, bilinchunk, loc2glb, 1:dofs_per_node, dofs_per_node);
             end
         end
     end
@@ -340,15 +342,15 @@ function assemble(var, bilinear, linear, allocated_vecs, dofs_per_node=1, dofs_p
     
     if !rhs_only
         # Build the sparse A. Uses default + to combine overlaps
-        A = sparse(AI, AJ, AV);
+        A = @level_bench Level1 sparse(AI, AJ, AV);
     end
     
     # Boundary conditions
     bc_time = Base.Libc.time();
     if rhs_only
-        b = apply_boundary_conditions_rhs_only(var, b, t);
+        b =@level_bench Level1  apply_boundary_conditions_rhs_only(var, b, t);
     else
-        (A, b) = apply_boundary_conditions_lhs_rhs(var, A, b, t);
+        (A, b) = @level_bench Level1 apply_boundary_conditions_lhs_rhs(var, A, b, t);
     end
     bc_time = Base.Libc.time() - bc_time;
     

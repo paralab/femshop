@@ -17,7 +17,7 @@ femshop requires Julia version 1.3 or greater.
 ### Team
 
 - [Eric Heisler](https://ericheisler.github.io/), University of Utah
-- Aadesh Deshmukh, University of Utah
+- [Aadesh Deshmukh](https://www.linkedin.com/in/aa25desh/), University of Utah
 - [Hari Sundar](http://www.cs.utah.edu/~hari/), University of Utah
 
 ## Learn more
