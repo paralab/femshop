@@ -92,7 +92,7 @@ function symexpression_to_latex(ex)
         
     elseif typeof(ex) == Expr
         if ex.head === :call
-            if ex.args[1] in [:+, :.+, :-, :.-, :*, .*] && length(ex.args) > 2
+            if ex.args[1] in [:+, :.+, :-, :.-, :*, :.*] && length(ex.args) > 2
                 if typeof(ex.args[2]) == Expr
                     result *= "\\left(";
                 end
