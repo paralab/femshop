@@ -54,7 +54,7 @@
 %\setcounter{section}{3} % comment these two lines out.
 
 \title{\Large \FMshop: Domain Specific Language and Code Generation for Finite Element and Finite Volume in Julia}
-%\author{}
+\author{Eric Heisler, Hari Sundar}
 
 \date{}
 
@@ -84,7 +84,7 @@
 %\setcounter{page}{1}%Leave this line commented out.
 
 \begin{abstract} \small\baselineskip=9pt 
-We introduce \FMshop, a Julia-based domain specific language (DSL) for solving partial differential equations using the finite element and finite volume methods. A key focus of the framework is code generation for either internal numerical solvers or external targets. Internal options use a modular set of solvers written in Julia to provide a direct, real-time solution from within the DSL itself. In contrast, the external code generation produces a set of code files that can be compiled or run in an external context such as Matlab, for smaller problems or prototypes, or the \texttt{C++} and \texttt{MPI} based framework \textsc{Dendro} for large-scale problems needing scalability. By generating code for external targets, we are able to take advantage of their capabilities without needlessly duplicating them, and provide a range of solutions tailored to the specific problem or the needs of the domain scientist. The modular design of \FMshop\ allows the ongoing development of these target modules resulting an a more extensible framework and a broader set of suitable applications. The inclusion of both finite element and finite volume methods also contribultes to this goal. Another focus is on complex systems containing many PDEs that could be challenging to code and optimize by hand, but are relatively simple to specify using the DSL. In this paper we present the key features of \FMshop that set it apart from many other DSL options, outline the current capabilities as well as several that are under development, and present some examples of it in action.
+We introduce \FMshop, a Julia-based domain specific language (DSL) for solving partial differential equations using the finite element and finite volume methods. A key focus of the framework is code generation for either internal numerical solvers or external targets. Internal options use a modular set of solvers written in Julia to provide a direct, real-time solution from within the DSL itself. In contrast, the external code generation produces a set of code files that can be compiled or run in an external context such as Matlab, for smaller problems or prototypes, or the \texttt{C++} and \texttt{MPI} based framework \textsc{Dendro} for large-scale problems needing scalability. By generating code for external targets, we are able to take advantage of their capabilities without needlessly duplicating them, and provide a range of solutions tailored to the specific problem or the needs of the domain scientist. The modular design of \FMshop\ allows the ongoing development of these target modules resulting an a more extensible framework and a broader set of suitable applications. The inclusion of both finite element and finite volume methods also contributes to this goal. Another focus is on complex systems containing many PDEs that could be challenging to code and optimize by hand, but are relatively simple to specify using the DSL. In this paper we present the key features of \FMshop that set it apart from many other DSL options, outline the current capabilities as well as several that are under development, and present some examples of it in action.
 \end{abstract}
 
 \section{Introduction}
@@ -226,7 +226,12 @@ morton_elements([n,n,n])
 tiled_elements([n,n,n],[t1,t2,t3])
 \end{verbatim}
 
-Similar options are available to reorder the nodes in the grid if desired.
+The different orderings were tested with the cache simulator and some results showing different miss rates can be seen in figure 1.
+\begin{figure}
+\label{fig:missrates}
+\includegraphics[width=\linewidth]{figures/missrates.png}
+\caption{Cache miss rates were estimated using the cache simulator for Hilbert, lixicographic and random element orderings. Hilbert order shows the lowest miss rate. The random ordering was used to show a very bad case.}
+\end{figure}
 
 \section{Demonstrations}
 Some example applications are outlined here. The focus is more toward the DSL aspect and the types of problems that this tool is designed for, rather than performance benchmarks. Since external code generation relys on the parallel capabilities of the target framework, we refer the reader to the demonstrated performance measurements of those. For example, the Dendro framework has shown competetive scalability for large scale simulations\cite{dendro}\cite{dendro2}. For \FMshop's internal performance, parallelization strategies are currently under development, and competetive benchmarks have not yet been established.
@@ -265,7 +270,7 @@ generateFor("target_dendro_cg.jl",
 build_octree_with(f);
 # removed: mesh(HEXMESH, elsperdim=20)
 \end{verbatim}
-The generated code was then compiled using the Dendro library. The resulting adaptively refined mesh produced by Dendro contained about $10.6\times 10^{6}$ nodes, that is better suited to parallel execution on a cluster. It was tested on the Notchpeak cluster at the Univeristy of Utah's CHPC using two-socket Intel XeonSP Skylake nodes with 32 cores each. For one to 32 processes, one node was used. For more processes additional nodes were added as needed. Figures \ref{fig:scaling1} and \ref{fig:scaling2} demonstrate that the meshing, assembly and solve portions of the computation scale well up to 256 processes. 
+The generated code was then compiled using the Dendro library. The resulting adaptively refined mesh produced by Dendro contained about $10.6\times 10^{6}$ nodes, that is better suited to parallel execution on a cluster. It was tested on the Notchpeak cluster at the Univeristy of Utah's CHPC using two-socket Intel XeonSP Skylake nodes with 32 cores each. For one to 32 processes, one node was used. For more processes additional nodes were added as needed. Figures 2 and 3 demonstrate that the meshing, assembly and solve portions of the computation scale well up to 256 processes. 
 %Figure \ref{fig:scaling2}, however, shows that for large numbers of processes the mesh setup and other overhead become dominant and limit the optimal number of processes depeding on mesh refinement. 
 As can be seen, we are able to obtain excellent weak and strong scaling using a very high level description of the problem. The ability to quickly prototype and resolve numerical issues and choices in Julia or Matlab before seamlessly transitioning to C++ and MPI is a key feature of \FMshop\ that can significantly speedup development time for complex multiphysics problems. 
 
@@ -313,6 +318,22 @@ The following commands illustrate how this problem could be written in \FMshop. 
   assemblyLoops(I, [band, dir, "elements"])
 \end{verbatim}
 
+To illustrate the indexed variable concept with a simpler problem, an advection equation was solved using FV for various advection speeds. The concentration variable and advection speeds both had an indexed type, so the input was simply:
+\begin{verbatim}
+  speed = index("speed", range=[1,5])
+  u = variable("u", VAR_ARRAY, CELL, 
+               index = speed)
+  s = coefficient("s", s_value_array, 
+               VAR_ARRAY, CELL, index = speed)
+  flux(u, "upwind(s[speed],u[speed])")
+\end{verbatim}
+Figure 4 shows a solution to the indexed advection equation. Note the diffusion caused by the use of a first-order upwind flux.
+\begin{figure}
+\label{fig:advec}
+\includegraphics[width=\linewidth]{figures/addiff1dindexed.png}
+\caption{Solution to advection equation for various advection speeds using indexed entities. The square pulse represents the exact solution. Note the diffusion caused by the first-order upwind flux.}
+\end{figure}
+
 \section{Conclusion and Ongoing Development}
 \FMshop\ is a new and rapidly evolving toolkit that enables domain scientists to swiftly build numerical PDE solvers while taking advantage of sophisticated parallel software frameworks. It also provides an extensible resource that is designed to adapt to changes in technology, computing environment, and needs. It also adds a new set of capabilities to the Julia software ecosystem that will hopefully be adopted and expanded as new code generation targets and mathematical techniques are developed.
 
@@ -329,7 +350,7 @@ The list of goals and desired features is considerable, but some important ones 
 
 Of these items, the immediate effort will be focused on improving the internal parallel features and expanding the external generation options to make \FMshop\ competetive in terms of performance. 
 
-The code for \FMshop, along with a set of detailed examples and usage information, can be found at https://github.com/paralab/femshop
+The code for \FMshop, along with a set of detailed examples and usage information, can be found at https://github.com/paralab/Finch
 
 \begin{thebibliography}{99}
 
