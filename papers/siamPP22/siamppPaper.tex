@@ -210,12 +210,12 @@ As an example, if one wished to use a specific parallelization strategy or integ
 Since one of the goals of \FMshop\ is to take advantage of the capabilities of good libraries, there are numerous parallelization, adaptivity, and structuring opportunities to achive high performance. A great example of this is the Dendro target which offers distributed memory parallelism through MPI, adaptive mesh refinement, and other performance enhancing features. It is the task of the code generation target module to take advantage of these features, and the task of FMshop to provide an interface to the user for customizing them.
 
 \subsection{Parallelism Within \FMshop}
-The performance focus is not limited to external tools. There are features built into FMshop as well. The obvious place to look first is the elemental loop in which the linear system is assembled or matrix vector products are performed in the case of assembly-free methods. Julia provides very simple multithreading capability that can be applied to these elemental loops and provides basic shared memory parallelism. There is also a multiprocessing package as part of the Julia standard library to offer distributed memory parallel capability, though it requires a little more care to fully take advantage of and support for this is still being developed within FMshop. 
+The performance focus is not limited to external tools. There are features built into \FMshop\ as well. The obvious place to look first is the elemental loop in which the linear system is assembled or matrix vector products are performed in the case of assembly-free methods. Julia provides very simple multithreading capability that can be applied to these elemental loops and provides basic shared memory parallelism. There is also a multiprocessing package as part of the Julia standard library to offer distributed memory parallel capability, though it requires a little more care to fully take advantage of and support for this is still being developed within \FMshop. 
 
-GPU support has also recently become well supported within Julia\cite{juliagpu}, primarily through CUDA. We are exploring the possibility of adding GPU options for internal FMshop targets as well.
+GPU support has also recently become well supported within Julia\cite{juliagpu}, primarily through CUDA. We are exploring the possibility of adding GPU options for internal \FMshop\ targets as well.
 
 \subsection{Cache Simulation}
-There are other ways to improve performance within FMshop besides the major parallelism techniques. The organization of data structures and the elemental loop ordering can be arranged to optimize cache use. To aid with this development and provide a means for automated tuning based on architecture, FMshop employs a cache simulator. Pycachesim\cite{pycachesim} was chosen because it is light-weight and although it was developed for use in Python, the backend is written in C. The C library behind pycachesim is utilized directly by FMshop. 
+There are other ways to improve performance within \FMshop\ besides the major parallelism techniques. The organization of data structures and the elemental loop ordering can be arranged to optimize cache use. To aid with this development and provide a means for automated tuning based on architecture, \FMshop\ employs a cache simulator. Pycachesim\cite{pycachesim} was chosen because it is light-weight and although it was developed for use in Python, the backend is written in C. The C library behind pycachesim is utilized directly by \FMshop. 
 
 It would not be practical to run the cache simulator in the background during a real computation, and when there are a large number of elements it may not be practical to simulate the full system. Instead the cache simulator is essentially another target for code generation. Rather than performing the mathematical computation, the approximate sequence of memory accesses is fed into the simlator. At the end of the computation the cache statistics are recorded and analyzed. This presents FMshop with a tool for tuning and measuring the effectiveness of changes in data structures and loop arrangements.
 
@@ -229,7 +229,7 @@ tiled_elements([n,n,n],[t1,t2,t3])
 Similar options are available to reorder the nodes in the grid if desired.
 
 \section{Demonstrations}
-Some example applications are outlined here. The focus is more toward the DSL aspect and the types of problems that this tool is designed for, rather than performance benchmarks. Since external code generation relys on the parallel capabilities of the target framework, we refer the reader to the demonstrated performance measurements of those. For example, the Dendro framework has shown competetive scalability for large scale simulations\cite{dendro}\cite{dendro2}. For FMshop's internal performance, parallelization strategies are currently under development, and competetive benchmarks have not yet been established.
+Some example applications are outlined here. The focus is more toward the DSL aspect and the types of problems that this tool is designed for, rather than performance benchmarks. Since external code generation relys on the parallel capabilities of the target framework, we refer the reader to the demonstrated performance measurements of those. For example, the Dendro framework has shown competetive scalability for large scale simulations\cite{dendro}\cite{dendro2}. For \FMshop's internal performance, parallelization strategies are currently under development, and competetive benchmarks have not yet been established.
 
 \subsection{Steady-state Advection-diffusion-reaction Equation}
 The following equation(\ref{eq:adr}) was used to demonstrate the ability to easily select code generation targets and to highlight the accessability of high performance solutions. 
@@ -246,7 +246,7 @@ Here all of the coefficients have constant value to simplify analysis, but are i
 u(x,y,z) = \sin(3\pi x) \sin(2\pi y) \sin(\pi z)
 \end{equation}
 
-The weak form expression provided to FMshop was
+The weak form expression provided to \FMshop\ is
 \begin{verbatim}
 weakForm(u,"-D*dot(grad(u),grad(v)) + 
             dot(s, grad(u))*v - c*u*v - f*v")
@@ -265,7 +265,9 @@ generateFor("target_dendro_cg.jl",
 build_octree_with(f);
 # removed: mesh(HEXMESH, elsperdim=20)
 \end{verbatim}
-The generated code was then compiled using the Dendro library. The resulting adaptively refined mesh produced by Dendro contained abount $10.6\times 10^{6}$ nodes, which is more suited to parallel execution on a cluster. It was tested on the Notchpeak cluster at the Univeristy of Utah's CHPC using two-socket Intel XeonSP Skylake nodes with 32 cores each. For one to 32 processes, one node was used. For more processes additional nodes were added as needed. Figure \ref{fig:scaling1} shows that the assembly and solve portion of the computation scales well up to 256 processes. Figure \ref{fig:scaling2}, however, shows that for large numbers of processes the mesh setup and other overhead become dominant and limit the optimal number of processes depeding on mesh refinement.
+The generated code was then compiled using the Dendro library. The resulting adaptively refined mesh produced by Dendro contained about $10.6\times 10^{6}$ nodes, that is better suited to parallel execution on a cluster. It was tested on the Notchpeak cluster at the Univeristy of Utah's CHPC using two-socket Intel XeonSP Skylake nodes with 32 cores each. For one to 32 processes, one node was used. For more processes additional nodes were added as needed. Figures \ref{fig:scaling1} and \ref{fig:scaling2} demonstrate that the meshing, assembly and solve portions of the computation scale well up to 256 processes. 
+%Figure \ref{fig:scaling2}, however, shows that for large numbers of processes the mesh setup and other overhead become dominant and limit the optimal number of processes depeding on mesh refinement. 
+As can be seen, we are able to obtain excellent weak and strong scaling using a very high level description of the problem. The ability to quickly prototype and resolve numerical issues and choices in Julia or Matlab before seamlessly transitioning to C++ and MPI is a key feature of \FMshop\ that can significantly speedup development time for complex multiphysics problems. 
 
 \begin{figure}
 \label{fig:scaling1}
@@ -279,7 +281,7 @@ The generated code was then compiled using the Dendro library. The resulting ada
 \end{figure}
 
 \subsection{Complex Systems of PDEs}
-A key principle of this DSL is to simplify the translation from mathematical expressions to code. Complex systems of equations present a challenge in this respect due to the need to manage a large number of components and interactions. A good example of this is the phonon Boltzman transport equation. We refer the reader to \cite{bte2} and \cite{bte3} for the physical background and derivation of the equations. There are a number of different approaches to solving these equations. A deterministic approach that has lent itself well to parallelization is outlined in \cite{bte}, and we will adopt that formulation here. The resulting conservation-type FV equation in terms of the phonon intensity $I_{i,j}$ corresponding to directional vector $\textbf{s}_{i}$ and frequency band $\omega_{j}$ will be Eq.\ref{eq-bte}.
+A key principle of \FMshop\ is to simplify the translation from mathematical expressions to code. Complex systems of equations present a challenge in this respect due to the need to manage a large number of components and interactions. A good example of this is the phonon Boltzman transport equation. We refer the reader to \cite{bte2} and \cite{bte3} for the physical background and derivation of the equations. There are a number of different approaches to solving these equations. A deterministic approach that has lent itself well to parallelization is outlined in \cite{bte}, and we will adopt that formulation here. The resulting conservation-type FV equation in terms of the phonon intensity $I_{i,j}$ corresponding to directional vector $\textbf{s}_{i}$ and frequency band $\omega_{j}$ will be Eq.\ref{eq-bte}.
 \begin{equation}
 \label{eq-bte}
 \frac{\partial \bar{I}_{i,j}}{\partial t} = \frac{1}{\tau}(\bar{I}_{0,j} - \bar{I}_{i,j}) - \frac{|v_{g}|}{V} \int_{S} I_{i,j} \textbf{s}_{i}\cdot \textbf{n} dA
@@ -296,7 +298,7 @@ To reiterate, successful parallel implementations exist for this problem, but th
 
 For representing the quantities $I_{i,j}$ and $\textbf{s}_{i}$, where $i$ is the directional discretization and $j$ is for the frequency band, an indexed type variable will be created. As the name suggests, this is an entity that uses a single symbol, but represents an arbitrary number of components that are linked to an indexing object. This serves two purposes. First, the input expressions can then be written in terms of \texttt{I[direction, band]} and \texttt{S[direction]}, where \texttt{direction} and \texttt{band} refer to indexing objects that are involved in the assembly loops. This convenient syntax extends to other expressions such as the boundary conditions, which in this case couple all of the directions. Second, the elemental loops and loops over these indices can be transformed and different parallelization strategies can easily be applied.
 
-The following commands illustrate how this problem could be written in the DSL. For brevity the commands defining constants and the directional vector array have been omitted. The last command defines the loop structure with bands being the outermost loop and elements being innermost. This arrangement naturally allows working on the nearly independent bands in parallel.
+The following commands illustrate how this problem could be written in \FMshop. For brevity the commands defining constants and the directional vector array have been omitted. The last command defines the loop structure with bands being the outermost loop and elements being innermost. This arrangement naturally allows working on the nearly independent bands in parallel.
 \begin{verbatim}
   dir  = index("dir", range=[1,400])
   band = index("band", range=[1,40])
@@ -312,22 +314,22 @@ The following commands illustrate how this problem could be written in the DSL. 
 \end{verbatim}
 
 \section{Conclusion and Ongoing Development}
-FMshop is a new and rapidly evolving toolkit that enables domain scientists to swiftly build numerical PDE solvers while taking advantage of sophisticated parallel software frameworks. It also provides an extensible resource that is designed to adapt to changes in technology, computing environment, and needs. It also adds a new set of capabilities to the Julia software ecosystem that will hopefully be adopted and expanded as new code generation targets and mathematical techniques are developed.
+\FMshop\ is a new and rapidly evolving toolkit that enables domain scientists to swiftly build numerical PDE solvers while taking advantage of sophisticated parallel software frameworks. It also provides an extensible resource that is designed to adapt to changes in technology, computing environment, and needs. It also adds a new set of capabilities to the Julia software ecosystem that will hopefully be adopted and expanded as new code generation targets and mathematical techniques are developed.
 
 The list of goals and desired features is considerable, but some important ones that are either under current development or are planned for the near future include:\\
 \begin{itemize}
-\item Support for distributed parallelism and improved use of multithreading within FMshop.
+\item Support for distributed parallelism and improved use of multithreading within \FMshop.
 \item GPU utilization for suitable applications.
 \item Addition of new code generation targets to provide optimal solutions for a broader range of applications and user preferances.
-\item Direct use of certain external targets from within FMshop to streamline the process.
+\item Direct use of certain external targets from within \FMshop\ to streamline the process.
 \item Addition of profiling utilities to finely tune internal solution strategies.
 \item Interaction with more of the great Julia libraries available to take full advantage of this scintific computing ecosystem.
 \item Development of practical experiments in collaboration with domain scintists to test effectiveness and usability.
 \end{itemize}
 
-Of these items, the immediate effort will be focused on improving the internal parallel features and expanding the external generation options to make FMshop competetive in terms of performance. 
+Of these items, the immediate effort will be focused on improving the internal parallel features and expanding the external generation options to make \FMshop\ competetive in terms of performance. 
 
-The code for FMshop, along with a set of detailed examples and usage information, can be found at https://github.com/paralab/femshop
+The code for \FMshop, along with a set of detailed examples and usage information, can be found at https://github.com/paralab/femshop
 
 \begin{thebibliography}{99}
 
